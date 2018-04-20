@@ -33,7 +33,7 @@
 #include "Cluster.h"
 #include "Version.h"
 #include "FdbError.h"
-#include "FdbOptions.h"
+// #include "FdbOptions.h"
 
 uv_thread_t fdbThread;
 
@@ -110,7 +110,7 @@ void StopNetwork(const Nan::FunctionCallbackInfo<Value>& info) {
 
 	info.GetReturnValue().SetNull();
 
-	FdbOptions::Clear();
+	// FdbOptions::Clear();
 }
 
 NAN_MODULE_INIT(init){
@@ -118,16 +118,16 @@ NAN_MODULE_INIT(init){
 	Database::Init();
 	Transaction::Init();
 	Cluster::Init();
-	FdbOptions::Init();
+	// FdbOptions::Init();
 	Watch::Init();
 
 	Nan::Set(target, Nan::New<v8::String>("apiVersion").ToLocalChecked(), Nan::New<v8::FunctionTemplate>(ApiVersion)->GetFunction());
 	Nan::Set(target, Nan::New<v8::String>("createCluster").ToLocalChecked(), Nan::New<v8::FunctionTemplate>(CreateCluster)->GetFunction());
 	Nan::Set(target, Nan::New<v8::String>("startNetwork").ToLocalChecked(), Nan::New<v8::FunctionTemplate>(StartNetwork)->GetFunction());
 	Nan::Set(target, Nan::New<v8::String>("stopNetwork").ToLocalChecked(), Nan::New<v8::FunctionTemplate>(StopNetwork)->GetFunction());
-	Nan::Set(target, Nan::New<v8::String>("options").ToLocalChecked(), FdbOptions::CreateOptions(FdbOptions::NetworkOption));
-	Nan::Set(target, Nan::New<v8::String>("streamingMode").ToLocalChecked(), FdbOptions::CreateEnum(FdbOptions::StreamingMode));
-	Nan::Set(target, Nan::New<v8::String>("atomic").ToLocalChecked(), FdbOptions::CreateOptions(FdbOptions::MutationType));
+	// Nan::Set(target, Nan::New<v8::String>("options").ToLocalChecked(), FdbOptions::CreateOptions(FdbOptions::NetworkOption));
+	// Nan::Set(target, Nan::New<v8::String>("streamingMode").ToLocalChecked(), FdbOptions::CreateEnum(FdbOptions::StreamingMode));
+	// Nan::Set(target, Nan::New<v8::String>("atomic").ToLocalChecked(), FdbOptions::CreateOptions(FdbOptions::MutationType));
 }
 
 #if NODE_VERSION_AT_LEAST(8, 9, 0)

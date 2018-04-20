@@ -87,8 +87,8 @@ Local<Value> Cluster::NewInstance(FDBCluster *ptr) {
 	Cluster *clusterObj = ObjectWrap::Unwrap<Cluster>(instance);
 	clusterObj->cluster = ptr;
 
-	instance->Set(Nan::New<v8::String>("options").ToLocalChecked(),
-		FdbOptions::CreateOptions(FdbOptions::ClusterOption, instance));
+	// instance->Set(Nan::New<v8::String>("options").ToLocalChecked(),
+	// 	FdbOptions::CreateOptions(FdbOptions::ClusterOption, instance));
 
 	return scope.Escape(instance);
 }

@@ -109,7 +109,7 @@ class FdbOptions : public node::ObjectWrap {
 		static void InitOptions();
 
 		static void AddOption(Scope scope, std::string name, int value, ParameterType type);
-		static void WeakCallback(const v8::WeakCallbackData<v8::Value, SourceIndex>& data);
+		static void WeakCallback(const v8::WeakCallbackInfo<SourceIndex>& data);
 
 		static std::string ToJavaScriptName(std::string optionName, bool isSetter);
 

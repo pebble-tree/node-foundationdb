@@ -46,6 +46,8 @@ class Database: public node::ObjectWrap {
 		static void CreateTransaction(const Nan::FunctionCallbackInfo<v8::Value>& info);
 		static Nan::Persistent<v8::Function> constructor;
 
+		static void SetOptionStr(const Nan::FunctionCallbackInfo<v8::Value>& info);
+
 		FDBDatabase *db;
 };
 

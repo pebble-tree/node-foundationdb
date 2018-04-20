@@ -97,7 +97,7 @@ v8::Persistent<v8::Value>& FdbOptions::GetSource() {
 	return container->value;
 }
 
-void FdbOptions::WeakCallback(const WeakCallbackData<Value, SourceIndex>& data) {
+void FdbOptions::WeakCallback(const WeakCallbackInfo<SourceIndex>& data) {
 	SourceIndex *index = data.GetParameter();
 	auto iter = sources.find(index->value);
 
@@ -125,7 +125,7 @@ Local<Value> FdbOptions::NewInstance(Local<FunctionTemplate> optionsTemplate, Lo
 
 	SourceContainer *sourceContainer = new SourceContainer();
 	sourceContainer->value.Reset(isolate, source);
-	sourceContainer->value.SetWeak(sourceIndex, WeakCallback);
+	sourceContainer->value.SetWeak(sourceIndex, WeakCallback, WeakCallbackType::kFinalizer);
 	sources[ sourceIndex->value ] = sourceContainer;
 
 	FdbOptions *optionsObj = ObjectWrap::Unwrap<FdbOptions>(instance);

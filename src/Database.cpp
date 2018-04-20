@@ -48,6 +48,7 @@ void Database::Init() {
 	tpl->InstanceTemplate()->SetInternalFieldCount(1);
 
 	Nan::SetPrototypeMethod(tpl, "createTransaction", CreateTransaction);
+	Nan::SetPrototypeMethod(tpl, "setOptionStr", SetOptionStr);
 
 	constructor.Reset(tpl->GetFunction());
 }
@@ -63,6 +64,18 @@ void Database::CreateTransaction(const Nan::FunctionCallbackInfo<v8::Value>& inf
 	}
 
 	info.GetReturnValue().Set(Transaction::NewInstance(tr));
+}
+
+void Database::SetOptionStr(const Nan::FunctionCallbackInfo<v8::Value>& args) {
+	// database.setOptionStr(opt_id, "value")
+	Isolate *isolate = args.GetIsolate();
+
+	Database *dbPtr = node::ObjectWrap::Unwrap<Database>(args.Holder());
+	if (args.Length() < 2) {
+		isolate->ThrowException(Exception::TypeError(String::NewFromUtf8(isolate, "Not enough arguments")));
+		return;
+	}
+
 }
 
 void Database::New(const Nan::FunctionCallbackInfo<Value>& info) {
@@ -81,8 +94,8 @@ Local<Value> Database::NewInstance(FDBDatabase *ptr) {
 	Database *dbObj = ObjectWrap::Unwrap<Database>(instance);
 	dbObj->db = ptr;
 
-	instance->Set(Nan::New<v8::String>("options").ToLocalChecked(),
-		FdbOptions::CreateOptions(FdbOptions::DatabaseOption, instance));
+	// instance->Set(Nan::New<v8::String>("options").ToLocalChecked(),
+	// 	FdbOptions::CreateOptions(FdbOptions::DatabaseOption, instance));
 
 	return scope.Escape(instance);
 }

@@ -407,7 +407,7 @@ Local<Value> Transaction::NewInstance(FDBTransaction *ptr) {
 	Transaction *trObj = ObjectWrap::Unwrap<Transaction>(instance);
 	trObj->tr = ptr;
 
-	instance->Set(String::NewFromUtf8(isolate, "options", String::kInternalizedString), FdbOptions::CreateOptions(FdbOptions::TransactionOption, instance));
+	// instance->Set(String::NewFromUtf8(isolate, "options", String::kInternalizedString), FdbOptions::CreateOptions(FdbOptions::TransactionOption, instance));
 
 	return scope.Escape(instance);
 }
