@@ -1,6 +1,6 @@
 {
-  "name": "fdb",
-  "version": "3.0.6",
+  "name": "foundationdb",
+  "version": "0.0.1",
   "author": {
     "name": "FoundationDB",
     "email": "distribution@foundationdb.com",
