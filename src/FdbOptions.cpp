@@ -30,6 +30,9 @@
 #include <algorithm>
 #include <node_buffer.h>
 
+#define __STDC_FORMAT_MACROS
+#include <inttypes.h>
+
 #define INVALID_OPTION_VALUE_ERROR_CODE (fdb_error_t)2006
 
 using namespace v8;
@@ -38,6 +41,11 @@ using namespace node;
 FdbOptions::PersistentFnTemplateMap *FdbOptions::optionTemplates;
 std::map<FdbOptions::Scope, ScopeInfo> FdbOptions::scopeInfo;
 std::map<FdbOptions::Scope, std::map<int, FdbOptions::ParameterType>> FdbOptions::parameterTypes;
+
+std::map<uint64_t, FdbOptions::SourceContainer*> FdbOptions::sources;
+v8::Persistent<v8::Value> FdbOptions::emptySource;
+
+uint64_t FdbOptions::SourceIndex::nextValue = 0;
 
 FdbOptions::FdbOptions() { }
 
@@ -80,27 +88,57 @@ void FdbOptions::Clear() {
 	delete optionTemplates;
 }
 
-void FdbOptions::WeakCallback(const WeakCallbackData<Value, FdbOptions>& data) { }
+v8::Persistent<v8::Value>& FdbOptions::GetSource() {
+	auto iter = sources.find(sourceIndex);
+	if(iter == sources.end()) {
+		return emptySource;
+	}
+	SourceContainer *container = iter->second;
+	return container->value;
+}
 
-Handle<Value> FdbOptions::NewInstance(Local<FunctionTemplate> optionsTemplate, Handle<Value> source) {
+void FdbOptions::WeakCallback(const WeakCallbackData<Value, SourceIndex>& data) {
+	SourceIndex *index = data.GetParameter();
+	auto iter = sources.find(index->value);
+
+	if(iter != sources.end()) {
+		SourceContainer* container = iter->second;
+
+		container->value.ClearWeak();
+		container->value.Reset();
+
+		sources.erase(iter);
+		delete container;
+	}
+
+	delete index;
+}
+
+Local<Value> FdbOptions::NewInstance(Local<FunctionTemplate> optionsTemplate, Local<Value> source) {
 	Isolate *isolate = Isolate::GetCurrent();
-	EscapableHandleScope scope(isolate);
+	Nan::EscapableHandleScope scope;
 
 	Local<FunctionTemplate> funcTpl = Local<FunctionTemplate>::New(isolate, optionsTemplate);
 	Local<Object> instance = funcTpl->GetFunction()->NewInstance();
 
+	SourceIndex *sourceIndex = new SourceIndex();
+
+	SourceContainer *sourceContainer = new SourceContainer();
+	sourceContainer->value.Reset(isolate, source);
+	sourceContainer->value.SetWeak(sourceIndex, WeakCallback);
+	sources[ sourceIndex->value ] = sourceContainer;
+
 	FdbOptions *optionsObj = ObjectWrap::Unwrap<FdbOptions>(instance);
-	optionsObj->source.Reset(isolate, source);
-	optionsObj->source.SetWeak(optionsObj, WeakCallback);
+	optionsObj->sourceIndex = sourceIndex->value;
 
 	return scope.Escape(instance);
 }
 
-Handle<Value> FdbOptions::CreateOptions(Scope scope, Handle<Value> source) {
+Local<Value> FdbOptions::CreateOptions(Scope scope, Local<Value> source) {
 	return NewInstance(optionTemplates->Get(scope), source);
 }
 
-Handle<Value> FdbOptions::CreateEnum(Scope scope) {
+Local<Value> FdbOptions::CreateEnum(Scope scope) {
 	Local<FunctionTemplate> funcTpl = optionTemplates->Get(scope);
 	return funcTpl->GetFunction()->NewInstance();
 }
@@ -153,7 +191,7 @@ void SetNetworkOption(const FunctionCallbackInfo<Value>& info) {
 		errorCode = fdb_network_set_option(op, param.getValue(), param.getLength());
 
 	if(errorCode)
-		return NanThrowError(FdbError::NewInstance(errorCode, fdb_get_error(errorCode)));
+		return Nan::ThrowError(FdbError::NewInstance(errorCode, fdb_get_error(errorCode)));
 
 	info.GetReturnValue().SetNull();
 }
@@ -162,6 +200,10 @@ void SetClusterOption(const FunctionCallbackInfo<Value>& info) {
 	Isolate *isolate = Isolate::GetCurrent();
 	FdbOptions *options = ObjectWrap::Unwrap<FdbOptions>(info.Holder());
 	Local<Value> source = Local<Value>::New(isolate, options->GetSource());
+
+	if(source.IsEmpty())
+		return info.GetReturnValue().SetNull();
+
 	Cluster *cluster = ObjectWrap::Unwrap<Cluster>(source->ToObject());
 	FDBClusterOption op = (FDBClusterOption)info.Data()->Uint32Value();
 
@@ -171,7 +213,7 @@ void SetClusterOption(const FunctionCallbackInfo<Value>& info) {
 		errorCode = fdb_cluster_set_option(cluster->GetCluster(), op, param.getValue(), param.getLength());
 
 	if(errorCode)
-		return NanThrowError(FdbError::NewInstance(errorCode, fdb_get_error(errorCode)));
+		return Nan::ThrowError(FdbError::NewInstance(errorCode, fdb_get_error(errorCode)));
 
 	info.GetReturnValue().SetNull();
 }
@@ -180,6 +222,10 @@ void SetDatabaseOption(const FunctionCallbackInfo<Value>& info) {
 	Isolate *isolate = Isolate::GetCurrent();
 	FdbOptions *options = ObjectWrap::Unwrap<FdbOptions>(info.Holder());
 	Local<Value> source = Local<Value>::New(isolate, options->GetSource());
+
+	if(source.IsEmpty())
+		return info.GetReturnValue().SetNull();
+
 	Database *db = ObjectWrap::Unwrap<Database>(source->ToObject());
 	FDBDatabaseOption op = (FDBDatabaseOption)info.Data()->Uint32Value();
 
@@ -189,7 +235,7 @@ void SetDatabaseOption(const FunctionCallbackInfo<Value>& info) {
 		errorCode = fdb_database_set_option(db->GetDatabase(), op, param.getValue(), param.getLength());
 
 	if(errorCode)
-		return NanThrowError(FdbError::NewInstance(errorCode, fdb_get_error(errorCode)));
+		return Nan::ThrowError(FdbError::NewInstance(errorCode, fdb_get_error(errorCode)));
 
 	info.GetReturnValue().SetNull();
 }
@@ -198,6 +244,10 @@ void SetTransactionOption(const FunctionCallbackInfo<Value>& info) {
 	Isolate *isolate = Isolate::GetCurrent();
 	FdbOptions *options = ObjectWrap::Unwrap<FdbOptions>(info.Holder());
 	Local<Value> source = Local<Value>::New(isolate, options->GetSource());
+
+	if(source.IsEmpty())
+		return info.GetReturnValue().SetNull();
+
 	Transaction *tr = ObjectWrap::Unwrap<Transaction>(source->ToObject());
 	FDBTransactionOption op = (FDBTransactionOption)info.Data()->Uint32Value();
 
@@ -207,7 +257,7 @@ void SetTransactionOption(const FunctionCallbackInfo<Value>& info) {
 		errorCode = fdb_transaction_set_option(tr->GetTransaction(), op, param.getValue(), param.getLength());
 
 	if(errorCode)
-		return NanThrowError(FdbError::NewInstance(errorCode, fdb_get_error(errorCode)));
+		return Nan::ThrowError(FdbError::NewInstance(errorCode, fdb_get_error(errorCode)));
 
 	info.GetReturnValue().SetNull();
 }
@@ -219,7 +269,7 @@ void CallAtomicOperation(const FunctionCallbackInfo<Value>& info) {
 
 	fdb_error_t errorCode = key.errorCode > 0 ? key.errorCode : value.errorCode;
 	if(errorCode > 0)
-		return NanThrowError(FdbError::NewInstance(errorCode, fdb_get_error(errorCode)));
+		return Nan::ThrowError(FdbError::NewInstance(errorCode, fdb_get_error(errorCode)));
 
 	fdb_transaction_atomic_op(tr->GetTransaction(), key.getValue(), key.getLength(), value.getValue(), value.getLength(), (FDBMutationType)info.Data()->Uint32Value());
 

@@ -39,48 +39,50 @@ Database::~Database() {
 	fdb_database_destroy(db);
 };
 
-Persistent<Function> Database::constructor;
+Nan::Persistent<Function> Database::constructor;
 
 void Database::Init() {
-	Isolate *isolate = Isolate::GetCurrent();
-	Local<FunctionTemplate> tpl = FunctionTemplate::New(isolate, New);
-	tpl->SetClassName(String::NewFromUtf8(isolate, "Database", String::kInternalizedString));
+	Local<FunctionTemplate> tpl = Nan::New<FunctionTemplate>(New);
+
+	tpl->SetClassName(Nan::New<v8::String>("Database").ToLocalChecked());
 	tpl->InstanceTemplate()->SetInternalFieldCount(1);
 
-	tpl->PrototypeTemplate()->Set(String::NewFromUtf8(isolate, "createTransaction", String::kInternalizedString), FunctionTemplate::New(isolate, CreateTransaction)->GetFunction());
+	Nan::SetPrototypeMethod(tpl, "createTransaction", CreateTransaction);
 
-	constructor.Reset(isolate, tpl->GetFunction());
+	constructor.Reset(tpl->GetFunction());
 }
 
-void Database::CreateTransaction(const v8::FunctionCallbackInfo<v8::Value>& info) {
+void Database::CreateTransaction(const Nan::FunctionCallbackInfo<v8::Value>& info) {
 	Database *dbPtr = node::ObjectWrap::Unwrap<Database>(info.Holder());
 	FDBDatabase *db = dbPtr->db;
 	FDBTransaction *tr;
 	fdb_error_t err = fdb_database_create_transaction(db, &tr);
 	if (err) {
-		NanThrowError(FdbError::NewInstance(err, fdb_get_error(err)));
+		Nan::ThrowError(FdbError::NewInstance(err, fdb_get_error(err)));
 		return info.GetReturnValue().SetUndefined();
 	}
 
 	info.GetReturnValue().Set(Transaction::NewInstance(tr));
 }
 
-void Database::New(const FunctionCallbackInfo<Value>& info) {
+void Database::New(const Nan::FunctionCallbackInfo<Value>& info) {
 	Database *db = new Database();
 	db->Wrap(info.Holder());
 
 	info.GetReturnValue().Set(info.Holder());
 }
 
-Handle<Value> Database::NewInstance(FDBDatabase *ptr) {
-	Isolate *isolate = Isolate::GetCurrent();
-	EscapableHandleScope scope(isolate);
-	Local<Function> databaseConstructor = Local<Function>::New(isolate, constructor);
+Local<Value> Database::NewInstance(FDBDatabase *ptr) {
+	Nan::EscapableHandleScope scope;
+
+	Local<Function> databaseConstructor = Nan::New<Function>(constructor);
 	Local<Object> instance = databaseConstructor->NewInstance(0, NULL);
+
 	Database *dbObj = ObjectWrap::Unwrap<Database>(instance);
 	dbObj->db = ptr;
 
-	instance->Set(String::NewFromUtf8(isolate, "options", String::kInternalizedString), FdbOptions::CreateOptions(FdbOptions::DatabaseOption, instance));
+	instance->Set(Nan::New<v8::String>("options").ToLocalChecked(),
+		FdbOptions::CreateOptions(FdbOptions::DatabaseOption, instance));
 
 	return scope.Escape(instance);
 }

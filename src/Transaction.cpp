@@ -45,15 +45,15 @@ Transaction::~Transaction() {
 	fdb_transaction_destroy(tr);
 };
 
-Persistent<Function> Transaction::constructor;
+Nan::Persistent<Function> Transaction::constructor;
 
 struct NodeValueCallback : NodeCallback {
 
-	NodeValueCallback(FDBFuture *future, Handle<Function> cbFunc) : NodeCallback(future, cbFunc) { }
+	NodeValueCallback(FDBFuture *future, Local<Function> cbFunc) : NodeCallback(future, cbFunc) { }
 
-	virtual Handle<Value> extractValue(FDBFuture* future, fdb_error_t& outErr) {
+	virtual Local<Value> extractValue(FDBFuture* future, fdb_error_t& outErr) {
 		Isolate *isolate = Isolate::GetCurrent();
-		EscapableHandleScope scope(isolate);
+		Nan::EscapableHandleScope scope;
 
 		const char *value;
 		int valueLength;
@@ -75,11 +75,11 @@ struct NodeValueCallback : NodeCallback {
 
 struct NodeKeyCallback : NodeCallback {
 
-	NodeKeyCallback(FDBFuture *future, Handle<Function> cbFunc) : NodeCallback(future, cbFunc) { }
+	NodeKeyCallback(FDBFuture *future, Local<Function> cbFunc) : NodeCallback(future, cbFunc) { }
 
-	virtual Handle<Value> extractValue(FDBFuture* future, fdb_error_t& outErr) {
+	virtual Local<Value> extractValue(FDBFuture* future, fdb_error_t& outErr) {
 		Isolate *isolate = Isolate::GetCurrent();
-		EscapableHandleScope scope(isolate);
+		Nan::EscapableHandleScope scope;
 
 		const char *key;
 		int keyLength;
@@ -95,9 +95,9 @@ struct NodeKeyCallback : NodeCallback {
 
 struct NodeVoidCallback : NodeCallback {
 
-	NodeVoidCallback(FDBFuture *future, Handle<Function> cbFunc) : NodeCallback(future, cbFunc) { }
+	NodeVoidCallback(FDBFuture *future, Local<Function> cbFunc) : NodeCallback(future, cbFunc) { }
 
-	virtual Handle<Value> extractValue(FDBFuture* future, fdb_error_t& outErr) {
+	virtual Local<Value> extractValue(FDBFuture* future, fdb_error_t& outErr) {
 		Isolate *isolate = Isolate::GetCurrent();
 		outErr = fdb_future_get_error(future);
 		return Undefined(isolate);
@@ -106,11 +106,11 @@ struct NodeVoidCallback : NodeCallback {
 
 struct NodeKeyValueCallback : NodeCallback {
 
-	NodeKeyValueCallback(FDBFuture *future, Handle<Function> cbFunc) : NodeCallback(future, cbFunc) { }
+	NodeKeyValueCallback(FDBFuture *future, Local<Function> cbFunc) : NodeCallback(future, cbFunc) { }
 
-	virtual Handle<Value> extractValue(FDBFuture* future, fdb_error_t& outErr) {
+	virtual Local<Value> extractValue(FDBFuture* future, fdb_error_t& outErr) {
 		Isolate *isolate = Isolate::GetCurrent();
-		EscapableHandleScope scope(isolate);
+		Nan::EscapableHandleScope scope;
 
 		const FDBKeyValue *kv;
 		int len;
@@ -129,16 +129,16 @@ struct NodeKeyValueCallback : NodeCallback {
 		 */
 
 		Local<Object> returnObj = Local<Object>::New(isolate, Object::New(isolate));
-		Handle<Array> jsValueArray = Array::New(isolate, len);
+		Local<Array> jsValueArray = Array::New(isolate, len);
 
-		Handle<String> keySymbol = String::NewFromUtf8(isolate, "key", String::kInternalizedString);
-		Handle<String> valueSymbol = String::NewFromUtf8(isolate, "value", String::kInternalizedString);
+		Local<String> keySymbol = String::NewFromUtf8(isolate, "key", String::kInternalizedString);
+		Local<String> valueSymbol = String::NewFromUtf8(isolate, "value", String::kInternalizedString);
 
 		for(int i = 0; i < len; i++) {
 			Local<Object> jsKeyValue = Object::New(isolate);
 
-			Handle<Value> jsKeyBuffer = makeBuffer((const char*)kv[i].key, kv[i].key_length);
-			Handle<Value> jsValueBuffer = makeBuffer((const char*)kv[i].value, kv[i].value_length);
+			Local<Value> jsKeyBuffer = makeBuffer((const char*)kv[i].key, kv[i].key_length);
+			Local<Value> jsValueBuffer = makeBuffer((const char*)kv[i].value, kv[i].value_length);
 
 			jsKeyValue->Set(keySymbol, jsKeyBuffer);
 			jsKeyValue->Set(valueSymbol, jsValueBuffer);
@@ -155,11 +155,11 @@ struct NodeKeyValueCallback : NodeCallback {
 
 struct NodeVersionCallback : NodeCallback {
 
-	NodeVersionCallback(FDBFuture *future, Handle<Function> cbFunc) : NodeCallback(future, cbFunc) { }
+	NodeVersionCallback(FDBFuture *future, Local<Function> cbFunc) : NodeCallback(future, cbFunc) { }
 
-	virtual Handle<Value> extractValue(FDBFuture* future, fdb_error_t& outErr) {
+	virtual Local<Value> extractValue(FDBFuture* future, fdb_error_t& outErr) {
 		Isolate *isolate = Isolate::GetCurrent();
-		EscapableHandleScope scope(isolate);
+		Nan::EscapableHandleScope scope;
 
 		int64_t version;
 
@@ -175,11 +175,11 @@ struct NodeVersionCallback : NodeCallback {
 
 struct NodeStringArrayCallback : NodeCallback {
 
-	NodeStringArrayCallback(FDBFuture *future, Handle<Function> cbFunc) : NodeCallback(future, cbFunc) { }
+	NodeStringArrayCallback(FDBFuture *future, Local<Function> cbFunc) : NodeCallback(future, cbFunc) { }
 
-	virtual Handle<Value> extractValue(FDBFuture *future, fdb_error_t& outErr) {
+	virtual Local<Value> extractValue(FDBFuture *future, fdb_error_t& outErr) {
 		Isolate *isolate = Isolate::GetCurrent();
-		EscapableHandleScope scope(isolate);
+		Nan::EscapableHandleScope scope;
 
 		const char **strings;
 		int stringCount;
@@ -204,24 +204,24 @@ struct StringParams {
 	 *  preserve bytes. Otherwise, stuff gets converted
 	 *  to UTF-8.
 	 */
-	StringParams(Handle<Value> keyVal) {
+	StringParams(Local<Value> keyVal) {
 		str = (uint8_t*)(Buffer::Data(keyVal->ToObject()));
 		len = (int)Buffer::Length(keyVal->ToObject());
 	}
 };
 
-FDBTransaction* Transaction::GetTransactionFromArgs(const FunctionCallbackInfo<Value>& info) {
+FDBTransaction* Transaction::GetTransactionFromArgs(const Nan::FunctionCallbackInfo<Value>& info) {
 	return node::ObjectWrap::Unwrap<Transaction>(info.Holder())->tr;
 }
 
-Handle<Function> Transaction::GetCallback(Handle<Value> funcVal) {
+Local<Function> Transaction::GetCallback(Local<Value> funcVal) {
 	Isolate *isolate = Isolate::GetCurrent();
-	EscapableHandleScope scope(isolate);
-	Local<Function> callback = Local<Function>::New(isolate, Handle<Function>::Cast(funcVal));
+	Nan::EscapableHandleScope scope;
+	Local<Function> callback = Local<Function>::New(isolate, Local<Function>::Cast(funcVal));
 	return scope.Escape(callback);
 }
 
-void Transaction::Set(const FunctionCallbackInfo<Value>& info){
+void Transaction::Set(const Nan::FunctionCallbackInfo<Value>& info){
 	StringParams key(info[0]);
 	StringParams val(info[1]);
 	fdb_transaction_set(GetTransactionFromArgs(info), key.str, key.len, val.str, val.len);
@@ -229,14 +229,14 @@ void Transaction::Set(const FunctionCallbackInfo<Value>& info){
 	info.GetReturnValue().SetNull();
 }
 
-void Transaction::Commit(const FunctionCallbackInfo<Value>& info) {
+void Transaction::Commit(const Nan::FunctionCallbackInfo<Value>& info) {
 	FDBFuture *f = fdb_transaction_commit(GetTransactionFromArgs(info));
 	(new NodeVoidCallback(f, GetCallback(info[0])))->start();
 
 	info.GetReturnValue().SetNull();
 }
 
-void Transaction::Clear(const FunctionCallbackInfo<Value>& info) {
+void Transaction::Clear(const Nan::FunctionCallbackInfo<Value>& info) {
 	StringParams key(info[0]);
 	fdb_transaction_clear(GetTransactionFromArgs(info), key.str, key.len);
 
@@ -246,7 +246,7 @@ void Transaction::Clear(const FunctionCallbackInfo<Value>& info) {
 /*
  * ClearRange takes two key strings.
  */
-void Transaction::ClearRange(const FunctionCallbackInfo<Value>& info) {
+void Transaction::ClearRange(const Nan::FunctionCallbackInfo<Value>& info) {
 	StringParams begin(info[0]);
 	StringParams end(info[1]);
 	fdb_transaction_clear_range(GetTransactionFromArgs(info), begin.str, begin.len, end.str, end.len);
@@ -257,7 +257,7 @@ void Transaction::ClearRange(const FunctionCallbackInfo<Value>& info) {
 /*
  * This function takes a KeySelector and returns a future.
  */
-void Transaction::GetKey(const FunctionCallbackInfo<Value>& info) {
+void Transaction::GetKey(const Nan::FunctionCallbackInfo<Value>& info) {
 	StringParams key(info[0]);
 	int selectorOrEqual = info[1]->Int32Value();
 	int selectorOffset = info[2]->Int32Value();
@@ -269,7 +269,7 @@ void Transaction::GetKey(const FunctionCallbackInfo<Value>& info) {
 	info.GetReturnValue().SetNull();
 }
 
-void Transaction::Get(const FunctionCallbackInfo<Value>& info) {
+void Transaction::Get(const Nan::FunctionCallbackInfo<Value>& info) {
 	StringParams key(info[0]);
 	bool snapshot = info[1]->BooleanValue();
 
@@ -279,7 +279,7 @@ void Transaction::Get(const FunctionCallbackInfo<Value>& info) {
 	info.GetReturnValue().SetNull();
 }
 
-void Transaction::GetRange(const FunctionCallbackInfo<Value>& info) {
+void Transaction::GetRange(const Nan::FunctionCallbackInfo<Value>& info) {
 	StringParams start(info[0]);
 	int startOrEqual = info[1]->Int32Value();
 	int startOffset = info[2]->Int32Value();
@@ -302,44 +302,44 @@ void Transaction::GetRange(const FunctionCallbackInfo<Value>& info) {
 	info.GetReturnValue().SetNull();
 }
 
-void Transaction::Watch(const FunctionCallbackInfo<Value>& info) {
+void Transaction::Watch(const Nan::FunctionCallbackInfo<Value>& info) {
 	Isolate *isolate = Isolate::GetCurrent();
 	Transaction *trPtr = node::ObjectWrap::Unwrap<Transaction>(info.Holder());
 
 	uint8_t *keyStr = (uint8_t*)(Buffer::Data(info[0]->ToObject()));
 	int keyLen = (int)Buffer::Length(info[0]->ToObject());
 
-	Local<Function> cb = Local<Function>::New(isolate, Handle<Function>::Cast(info[1]));
+	Local<Function> cb = Local<Function>::New(isolate, Local<Function>::Cast(info[1]));
 
 	FDBFuture *f = fdb_transaction_watch(trPtr->tr, keyStr, keyLen);
 	NodeVoidCallback *callback = new NodeVoidCallback(f, cb);
-	Handle<Value> watch = Watch::NewInstance(callback);
+	Local<Value> watch = Watch::NewInstance(callback);
 
 	callback->start();
 	info.GetReturnValue().Set(watch);
 }
 
-void Transaction::AddConflictRange(const FunctionCallbackInfo<Value>& info, FDBConflictRangeType type) {
+void Transaction::AddConflictRange(const Nan::FunctionCallbackInfo<Value>& info, FDBConflictRangeType type) {
 	StringParams start(info[0]);
 	StringParams end(info[1]);
 
 	fdb_error_t errorCode = fdb_transaction_add_conflict_range(GetTransactionFromArgs(info), start.str, start.len, end.str, end.len, type);
 
 	if(errorCode != 0)
-		return NanThrowError(FdbError::NewInstance(errorCode, fdb_get_error(errorCode)));
+		return Nan::ThrowError(FdbError::NewInstance(errorCode, fdb_get_error(errorCode)));
 
 	info.GetReturnValue().SetNull();
 }
 
-void Transaction::AddReadConflictRange(const FunctionCallbackInfo<Value>& info) {
+void Transaction::AddReadConflictRange(const Nan::FunctionCallbackInfo<Value>& info) {
 	return AddConflictRange(info, FDB_CONFLICT_RANGE_TYPE_READ);
 }
 
-void Transaction::AddWriteConflictRange(const FunctionCallbackInfo<Value>& info) {
+void Transaction::AddWriteConflictRange(const Nan::FunctionCallbackInfo<Value>& info) {
 	return AddConflictRange(info, FDB_CONFLICT_RANGE_TYPE_WRITE);
 }
 
-void Transaction::OnError(const FunctionCallbackInfo<Value>& info) {
+void Transaction::OnError(const Nan::FunctionCallbackInfo<Value>& info) {
 	fdb_error_t errorCode = info[0]->Int32Value();
 	FDBFuture *f = fdb_transaction_on_error(GetTransactionFromArgs(info), errorCode);
 	(new NodeVoidCallback(f, GetCallback(info[1])))->start();
@@ -347,43 +347,43 @@ void Transaction::OnError(const FunctionCallbackInfo<Value>& info) {
 	info.GetReturnValue().SetNull();
 }
 
-void Transaction::Reset(const FunctionCallbackInfo<Value>& info) {
+void Transaction::Reset(const Nan::FunctionCallbackInfo<Value>& info) {
 	fdb_transaction_reset(GetTransactionFromArgs(info));
 
 	info.GetReturnValue().SetNull();
 }
 
-void Transaction::SetReadVersion(const FunctionCallbackInfo<Value>& info) {
+void Transaction::SetReadVersion(const Nan::FunctionCallbackInfo<Value>& info) {
 	int64_t version = info[0]->IntegerValue();
 	fdb_transaction_set_read_version(GetTransactionFromArgs(info), version);
 
 	info.GetReturnValue().SetNull();
 }
 
-void Transaction::GetReadVersion(const FunctionCallbackInfo<Value>& info) {
+void Transaction::GetReadVersion(const Nan::FunctionCallbackInfo<Value>& info) {
 	FDBFuture *f = fdb_transaction_get_read_version(GetTransactionFromArgs(info));
 	(new NodeVersionCallback(f, GetCallback(info[0])))->start();
 
 	info.GetReturnValue().SetNull();
 }
 
-void Transaction::GetCommittedVersion(const FunctionCallbackInfo<Value>& info) {
+void Transaction::GetCommittedVersion(const Nan::FunctionCallbackInfo<Value>& info) {
 	int64_t version;
 	fdb_error_t errorCode = fdb_transaction_get_committed_version(GetTransactionFromArgs(info), &version);
 
 	if(errorCode != 0)
-		return NanThrowError(FdbError::NewInstance(errorCode, fdb_get_error(errorCode)));
+		return Nan::ThrowError(FdbError::NewInstance(errorCode, fdb_get_error(errorCode)));
 
 	info.GetReturnValue().Set((double)version);
 }
 
-void Transaction::Cancel(const FunctionCallbackInfo<Value>& info) {
+void Transaction::Cancel(const Nan::FunctionCallbackInfo<Value>& info) {
 	fdb_transaction_cancel(GetTransactionFromArgs(info));
 
 	info.GetReturnValue().SetNull();
 }
 
-void Transaction::GetAddressesForKey(const FunctionCallbackInfo<Value>& info) {
+void Transaction::GetAddressesForKey(const Nan::FunctionCallbackInfo<Value>& info) {
 	StringParams key(info[0]);
 
 	FDBFuture *f = fdb_transaction_get_addresses_for_key(GetTransactionFromArgs(info), key.str, key.len);
@@ -392,14 +392,14 @@ void Transaction::GetAddressesForKey(const FunctionCallbackInfo<Value>& info) {
 	info.GetReturnValue().SetNull();
 }
 
-void Transaction::New(const FunctionCallbackInfo<Value>& info) {
+void Transaction::New(const Nan::FunctionCallbackInfo<Value>& info) {
 	Transaction *tr = new Transaction();
 	tr->Wrap(info.Holder());
 }
 
-Handle<Value> Transaction::NewInstance(FDBTransaction *ptr) {
+Local<Value> Transaction::NewInstance(FDBTransaction *ptr) {
 	Isolate *isolate = Isolate::GetCurrent();
-	EscapableHandleScope scope(isolate);
+	Nan::EscapableHandleScope scope;
 
 	Local<Function> transactionConstructor = Local<Function>::New(isolate, constructor);
 	Local<Object> instance = transactionConstructor->NewInstance();
@@ -413,31 +413,30 @@ Handle<Value> Transaction::NewInstance(FDBTransaction *ptr) {
 }
 
 void Transaction::Init() {
-	Isolate *isolate = Isolate::GetCurrent();
-	Local<FunctionTemplate> tpl = FunctionTemplate::New(isolate, New);
+	Local<FunctionTemplate> tpl = Nan::New<FunctionTemplate>(New);
 
-	tpl->SetClassName(String::NewFromUtf8(isolate, "Transaction", String::kInternalizedString));
+	tpl->SetClassName(Nan::New<v8::String>("Transaction").ToLocalChecked());
 	tpl->InstanceTemplate()->SetInternalFieldCount(1);
 
-	tpl->PrototypeTemplate()->Set(String::NewFromUtf8(isolate, "get", String::kInternalizedString), FunctionTemplate::New(isolate, Get)->GetFunction());
-	tpl->PrototypeTemplate()->Set(String::NewFromUtf8(isolate, "getRange", String::kInternalizedString), FunctionTemplate::New(isolate, GetRange)->GetFunction());
-	tpl->PrototypeTemplate()->Set(String::NewFromUtf8(isolate, "getKey", String::kInternalizedString), FunctionTemplate::New(isolate, GetKey)->GetFunction());
-	tpl->PrototypeTemplate()->Set(String::NewFromUtf8(isolate, "watch", String::kInternalizedString), FunctionTemplate::New(isolate, Watch)->GetFunction());
-	tpl->PrototypeTemplate()->Set(String::NewFromUtf8(isolate, "set", String::kInternalizedString), FunctionTemplate::New(isolate, Set)->GetFunction());
-	tpl->PrototypeTemplate()->Set(String::NewFromUtf8(isolate, "commit", String::kInternalizedString), FunctionTemplate::New(isolate, Commit)->GetFunction());
-	tpl->PrototypeTemplate()->Set(String::NewFromUtf8(isolate, "clear", String::kInternalizedString), FunctionTemplate::New(isolate, Clear)->GetFunction());
-	tpl->PrototypeTemplate()->Set(String::NewFromUtf8(isolate, "clearRange", String::kInternalizedString), FunctionTemplate::New(isolate, ClearRange)->GetFunction());
-	tpl->PrototypeTemplate()->Set(String::NewFromUtf8(isolate, "addReadConflictRange", String::kInternalizedString), FunctionTemplate::New(isolate, AddReadConflictRange)->GetFunction());
-	tpl->PrototypeTemplate()->Set(String::NewFromUtf8(isolate, "addWriteConflictRange", String::kInternalizedString), FunctionTemplate::New(isolate, AddWriteConflictRange)->GetFunction());
-	tpl->PrototypeTemplate()->Set(String::NewFromUtf8(isolate, "onError", String::kInternalizedString), FunctionTemplate::New(isolate, OnError)->GetFunction());
-	tpl->PrototypeTemplate()->Set(String::NewFromUtf8(isolate, "reset", String::kInternalizedString), FunctionTemplate::New(isolate, Reset)->GetFunction());
-	tpl->PrototypeTemplate()->Set(String::NewFromUtf8(isolate, "getReadVersion", String::kInternalizedString), FunctionTemplate::New(isolate, GetReadVersion)->GetFunction());
-	tpl->PrototypeTemplate()->Set(String::NewFromUtf8(isolate, "setReadVersion", String::kInternalizedString), FunctionTemplate::New(isolate, SetReadVersion)->GetFunction());
-	tpl->PrototypeTemplate()->Set(String::NewFromUtf8(isolate, "getCommittedVersion", String::kInternalizedString), FunctionTemplate::New(isolate, GetCommittedVersion)->GetFunction());
-	tpl->PrototypeTemplate()->Set(String::NewFromUtf8(isolate, "cancel", String::kInternalizedString), FunctionTemplate::New(isolate, Cancel)->GetFunction());
-	tpl->PrototypeTemplate()->Set(String::NewFromUtf8(isolate, "getAddressesForKey", String::kInternalizedString), FunctionTemplate::New(isolate, GetAddressesForKey)->GetFunction());
+	Nan::SetPrototypeMethod(tpl, "get", Get);
+	Nan::SetPrototypeMethod(tpl, "getRange", GetRange);
+	Nan::SetPrototypeMethod(tpl, "getKey", GetKey);
+	Nan::SetPrototypeMethod(tpl, "watch", Watch);
+	Nan::SetPrototypeMethod(tpl, "set", Set);
+	Nan::SetPrototypeMethod(tpl, "commit", Commit);
+	Nan::SetPrototypeMethod(tpl, "clear", Clear);
+	Nan::SetPrototypeMethod(tpl, "clearRange", ClearRange);
+	Nan::SetPrototypeMethod(tpl, "addReadConflictRange", AddReadConflictRange);
+	Nan::SetPrototypeMethod(tpl, "addWriteConflictRange", AddWriteConflictRange);
+	Nan::SetPrototypeMethod(tpl, "onError", OnError);
+	Nan::SetPrototypeMethod(tpl, "reset", Reset);
+	Nan::SetPrototypeMethod(tpl, "getReadVersion", GetReadVersion);
+	Nan::SetPrototypeMethod(tpl, "setReadVersion", SetReadVersion);
+	Nan::SetPrototypeMethod(tpl, "getCommittedVersion", GetCommittedVersion);
+	Nan::SetPrototypeMethod(tpl, "cancel", Cancel);
+	Nan::SetPrototypeMethod(tpl, "getAddressesForKey", GetAddressesForKey);
 
-	constructor.Reset(isolate, tpl->GetFunction());
+	constructor.Reset(tpl->GetFunction());
 }
 
 // Watch implementation
@@ -452,11 +451,11 @@ Watch::~Watch() {
 	}
 };
 
-Persistent<Function> Watch::constructor;
+Nan::Persistent<Function> Watch::constructor;
 
-Handle<Value> Watch::NewInstance(NodeCallback *callback) {
+Local<Value> Watch::NewInstance(NodeCallback *callback) {
 	Isolate *isolate = Isolate::GetCurrent();
-	EscapableHandleScope scope(isolate);
+	Nan::EscapableHandleScope scope;
 
 	Local<Function> watchConstructor = Local<Function>::New(isolate, constructor);
 	Local<Object> instance = watchConstructor->NewInstance();
@@ -468,12 +467,12 @@ Handle<Value> Watch::NewInstance(NodeCallback *callback) {
 	return scope.Escape(instance);
 }
 
-void Watch::New(const FunctionCallbackInfo<Value>& info) {
+void Watch::New(const Nan::FunctionCallbackInfo<Value>& info) {
 	Watch *c = new Watch();
 	c->Wrap(info.Holder());
 }
 
-void Watch::Cancel(const FunctionCallbackInfo<Value>& info) {
+void Watch::Cancel(const Nan::FunctionCallbackInfo<Value>& info) {
 	NodeCallback *callback = node::ObjectWrap::Unwrap<Watch>(info.Holder())->callback;
 
 	if(callback && callback->getFuture())
@@ -483,12 +482,12 @@ void Watch::Cancel(const FunctionCallbackInfo<Value>& info) {
 }
 
 void Watch::Init() {
-	Isolate *isolate = Isolate::GetCurrent();
-	Local<FunctionTemplate> tpl = FunctionTemplate::New(isolate, New);
-	tpl->SetClassName(String::NewFromUtf8(isolate, "Watch", String::kInternalizedString));
+	Local<FunctionTemplate> tpl = Nan::New<FunctionTemplate>(New);
+
+	tpl->SetClassName(Nan::New<v8::String>("Watch").ToLocalChecked());
 	tpl->InstanceTemplate()->SetInternalFieldCount(1);
 
-	tpl->PrototypeTemplate()->Set(String::NewFromUtf8(isolate, "cancel", String::kInternalizedString), FunctionTemplate::New(isolate, Cancel)->GetFunction());
+	Nan::SetPrototypeMethod(tpl, "cancel", Cancel);
 
-	constructor.Reset(isolate, tpl->GetFunction());
+	constructor.Reset(tpl->GetFunction());
 }
