@@ -97,7 +97,9 @@ private:
 	}
 
 	static void nodeThreadCallback(uv_async_t *handle) {
-    Isolate *isolate = Isolate::GetCurrent();
+		Nan::HandleScope scope;
+
+		Isolate *isolate = Isolate::GetCurrent();
 		NodeCallback *nc = (NodeCallback*)handle->data;
 		FDBFuture *future = nc->future;
 
