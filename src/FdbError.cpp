@@ -43,7 +43,7 @@ Local<Value> FdbError::NewInstance(fdb_error_t code, const char *description) {
 	Local<Object> instance;
 	if (!constructor.IsEmpty() && constructor->IsFunction()) {
 		Local<Value> constructorArgs[] = { String::NewFromUtf8(isolate, description), Integer::New(isolate, code) };
-		instance = Local<Function>::Cast(constructor)->NewInstance(2, constructorArgs);
+		instance = Nan::NewInstance(Local<Function>::Cast(constructor), 2, constructorArgs).ToLocalChecked();
 	} else {
 		// We can't find the (javascript) FDBError class, so construct and throw *something*
 		instance = Exception::Error(String::NewFromUtf8(isolate, "FDBError class not found.  Unable to deliver error."))->ToObject();

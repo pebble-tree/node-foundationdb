@@ -402,7 +402,7 @@ Local<Value> Transaction::NewInstance(FDBTransaction *ptr) {
 	Nan::EscapableHandleScope scope;
 
 	Local<Function> transactionConstructor = Local<Function>::New(isolate, constructor);
-	Local<Object> instance = transactionConstructor->NewInstance();
+	Local<Object> instance = Nan::NewInstance(transactionConstructor).ToLocalChecked();
 
 	Transaction *trObj = ObjectWrap::Unwrap<Transaction>(instance);
 	trObj->tr = ptr;
@@ -458,7 +458,7 @@ Local<Value> Watch::NewInstance(NodeCallback *callback) {
 	Nan::EscapableHandleScope scope;
 
 	Local<Function> watchConstructor = Local<Function>::New(isolate, constructor);
-	Local<Object> instance = watchConstructor->NewInstance();
+	Local<Object> instance = Nan::NewInstance(watchConstructor).ToLocalChecked();
 
 	Watch *watchObj = ObjectWrap::Unwrap<Watch>(instance);
 	watchObj->callback = callback;

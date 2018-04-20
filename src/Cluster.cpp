@@ -82,7 +82,7 @@ Local<Value> Cluster::NewInstance(FDBCluster *ptr) {
 	Nan::EscapableHandleScope scope;
 
 	Local<Function> clusterConstructor = Nan::New<Function>(constructor);
-	Local<Object> instance = clusterConstructor->NewInstance(0, NULL);
+	Local<Object> instance = Nan::NewInstance(clusterConstructor, 0, NULL).ToLocalChecked();
 
 	Cluster *clusterObj = ObjectWrap::Unwrap<Cluster>(instance);
 	clusterObj->cluster = ptr;

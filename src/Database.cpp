@@ -76,7 +76,7 @@ Local<Value> Database::NewInstance(FDBDatabase *ptr) {
 	Nan::EscapableHandleScope scope;
 
 	Local<Function> databaseConstructor = Nan::New<Function>(constructor);
-	Local<Object> instance = databaseConstructor->NewInstance(0, NULL);
+	Local<Object> instance = Nan::NewInstance(databaseConstructor).ToLocalChecked();
 
 	Database *dbObj = ObjectWrap::Unwrap<Database>(instance);
 	dbObj->db = ptr;

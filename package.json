@@ -21,12 +21,12 @@
   ],
   "dependencies": {
     "bindings": "*",
-    "nan": "^2.0.9"
+    "nan": "^2.10.0"
   },
   "devDependencies": {
-    "backtrace": "0.0.2",
+    "backtrace": "^0.0.2",
     "jshint": ">= 2.5.6",
-    "node-gyp": "^3.0.3",
+    "node-gyp": "^3.6.2",
     "promises-aplus-tests": ">= 2.1.0"
   },
   "engines": {

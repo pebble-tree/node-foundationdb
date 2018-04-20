@@ -119,7 +119,7 @@ Local<Value> FdbOptions::NewInstance(Local<FunctionTemplate> optionsTemplate, Lo
 	Nan::EscapableHandleScope scope;
 
 	Local<FunctionTemplate> funcTpl = Local<FunctionTemplate>::New(isolate, optionsTemplate);
-	Local<Object> instance = funcTpl->GetFunction()->NewInstance();
+	Local<Object> instance = Nan::NewInstance(funcTpl->GetFunction()).ToLocalChecked();
 
 	SourceIndex *sourceIndex = new SourceIndex();
 
@@ -140,7 +140,7 @@ Local<Value> FdbOptions::CreateOptions(Scope scope, Local<Value> source) {
 
 Local<Value> FdbOptions::CreateEnum(Scope scope) {
 	Local<FunctionTemplate> funcTpl = optionTemplates->Get(scope);
-	return funcTpl->GetFunction()->NewInstance();
+	return Nan::NewInstance(funcTpl->GetFunction()).ToLocalChecked();
 }
 
 Parameter GetStringParameter(const FunctionCallbackInfo<Value>& info, int index) {
