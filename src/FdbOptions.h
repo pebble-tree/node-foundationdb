@@ -86,24 +86,30 @@ class FdbOptions : public node::ObjectWrap {
 
 		static Parameter GetOptionParameter(const v8::FunctionCallbackInfo<v8::Value>& info, Scope scope, int optionValue, int index = 0);
 
-		v8::Persistent<v8::Value>& GetSource() {
-			return source;
-		}
+		v8::Persistent<v8::Value>& GetSource();
 
 	private:
+		struct SourceIndex {
+			SourceIndex() : value(++nextValue) {}
+			uint64_t value;
+			static uint64_t nextValue;
+		};
+
+		struct SourceContainer {
+			v8::Persistent<v8::Value> value;
+		};
+
 		typedef v8::Persistent<v8::FunctionTemplate> PersistentFnTemplate;
 		typedef v8::PersistentValueMap<Scope, v8::FunctionTemplate, v8::DefaultPersistentValueMapTraits<Scope, v8::FunctionTemplate > > PersistentFnTemplateMap;
 
 		static void New(const v8::FunctionCallbackInfo<v8::Value>& info);
 		static v8::Local<v8::Value> NewInstance(v8::Local<v8::FunctionTemplate> optionsTemplate, v8::Local<v8::Value> source);
 
-		FdbOptions();
-
 		static void InitOptionsTemplate(Scope scope, const char *className);
 		static void InitOptions();
 
 		static void AddOption(Scope scope, std::string name, int value, ParameterType type);
-		static void WeakCallback(const v8::WeakCallbackData<v8::Value, FdbOptions>& data);
+		static void WeakCallback(const v8::WeakCallbackData<v8::Value, SourceIndex>& data);
 
 		static std::string ToJavaScriptName(std::string optionName, bool isSetter);
 
@@ -111,7 +117,12 @@ class FdbOptions : public node::ObjectWrap {
 		static PersistentFnTemplateMap *optionTemplates;
 		static std::map<Scope, std::map<int, ParameterType>> parameterTypes;
 
-		v8::Persistent<v8::Value> source;
+		static std::map<uint64_t, SourceContainer*> sources;
+		static v8::Persistent<v8::Value> emptySource;
+
+		FdbOptions();
+
+		uint64_t sourceIndex;
 };
 
 #endif

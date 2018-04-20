@@ -26,6 +26,7 @@
   "devDependencies": {
     "backtrace": "0.0.2",
     "jshint": ">= 2.5.6",
+    "node-gyp": "^3.0.3",
     "promises-aplus-tests": ">= 2.1.0"
   },
   "engines": {
