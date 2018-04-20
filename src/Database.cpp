@@ -48,7 +48,7 @@ void Database::Init() {
   tpl->InstanceTemplate()->SetInternalFieldCount(1);
 
   Nan::SetPrototypeMethod(tpl, "createTransaction", CreateTransaction);
-  Nan::SetPrototypeMethod(tpl, "setOptionStr", SetOptionStr);
+  Nan::SetPrototypeMethod(tpl, "setOption", SetOption);
 
   constructor.Reset(tpl->GetFunction());
 }
@@ -66,16 +66,47 @@ void Database::CreateTransaction(const Nan::FunctionCallbackInfo<v8::Value>& inf
   info.GetReturnValue().Set(Transaction::NewInstance(tr));
 }
 
-void Database::SetOptionStr(const Nan::FunctionCallbackInfo<v8::Value>& args) {
+void Database::SetOption(const Nan::FunctionCallbackInfo<v8::Value>& args) {
   // database.setOptionStr(opt_id, "value")
   Isolate *isolate = args.GetIsolate();
 
   Database *dbPtr = node::ObjectWrap::Unwrap<Database>(args.Holder());
+  FDBDatabase *db = dbPtr->db;
+
   if (args.Length() < 2) {
     isolate->ThrowException(Exception::TypeError(String::NewFromUtf8(isolate, "Not enough arguments")));
     return;
   }
 
+  if (!args[0]->IsUint32()) {
+    isolate->ThrowException(Exception::TypeError(String::NewFromUtf8(isolate, "First argument not an integer")));
+    return;
+  }
+  uint32_t code = args[0]->Uint32Value();
+  fdb_error_t err;
+
+  if (args[1]->IsUint32()) {
+    uint64_t value = args[1]->Uint32Value();
+    err = fdb_database_set_option(db, (FDBDatabaseOption)code, (const uint8_t *)&value, 8);
+
+    printf("%d %lld\n", code, value);
+  } else if (node::Buffer::HasInstance(args[1])) {
+    uint8_t const *value = (uint8_t *)node::Buffer::Data(args[1]);
+    int value_length = node::Buffer::Length(args[1]);
+    err = fdb_database_set_option(db, (FDBDatabaseOption)code, value, value_length);
+
+    printf("%d %s\n", code, value);
+  } else {
+    isolate->ThrowException(Exception::TypeError(String::NewFromUtf8(isolate, "Second argument not a buffer")));
+    return;
+  }
+
+  if (err) {
+    Nan::ThrowError(FdbError::NewInstance(err, fdb_get_error(err)));
+    // return info.GetReturnValue().SetUndefined();
+  }
+
+  // printf("%s\n", args[0]->ToString());
 }
 
 void Database::New(const Nan::FunctionCallbackInfo<Value>& info) {
