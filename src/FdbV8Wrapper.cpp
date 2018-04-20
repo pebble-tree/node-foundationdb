@@ -43,91 +43,91 @@ using namespace std;
 bool networkStarted = false;
 
 void ApiVersion(const Nan::FunctionCallbackInfo<Value>& info) {
-	int apiVersion = info[0]->Int32Value();
-	fdb_error_t errorCode = fdb_select_api_version(apiVersion);
+  int apiVersion = info[0]->Int32Value();
+  fdb_error_t errorCode = fdb_select_api_version(apiVersion);
 
-	if(errorCode != 0) {
-		if (errorCode == 2203)
-			return Nan::ThrowError(FdbError::NewInstance(errorCode, "API version not supported by the installed FoundationDB C library"));
-		return Nan::ThrowError(FdbError::NewInstance(errorCode, fdb_get_error(errorCode)));
-	}
+  if(errorCode != 0) {
+    if (errorCode == 2203)
+      return Nan::ThrowError(FdbError::NewInstance(errorCode, "API version not supported by the installed FoundationDB C library"));
+    return Nan::ThrowError(FdbError::NewInstance(errorCode, fdb_get_error(errorCode)));
+  }
 
-	info.GetReturnValue().SetNull();
+  info.GetReturnValue().SetNull();
 }
 
 static void networkThread(void *arg) {
-	fdb_error_t errorCode = fdb_run_network();
-	if(errorCode != 0)
-		fprintf(stderr, "Unhandled error in FoundationDB network thread: %s (%d)\n", fdb_get_error(errorCode), errorCode);
+  fdb_error_t errorCode = fdb_run_network();
+  if(errorCode != 0)
+    fprintf(stderr, "Unhandled error in FoundationDB network thread: %s (%d)\n", fdb_get_error(errorCode), errorCode);
 }
 
 static void runNetwork() {
-	fdb_error_t errorCode = fdb_setup_network();
+  fdb_error_t errorCode = fdb_setup_network();
 
-	if(errorCode != 0)
-		return Nan::ThrowError(FdbError::NewInstance(errorCode, fdb_get_error(errorCode)));
+  if(errorCode != 0)
+    return Nan::ThrowError(FdbError::NewInstance(errorCode, fdb_get_error(errorCode)));
 
-	uv_thread_create(&fdbThread, networkThread, NULL);  // FIXME: Return code?
+  uv_thread_create(&fdbThread, networkThread, NULL);  // FIXME: Return code?
 }
 
 void CreateCluster(const Nan::FunctionCallbackInfo<Value>& info) {
-	Isolate *isolate = Isolate::GetCurrent();
-	Nan::EscapableHandleScope scope;
+  Isolate *isolate = Isolate::GetCurrent();
+  Nan::EscapableHandleScope scope;
 
-	FDBFuture *f = fdb_create_cluster(*String::Utf8Value(info[0]->ToString()));
-	fdb_error_t errorCode = fdb_future_block_until_ready(f);
+  FDBFuture *f = fdb_create_cluster(*String::Utf8Value(info[0]->ToString()));
+  fdb_error_t errorCode = fdb_future_block_until_ready(f);
 
-	FDBCluster *cluster;
-	if(errorCode == 0)
-		errorCode = fdb_future_get_cluster(f, &cluster);
+  FDBCluster *cluster;
+  if(errorCode == 0)
+    errorCode = fdb_future_get_cluster(f, &cluster);
 
-	if(errorCode != 0)
-		return Nan::ThrowError(FdbError::NewInstance(errorCode, fdb_get_error(errorCode)));
+  if(errorCode != 0)
+    return Nan::ThrowError(FdbError::NewInstance(errorCode, fdb_get_error(errorCode)));
 
-	Local<Value> jsValue = Local<Value>::New(isolate, Cluster::NewInstance(cluster));
-	info.GetReturnValue().Set(jsValue);
+  Local<Value> jsValue = Local<Value>::New(isolate, Cluster::NewInstance(cluster));
+  info.GetReturnValue().Set(jsValue);
 }
 
 void StartNetwork(const Nan::FunctionCallbackInfo<Value>& info) {
-	info.GetReturnValue().SetNull();
+  info.GetReturnValue().SetNull();
 
-	if(!networkStarted) {
-		networkStarted = true;
-		runNetwork();
-	}
+  if(!networkStarted) {
+    networkStarted = true;
+    runNetwork();
+  }
 }
 
 void StopNetwork(const Nan::FunctionCallbackInfo<Value>& info) {
-	fdb_error_t errorCode = fdb_stop_network();
+  fdb_error_t errorCode = fdb_stop_network();
 
-	if(errorCode != 0)
-		return Nan::ThrowError(FdbError::NewInstance(errorCode, fdb_get_error(errorCode)));
+  if(errorCode != 0)
+    return Nan::ThrowError(FdbError::NewInstance(errorCode, fdb_get_error(errorCode)));
 
-	uv_thread_join(&fdbThread);
+  uv_thread_join(&fdbThread);
 
-	//This line forces garbage collection.  Useful for doing valgrind tests
-	//while(!V8::IdleNotification());
+  //This line forces garbage collection.  Useful for doing valgrind tests
+  //while(!V8::IdleNotification());
 
-	info.GetReturnValue().SetNull();
+  info.GetReturnValue().SetNull();
 
-	// FdbOptions::Clear();
+  // FdbOptions::Clear();
 }
 
 NAN_MODULE_INIT(init){
-	FdbError::Init( target );
-	Database::Init();
-	Transaction::Init();
-	Cluster::Init();
-	// FdbOptions::Init();
-	Watch::Init();
+  FdbError::Init( target );
+  Database::Init();
+  Transaction::Init();
+  Cluster::Init();
+  // FdbOptions::Init();
+  Watch::Init();
 
-	Nan::Set(target, Nan::New<v8::String>("apiVersion").ToLocalChecked(), Nan::New<v8::FunctionTemplate>(ApiVersion)->GetFunction());
-	Nan::Set(target, Nan::New<v8::String>("createCluster").ToLocalChecked(), Nan::New<v8::FunctionTemplate>(CreateCluster)->GetFunction());
-	Nan::Set(target, Nan::New<v8::String>("startNetwork").ToLocalChecked(), Nan::New<v8::FunctionTemplate>(StartNetwork)->GetFunction());
-	Nan::Set(target, Nan::New<v8::String>("stopNetwork").ToLocalChecked(), Nan::New<v8::FunctionTemplate>(StopNetwork)->GetFunction());
-	// Nan::Set(target, Nan::New<v8::String>("options").ToLocalChecked(), FdbOptions::CreateOptions(FdbOptions::NetworkOption));
-	// Nan::Set(target, Nan::New<v8::String>("streamingMode").ToLocalChecked(), FdbOptions::CreateEnum(FdbOptions::StreamingMode));
-	// Nan::Set(target, Nan::New<v8::String>("atomic").ToLocalChecked(), FdbOptions::CreateOptions(FdbOptions::MutationType));
+  Nan::Set(target, Nan::New<v8::String>("apiVersion").ToLocalChecked(), Nan::New<v8::FunctionTemplate>(ApiVersion)->GetFunction());
+  Nan::Set(target, Nan::New<v8::String>("createCluster").ToLocalChecked(), Nan::New<v8::FunctionTemplate>(CreateCluster)->GetFunction());
+  Nan::Set(target, Nan::New<v8::String>("startNetwork").ToLocalChecked(), Nan::New<v8::FunctionTemplate>(StartNetwork)->GetFunction());
+  Nan::Set(target, Nan::New<v8::String>("stopNetwork").ToLocalChecked(), Nan::New<v8::FunctionTemplate>(StopNetwork)->GetFunction());
+  // Nan::Set(target, Nan::New<v8::String>("options").ToLocalChecked(), FdbOptions::CreateOptions(FdbOptions::NetworkOption));
+  // Nan::Set(target, Nan::New<v8::String>("streamingMode").ToLocalChecked(), FdbOptions::CreateEnum(FdbOptions::StreamingMode));
+  // Nan::Set(target, Nan::New<v8::String>("atomic").ToLocalChecked(), FdbOptions::CreateOptions(FdbOptions::MutationType));
 }
 
 #if NODE_VERSION_AT_LEAST(8, 9, 0)

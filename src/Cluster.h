@@ -32,20 +32,20 @@
 #include <nan.h>
 
 class Cluster : public node::ObjectWrap {
-	public:
-		static void Init();
-		static v8::Local<v8::Value> NewInstance(FDBCluster *ptr);
-		static void New(const Nan::FunctionCallbackInfo<v8::Value>& info);
-		static void OpenDatabase(const Nan::FunctionCallbackInfo<v8::Value>& info);
-		static void Destroy(const Nan::FunctionCallbackInfo<v8::Value>& info);
+  public:
+    static void Init();
+    static v8::Local<v8::Value> NewInstance(FDBCluster *ptr);
+    static void New(const Nan::FunctionCallbackInfo<v8::Value>& info);
+    static void OpenDatabase(const Nan::FunctionCallbackInfo<v8::Value>& info);
+    static void Destroy(const Nan::FunctionCallbackInfo<v8::Value>& info);
 
-		FDBCluster* GetCluster() { return cluster; }
+    FDBCluster* GetCluster() { return cluster; }
 
-	private:
-		Cluster();
-		~Cluster();
-		static Nan::Persistent<v8::Function> constructor;
-		FDBCluster *cluster;
+  private:
+    Cluster();
+    ~Cluster();
+    static Nan::Persistent<v8::Function> constructor;
+    FDBCluster *cluster;
 };
 
 #endif

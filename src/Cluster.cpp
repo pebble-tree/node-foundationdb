@@ -37,58 +37,58 @@ using namespace std;
 
 Cluster::Cluster() { }
 Cluster::~Cluster() {
-	fdb_cluster_destroy(cluster);
+  fdb_cluster_destroy(cluster);
 }
 
 Nan::Persistent<Function> Cluster::constructor;
 
 void Cluster::OpenDatabase(const Nan::FunctionCallbackInfo<Value>& info) {
-	Cluster *clusterPtr = ObjectWrap::Unwrap<Cluster>(info.Holder());
+  Cluster *clusterPtr = ObjectWrap::Unwrap<Cluster>(info.Holder());
 
-	std::string dbName = *String::Utf8Value(info[0]->ToString());
-	FDBFuture *f = fdb_cluster_create_database(clusterPtr->cluster, (uint8_t*)dbName.c_str(), (int)strlen(dbName.c_str()));
+  std::string dbName = *String::Utf8Value(info[0]->ToString());
+  FDBFuture *f = fdb_cluster_create_database(clusterPtr->cluster, (uint8_t*)dbName.c_str(), (int)strlen(dbName.c_str()));
 
-	fdb_error_t errorCode = fdb_future_block_until_ready(f);
+  fdb_error_t errorCode = fdb_future_block_until_ready(f);
 
-	FDBDatabase *database;
-	if(errorCode == 0)
-		errorCode = fdb_future_get_database(f, &database);
+  FDBDatabase *database;
+  if(errorCode == 0)
+    errorCode = fdb_future_get_database(f, &database);
 
-	if(errorCode != 0)
-		return Nan::ThrowError(FdbError::NewInstance(errorCode, fdb_get_error(errorCode)));
+  if(errorCode != 0)
+    return Nan::ThrowError(FdbError::NewInstance(errorCode, fdb_get_error(errorCode)));
 
-	Local<Value> jsValue = Database::NewInstance(database);
+  Local<Value> jsValue = Database::NewInstance(database);
 
-	info.GetReturnValue().Set(jsValue);
+  info.GetReturnValue().Set(jsValue);
 }
 
 void Cluster::Init() {
-	Local<FunctionTemplate> tpl = Nan::New<FunctionTemplate>(New);
+  Local<FunctionTemplate> tpl = Nan::New<FunctionTemplate>(New);
 
-	tpl->SetClassName(Nan::New<v8::String>("Cluster").ToLocalChecked());
-	tpl->InstanceTemplate()->SetInternalFieldCount(1);
+  tpl->SetClassName(Nan::New<v8::String>("Cluster").ToLocalChecked());
+  tpl->InstanceTemplate()->SetInternalFieldCount(1);
 
-	Nan::SetPrototypeMethod(tpl, "openDatabase", OpenDatabase);
+  Nan::SetPrototypeMethod(tpl, "openDatabase", OpenDatabase);
 
-	constructor.Reset(tpl->GetFunction());
+  constructor.Reset(tpl->GetFunction());
 }
 
 void Cluster::New(const Nan::FunctionCallbackInfo<Value>& info) {
-	Cluster *c = new Cluster();
-	c->Wrap(info.Holder());
+  Cluster *c = new Cluster();
+  c->Wrap(info.Holder());
 }
 
 Local<Value> Cluster::NewInstance(FDBCluster *ptr) {
-	Nan::EscapableHandleScope scope;
+  Nan::EscapableHandleScope scope;
 
-	Local<Function> clusterConstructor = Nan::New<Function>(constructor);
-	Local<Object> instance = Nan::NewInstance(clusterConstructor, 0, NULL).ToLocalChecked();
+  Local<Function> clusterConstructor = Nan::New<Function>(constructor);
+  Local<Object> instance = Nan::NewInstance(clusterConstructor, 0, NULL).ToLocalChecked();
 
-	Cluster *clusterObj = ObjectWrap::Unwrap<Cluster>(instance);
-	clusterObj->cluster = ptr;
+  Cluster *clusterObj = ObjectWrap::Unwrap<Cluster>(instance);
+  clusterObj->cluster = ptr;
 
-	// instance->Set(Nan::New<v8::String>("options").ToLocalChecked(),
-	// 	FdbOptions::CreateOptions(FdbOptions::ClusterOption, instance));
+  // instance->Set(Nan::New<v8::String>("options").ToLocalChecked(),
+  //   FdbOptions::CreateOptions(FdbOptions::ClusterOption, instance));
 
-	return scope.Escape(instance);
+  return scope.Escape(instance);
 }

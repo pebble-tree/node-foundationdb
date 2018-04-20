@@ -36,66 +36,66 @@ using namespace std;
 Database::Database() { };
 
 Database::~Database() {
-	fdb_database_destroy(db);
+  fdb_database_destroy(db);
 };
 
 Nan::Persistent<Function> Database::constructor;
 
 void Database::Init() {
-	Local<FunctionTemplate> tpl = Nan::New<FunctionTemplate>(New);
+  Local<FunctionTemplate> tpl = Nan::New<FunctionTemplate>(New);
 
-	tpl->SetClassName(Nan::New<v8::String>("Database").ToLocalChecked());
-	tpl->InstanceTemplate()->SetInternalFieldCount(1);
+  tpl->SetClassName(Nan::New<v8::String>("Database").ToLocalChecked());
+  tpl->InstanceTemplate()->SetInternalFieldCount(1);
 
-	Nan::SetPrototypeMethod(tpl, "createTransaction", CreateTransaction);
-	Nan::SetPrototypeMethod(tpl, "setOptionStr", SetOptionStr);
+  Nan::SetPrototypeMethod(tpl, "createTransaction", CreateTransaction);
+  Nan::SetPrototypeMethod(tpl, "setOptionStr", SetOptionStr);
 
-	constructor.Reset(tpl->GetFunction());
+  constructor.Reset(tpl->GetFunction());
 }
 
 void Database::CreateTransaction(const Nan::FunctionCallbackInfo<v8::Value>& info) {
-	Database *dbPtr = node::ObjectWrap::Unwrap<Database>(info.Holder());
-	FDBDatabase *db = dbPtr->db;
-	FDBTransaction *tr;
-	fdb_error_t err = fdb_database_create_transaction(db, &tr);
-	if (err) {
-		Nan::ThrowError(FdbError::NewInstance(err, fdb_get_error(err)));
-		return info.GetReturnValue().SetUndefined();
-	}
+  Database *dbPtr = node::ObjectWrap::Unwrap<Database>(info.Holder());
+  FDBDatabase *db = dbPtr->db;
+  FDBTransaction *tr;
+  fdb_error_t err = fdb_database_create_transaction(db, &tr);
+  if (err) {
+    Nan::ThrowError(FdbError::NewInstance(err, fdb_get_error(err)));
+    return info.GetReturnValue().SetUndefined();
+  }
 
-	info.GetReturnValue().Set(Transaction::NewInstance(tr));
+  info.GetReturnValue().Set(Transaction::NewInstance(tr));
 }
 
 void Database::SetOptionStr(const Nan::FunctionCallbackInfo<v8::Value>& args) {
-	// database.setOptionStr(opt_id, "value")
-	Isolate *isolate = args.GetIsolate();
+  // database.setOptionStr(opt_id, "value")
+  Isolate *isolate = args.GetIsolate();
 
-	Database *dbPtr = node::ObjectWrap::Unwrap<Database>(args.Holder());
-	if (args.Length() < 2) {
-		isolate->ThrowException(Exception::TypeError(String::NewFromUtf8(isolate, "Not enough arguments")));
-		return;
-	}
+  Database *dbPtr = node::ObjectWrap::Unwrap<Database>(args.Holder());
+  if (args.Length() < 2) {
+    isolate->ThrowException(Exception::TypeError(String::NewFromUtf8(isolate, "Not enough arguments")));
+    return;
+  }
 
 }
 
 void Database::New(const Nan::FunctionCallbackInfo<Value>& info) {
-	Database *db = new Database();
-	db->Wrap(info.Holder());
+  Database *db = new Database();
+  db->Wrap(info.Holder());
 
-	info.GetReturnValue().Set(info.Holder());
+  info.GetReturnValue().Set(info.Holder());
 }
 
 Local<Value> Database::NewInstance(FDBDatabase *ptr) {
-	Nan::EscapableHandleScope scope;
+  Nan::EscapableHandleScope scope;
 
-	Local<Function> databaseConstructor = Nan::New<Function>(constructor);
-	Local<Object> instance = Nan::NewInstance(databaseConstructor).ToLocalChecked();
+  Local<Function> databaseConstructor = Nan::New<Function>(constructor);
+  Local<Object> instance = Nan::NewInstance(databaseConstructor).ToLocalChecked();
 
-	Database *dbObj = ObjectWrap::Unwrap<Database>(instance);
-	dbObj->db = ptr;
+  Database *dbObj = ObjectWrap::Unwrap<Database>(instance);
+  dbObj->db = ptr;
 
-	// instance->Set(Nan::New<v8::String>("options").ToLocalChecked(),
-	// 	FdbOptions::CreateOptions(FdbOptions::DatabaseOption, instance));
+  // instance->Set(Nan::New<v8::String>("options").ToLocalChecked(),
+  //   FdbOptions::CreateOptions(FdbOptions::DatabaseOption, instance));
 
-	return scope.Escape(instance);
+  return scope.Escape(instance);
 }

@@ -48,99 +48,99 @@ using namespace node;
 struct NodeCallback {
 
 public:
-	NodeCallback(FDBFuture *future, Local<Function> cbFunc0) : future(future), refCount(1) {
-		cbFunc.Reset(cbFunc0);
-		uv_async_init(uv_default_loop(), &handle, &NodeCallback::nodeThreadCallback);
-		uv_ref((uv_handle_t*)&handle);
-		handle.data = this;
-	}
+  NodeCallback(FDBFuture *future, Local<Function> cbFunc0) : future(future), refCount(1) {
+    cbFunc.Reset(cbFunc0);
+    uv_async_init(uv_default_loop(), &handle, &NodeCallback::nodeThreadCallback);
+    uv_ref((uv_handle_t*)&handle);
+    handle.data = this;
+  }
 
-	void start() {
-		if (fdb_future_set_callback(future, &NodeCallback::futureReadyCallback, this)) {
-			fprintf(stderr, "fdb_future_set_callback failed.\n");
-			abort();
-		}
-	}
+  void start() {
+    if (fdb_future_set_callback(future, &NodeCallback::futureReadyCallback, this)) {
+      fprintf(stderr, "fdb_future_set_callback failed.\n");
+      abort();
+    }
+  }
 
-	virtual ~NodeCallback() {
-		cbFunc.Reset();
-		fdb_future_destroy(future);
-	}
+  virtual ~NodeCallback() {
+    cbFunc.Reset();
+    fdb_future_destroy(future);
+  }
 
-	void addRef() {
-		++refCount;
-	}
+  void addRef() {
+    ++refCount;
+  }
 
-	void delRef() {
-		if(--refCount == 0) {
-			delete this;
-		}
-	}
+  void delRef() {
+    if(--refCount == 0) {
+      delete this;
+    }
+  }
 
-	FDBFuture* getFuture() {
-		return future;
-	}
+  FDBFuture* getFuture() {
+    return future;
+  }
 
 private:
-	void close() {
-		uv_close((uv_handle_t*)&handle, &NodeCallback::closeCallback);
-	}
+  void close() {
+    uv_close((uv_handle_t*)&handle, &NodeCallback::closeCallback);
+  }
 
-	static void closeCallback(uv_handle_s *handle) {
-		NodeCallback *nc = (NodeCallback*)((uv_async_t*)handle)->data;
-		nc->delRef();
-	}
+  static void closeCallback(uv_handle_s *handle) {
+    NodeCallback *nc = (NodeCallback*)((uv_async_t*)handle)->data;
+    nc->delRef();
+  }
 
-	static void futureReadyCallback(FDBFuture *f, void *ptr) {
-		NodeCallback *nc = (NodeCallback*)ptr;
-		uv_async_send(&nc->handle);
-	}
+  static void futureReadyCallback(FDBFuture *f, void *ptr) {
+    NodeCallback *nc = (NodeCallback*)ptr;
+    uv_async_send(&nc->handle);
+  }
 
-	static void nodeThreadCallback(uv_async_t *handle) {
-		Nan::HandleScope scope;
+  static void nodeThreadCallback(uv_async_t *handle) {
+    Nan::HandleScope scope;
 
-		Isolate *isolate = Isolate::GetCurrent();
-		NodeCallback *nc = (NodeCallback*)handle->data;
-		FDBFuture *future = nc->future;
+    Isolate *isolate = Isolate::GetCurrent();
+    NodeCallback *nc = (NodeCallback*)handle->data;
+    FDBFuture *future = nc->future;
 
-		uv_unref((uv_handle_t*)handle);
+    uv_unref((uv_handle_t*)handle);
 
-		Local<Value> jsError;
-		Local<Value> jsValue;
+    Local<Value> jsError;
+    Local<Value> jsValue;
 
-		fdb_error_t errorCode;
-		jsValue = nc->extractValue(future, errorCode);
-		if (errorCode == 0)
-			jsError = Nan::Null();
-		else
-			jsError = FdbError::NewInstance(errorCode, fdb_get_error(errorCode));
+    fdb_error_t errorCode;
+    jsValue = nc->extractValue(future, errorCode);
+    if (errorCode == 0)
+      jsError = Nan::Null();
+    else
+      jsError = FdbError::NewInstance(errorCode, fdb_get_error(errorCode));
 
-		Local<Value> args[2] = { jsError, jsValue };
+    Local<Value> args[2] = { jsError, jsValue };
 
-		Local<Function> callback = Local<Function>::New(isolate, nc->cbFunc);
+    Local<Function> callback = Local<Function>::New(isolate, nc->cbFunc);
 
-		Nan::TryCatch ex;
-		callback->Call(isolate->GetCurrentContext()->Global(), 2, args);
+    Nan::TryCatch ex;
+    callback->Call(isolate->GetCurrentContext()->Global(), 2, args);
 
-		if(ex.HasCaught())
-			fprintf(stderr, "\n%s\n", *String::Utf8Value(ex.StackTrace().ToLocalChecked()->ToString()));
+    if(ex.HasCaught())
+      fprintf(stderr, "\n%s\n", *String::Utf8Value(ex.StackTrace().ToLocalChecked()->ToString()));
 
-		nc->close();
-	}
+    nc->close();
+  }
 
-	FDBFuture* future;
-	uv_async_t handle;
-	Nan::Persistent<Function> cbFunc;
-	int refCount;
+  FDBFuture* future;
+  uv_async_t handle;
+  Nan::Persistent<Function> cbFunc;
+  int refCount;
 
 protected:
-	virtual Local<Value> extractValue(FDBFuture* future, fdb_error_t& outErr) = 0;
+  virtual Local<Value> extractValue(FDBFuture* future, fdb_error_t& outErr) = 0;
 
-	static Local<Value> makeBuffer(const char *arr, int length) {
-		Nan::EscapableHandleScope scope;
-		Local<Object> buf = Nan::CopyBuffer(arr, length).ToLocalChecked();
-		return scope.Escape(buf);
-	}
+  static Local<Value> makeBuffer(const char *arr, int length) {
+    Nan::EscapableHandleScope scope;
+    Local<Object> buf = Nan::CopyBuffer(arr, length).ToLocalChecked();
+    return scope.Escape(buf);
+  }
 };
 
 #endif

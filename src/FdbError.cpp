@@ -31,23 +31,23 @@ using namespace node;
 static Nan::Persistent<Object> module;
 
 void FdbError::Init(Local<Object> module) {
-	::module.Reset(module);
+  ::module.Reset(module);
 }
 
 Local<Value> FdbError::NewInstance(fdb_error_t code, const char *description) {
-	Isolate *isolate = Isolate::GetCurrent();
-	Nan::EscapableHandleScope scope;
+  Isolate *isolate = Isolate::GetCurrent();
+  Nan::EscapableHandleScope scope;
 
-	Local<Object> moduleObj = Local<Object>::New(isolate, module);
-	Local<Value> constructor = moduleObj->Get( String::NewFromUtf8(isolate, "FDBError", String::kInternalizedString) );
-	Local<Object> instance;
-	if (!constructor.IsEmpty() && constructor->IsFunction()) {
-		Local<Value> constructorArgs[] = { String::NewFromUtf8(isolate, description), Integer::New(isolate, code) };
-		instance = Nan::NewInstance(Local<Function>::Cast(constructor), 2, constructorArgs).ToLocalChecked();
-	} else {
-		// We can't find the (javascript) FDBError class, so construct and throw *something*
-		instance = Exception::Error(String::NewFromUtf8(isolate, "FDBError class not found.  Unable to deliver error."))->ToObject();
-	}
+  Local<Object> moduleObj = Local<Object>::New(isolate, module);
+  Local<Value> constructor = moduleObj->Get( String::NewFromUtf8(isolate, "FDBError", String::kInternalizedString) );
+  Local<Object> instance;
+  if (!constructor.IsEmpty() && constructor->IsFunction()) {
+    Local<Value> constructorArgs[] = { String::NewFromUtf8(isolate, description), Integer::New(isolate, code) };
+    instance = Nan::NewInstance(Local<Function>::Cast(constructor), 2, constructorArgs).ToLocalChecked();
+  } else {
+    // We can't find the (javascript) FDBError class, so construct and throw *something*
+    instance = Exception::Error(String::NewFromUtf8(isolate, "FDBError class not found.  Unable to deliver error."))->ToObject();
+  }
 
-	return scope.Escape(instance);
+  return scope.Escape(instance);
 }

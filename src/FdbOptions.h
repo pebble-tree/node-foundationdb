@@ -36,93 +36,93 @@
 #include <map>
 
 struct Parameter {
-	Parameter() : isNull(true), errorCode(0) { }
-	Parameter(std::string param) : param(param), isNull(false), errorCode(0) { }
-	Parameter(fdb_error_t errorCode) : isNull(false), errorCode(errorCode) { }
+  Parameter() : isNull(true), errorCode(0) { }
+  Parameter(std::string param) : param(param), isNull(false), errorCode(0) { }
+  Parameter(fdb_error_t errorCode) : isNull(false), errorCode(errorCode) { }
 
-	std::string param;
-	bool isNull;
-	fdb_error_t errorCode;
+  std::string param;
+  bool isNull;
+  fdb_error_t errorCode;
 
-	uint8_t const* getValue() { return isNull ? NULL : (uint8_t const*)param.c_str(); }
-	int getLength() { return isNull ? 0 : (int)param.size(); }
+  uint8_t const* getValue() { return isNull ? NULL : (uint8_t const*)param.c_str(); }
+  int getLength() { return isNull ? 0 : (int)param.size(); }
 };
 
 struct ScopeInfo {
-	std::string templateClassName;
-	void (*optionFunction) (const v8::FunctionCallbackInfo<v8::Value>& info);
+  std::string templateClassName;
+  void (*optionFunction) (const v8::FunctionCallbackInfo<v8::Value>& info);
 
-	ScopeInfo() { }
-	ScopeInfo(std::string templateClassName, void (*optionFunction) (const v8::FunctionCallbackInfo<v8::Value>& info)) {
-		this->templateClassName = templateClassName;
-		this->optionFunction = optionFunction;
-	}
+  ScopeInfo() { }
+  ScopeInfo(std::string templateClassName, void (*optionFunction) (const v8::FunctionCallbackInfo<v8::Value>& info)) {
+    this->templateClassName = templateClassName;
+    this->optionFunction = optionFunction;
+  }
 };
 
 class FdbOptions : public node::ObjectWrap {
-	public:
-		static void Init();
-		static void Clear();
+  public:
+    static void Init();
+    static void Clear();
 
-		enum ParameterType {
-			None,
-			Int,
-			String,
-			Bytes
-		};
+    enum ParameterType {
+      None,
+      Int,
+      String,
+      Bytes
+    };
 
-		enum Scope {
-			NetworkOption,
-			ClusterOption,
-			DatabaseOption,
-			TransactionOption,
-			StreamingMode,
-			MutationType,
-			ConflictRangeType
-		};
+    enum Scope {
+      NetworkOption,
+      ClusterOption,
+      DatabaseOption,
+      TransactionOption,
+      StreamingMode,
+      MutationType,
+      ConflictRangeType
+    };
 
-		static v8::Local<v8::Value> CreateOptions(Scope scope, v8::Local<v8::Value> source = v8::Null(v8::Isolate::GetCurrent()));
-		static v8::Local<v8::Value> CreateEnum(Scope scope);
+    static v8::Local<v8::Value> CreateOptions(Scope scope, v8::Local<v8::Value> source = v8::Null(v8::Isolate::GetCurrent()));
+    static v8::Local<v8::Value> CreateEnum(Scope scope);
 
-		static Parameter GetOptionParameter(const v8::FunctionCallbackInfo<v8::Value>& info, Scope scope, int optionValue, int index = 0);
+    static Parameter GetOptionParameter(const v8::FunctionCallbackInfo<v8::Value>& info, Scope scope, int optionValue, int index = 0);
 
-		v8::Persistent<v8::Value>& GetSource();
+    v8::Persistent<v8::Value>& GetSource();
 
-	private:
-		struct SourceIndex {
-			SourceIndex() : value(++nextValue) {}
-			uint64_t value;
-			static uint64_t nextValue;
-		};
+  private:
+    struct SourceIndex {
+      SourceIndex() : value(++nextValue) {}
+      uint64_t value;
+      static uint64_t nextValue;
+    };
 
-		struct SourceContainer {
-			v8::Persistent<v8::Value> value;
-		};
+    struct SourceContainer {
+      v8::Persistent<v8::Value> value;
+    };
 
-		typedef v8::Persistent<v8::FunctionTemplate> PersistentFnTemplate;
-		typedef v8::PersistentValueMap<Scope, v8::FunctionTemplate, v8::DefaultPersistentValueMapTraits<Scope, v8::FunctionTemplate > > PersistentFnTemplateMap;
+    typedef v8::Persistent<v8::FunctionTemplate> PersistentFnTemplate;
+    typedef v8::PersistentValueMap<Scope, v8::FunctionTemplate, v8::DefaultPersistentValueMapTraits<Scope, v8::FunctionTemplate > > PersistentFnTemplateMap;
 
-		static void New(const v8::FunctionCallbackInfo<v8::Value>& info);
-		static v8::Local<v8::Value> NewInstance(v8::Local<v8::FunctionTemplate> optionsTemplate, v8::Local<v8::Value> source);
+    static void New(const v8::FunctionCallbackInfo<v8::Value>& info);
+    static v8::Local<v8::Value> NewInstance(v8::Local<v8::FunctionTemplate> optionsTemplate, v8::Local<v8::Value> source);
 
-		static void InitOptionsTemplate(Scope scope, const char *className);
-		static void InitOptions();
+    static void InitOptionsTemplate(Scope scope, const char *className);
+    static void InitOptions();
 
-		static void AddOption(Scope scope, std::string name, int value, ParameterType type);
-		static void WeakCallback(const v8::WeakCallbackInfo<SourceIndex>& data);
+    static void AddOption(Scope scope, std::string name, int value, ParameterType type);
+    static void WeakCallback(const v8::WeakCallbackInfo<SourceIndex>& data);
 
-		static std::string ToJavaScriptName(std::string optionName, bool isSetter);
+    static std::string ToJavaScriptName(std::string optionName, bool isSetter);
 
-		static std::map<Scope, ScopeInfo> scopeInfo;
-		static PersistentFnTemplateMap *optionTemplates;
-		static std::map<Scope, std::map<int, ParameterType>> parameterTypes;
+    static std::map<Scope, ScopeInfo> scopeInfo;
+    static PersistentFnTemplateMap *optionTemplates;
+    static std::map<Scope, std::map<int, ParameterType>> parameterTypes;
 
-		static std::map<uint64_t, SourceContainer*> sources;
-		static v8::Persistent<v8::Value> emptySource;
+    static std::map<uint64_t, SourceContainer*> sources;
+    static v8::Persistent<v8::Value> emptySource;
 
-		FdbOptions();
+    FdbOptions();
 
-		uint64_t sourceIndex;
+    uint64_t sourceIndex;
 };
 
 #endif

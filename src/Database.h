@@ -32,23 +32,23 @@
 #include <nan.h>
 
 class Database: public node::ObjectWrap {
-	public:
-		static void Init();
-		static v8::Local<v8::Value> NewInstance(FDBDatabase *ptr);
-		static void New(const Nan::FunctionCallbackInfo<v8::Value>& info);
+  public:
+    static void Init();
+    static v8::Local<v8::Value> NewInstance(FDBDatabase *ptr);
+    static void New(const Nan::FunctionCallbackInfo<v8::Value>& info);
 
-		FDBDatabase* GetDatabase() { return db; }
+    FDBDatabase* GetDatabase() { return db; }
 
-	private:
-		Database();
-		~Database();
+  private:
+    Database();
+    ~Database();
 
-		static void CreateTransaction(const Nan::FunctionCallbackInfo<v8::Value>& info);
-		static Nan::Persistent<v8::Function> constructor;
+    static void CreateTransaction(const Nan::FunctionCallbackInfo<v8::Value>& info);
+    static Nan::Persistent<v8::Function> constructor;
 
-		static void SetOptionStr(const Nan::FunctionCallbackInfo<v8::Value>& info);
+    static void SetOptionStr(const Nan::FunctionCallbackInfo<v8::Value>& info);
 
-		FDBDatabase *db;
+    FDBDatabase *db;
 };
 
 #endif

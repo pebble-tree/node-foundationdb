@@ -50,266 +50,266 @@ uint64_t FdbOptions::SourceIndex::nextValue = 0;
 FdbOptions::FdbOptions() { }
 
 void FdbOptions::InitOptionsTemplate(Scope scope, const char *className) {
-	Isolate *isolate = Isolate::GetCurrent();
+  Isolate *isolate = Isolate::GetCurrent();
 
-	Local<FunctionTemplate> tpl = Local<FunctionTemplate>::New(isolate, FunctionTemplate::New(isolate, New));
-	optionTemplates->Set(scope, tpl);
-	tpl->SetClassName(String::NewFromUtf8(isolate, className, String::kInternalizedString));
-	tpl->InstanceTemplate()->SetInternalFieldCount(1);
+  Local<FunctionTemplate> tpl = Local<FunctionTemplate>::New(isolate, FunctionTemplate::New(isolate, New));
+  optionTemplates->Set(scope, tpl);
+  tpl->SetClassName(String::NewFromUtf8(isolate, className, String::kInternalizedString));
+  tpl->InstanceTemplate()->SetInternalFieldCount(1);
 }
 
 void FdbOptions::AddOption(Scope scope, std::string name, int value, ParameterType type) {
-	Isolate *isolate = Isolate::GetCurrent();
+  Isolate *isolate = Isolate::GetCurrent();
 
-	Local<FunctionTemplate> tpl;
-	if(scope == NetworkOption || scope == ClusterOption || scope == DatabaseOption || scope == TransactionOption || scope == MutationType) {
-		bool isSetter = scope != MutationType;
-		tpl = optionTemplates->Get(scope);
-		tpl->PrototypeTemplate()->Set(String::NewFromUtf8(isolate, ToJavaScriptName(name, isSetter).c_str(), String::kInternalizedString),
-			FunctionTemplate::New(isolate, scopeInfo[scope].optionFunction, Integer::New(isolate, value))->GetFunction());
-		parameterTypes[scope][value] = type;
-	}
-	else if(scope == StreamingMode) {
-		tpl = optionTemplates->Get(scope);
-		tpl->PrototypeTemplate()->Set(String::NewFromUtf8(isolate, ToJavaScriptName(name, false).c_str(), String::kInternalizedString), Integer::New(isolate, value));
-	}
-	else if(scope == ConflictRangeType) {
-		//Conflict range type enum is not exposed to JS code
-	}
+  Local<FunctionTemplate> tpl;
+  if(scope == NetworkOption || scope == ClusterOption || scope == DatabaseOption || scope == TransactionOption || scope == MutationType) {
+    bool isSetter = scope != MutationType;
+    tpl = optionTemplates->Get(scope);
+    tpl->PrototypeTemplate()->Set(String::NewFromUtf8(isolate, ToJavaScriptName(name, isSetter).c_str(), String::kInternalizedString),
+      FunctionTemplate::New(isolate, scopeInfo[scope].optionFunction, Integer::New(isolate, value))->GetFunction());
+    parameterTypes[scope][value] = type;
+  }
+  else if(scope == StreamingMode) {
+    tpl = optionTemplates->Get(scope);
+    tpl->PrototypeTemplate()->Set(String::NewFromUtf8(isolate, ToJavaScriptName(name, false).c_str(), String::kInternalizedString), Integer::New(isolate, value));
+  }
+  else if(scope == ConflictRangeType) {
+    //Conflict range type enum is not exposed to JS code
+  }
 }
 
 void FdbOptions::New(const FunctionCallbackInfo<Value>& info) {
-	FdbOptions *options = new FdbOptions();
-	options->Wrap(info.Holder());
+  FdbOptions *options = new FdbOptions();
+  options->Wrap(info.Holder());
 }
 
 void FdbOptions::Clear() {
-	optionTemplates->Clear();
-	delete optionTemplates;
+  optionTemplates->Clear();
+  delete optionTemplates;
 }
 
 v8::Persistent<v8::Value>& FdbOptions::GetSource() {
-	auto iter = sources.find(sourceIndex);
-	if(iter == sources.end()) {
-		return emptySource;
-	}
-	SourceContainer *container = iter->second;
-	return container->value;
+  auto iter = sources.find(sourceIndex);
+  if(iter == sources.end()) {
+    return emptySource;
+  }
+  SourceContainer *container = iter->second;
+  return container->value;
 }
 
 void FdbOptions::WeakCallback(const WeakCallbackInfo<SourceIndex>& data) {
-	SourceIndex *index = data.GetParameter();
-	auto iter = sources.find(index->value);
+  SourceIndex *index = data.GetParameter();
+  auto iter = sources.find(index->value);
 
-	if(iter != sources.end()) {
-		SourceContainer* container = iter->second;
+  if(iter != sources.end()) {
+    SourceContainer* container = iter->second;
 
-		container->value.ClearWeak();
-		container->value.Reset();
+    container->value.ClearWeak();
+    container->value.Reset();
 
-		sources.erase(iter);
-		delete container;
-	}
+    sources.erase(iter);
+    delete container;
+  }
 
-	delete index;
+  delete index;
 }
 
 Local<Value> FdbOptions::NewInstance(Local<FunctionTemplate> optionsTemplate, Local<Value> source) {
-	Isolate *isolate = Isolate::GetCurrent();
-	Nan::EscapableHandleScope scope;
+  Isolate *isolate = Isolate::GetCurrent();
+  Nan::EscapableHandleScope scope;
 
-	Local<FunctionTemplate> funcTpl = Local<FunctionTemplate>::New(isolate, optionsTemplate);
-	Local<Object> instance = Nan::NewInstance(funcTpl->GetFunction()).ToLocalChecked();
+  Local<FunctionTemplate> funcTpl = Local<FunctionTemplate>::New(isolate, optionsTemplate);
+  Local<Object> instance = Nan::NewInstance(funcTpl->GetFunction()).ToLocalChecked();
 
-	SourceIndex *sourceIndex = new SourceIndex();
+  SourceIndex *sourceIndex = new SourceIndex();
 
-	SourceContainer *sourceContainer = new SourceContainer();
-	sourceContainer->value.Reset(isolate, source);
-	sourceContainer->value.SetWeak(sourceIndex, WeakCallback, WeakCallbackType::kFinalizer);
-	sources[ sourceIndex->value ] = sourceContainer;
+  SourceContainer *sourceContainer = new SourceContainer();
+  sourceContainer->value.Reset(isolate, source);
+  sourceContainer->value.SetWeak(sourceIndex, WeakCallback, WeakCallbackType::kFinalizer);
+  sources[ sourceIndex->value ] = sourceContainer;
 
-	FdbOptions *optionsObj = ObjectWrap::Unwrap<FdbOptions>(instance);
-	optionsObj->sourceIndex = sourceIndex->value;
+  FdbOptions *optionsObj = ObjectWrap::Unwrap<FdbOptions>(instance);
+  optionsObj->sourceIndex = sourceIndex->value;
 
-	return scope.Escape(instance);
+  return scope.Escape(instance);
 }
 
 Local<Value> FdbOptions::CreateOptions(Scope scope, Local<Value> source) {
-	return NewInstance(optionTemplates->Get(scope), source);
+  return NewInstance(optionTemplates->Get(scope), source);
 }
 
 Local<Value> FdbOptions::CreateEnum(Scope scope) {
-	Local<FunctionTemplate> funcTpl = optionTemplates->Get(scope);
-	return Nan::NewInstance(funcTpl->GetFunction()).ToLocalChecked();
+  Local<FunctionTemplate> funcTpl = optionTemplates->Get(scope);
+  return Nan::NewInstance(funcTpl->GetFunction()).ToLocalChecked();
 }
 
 Parameter GetStringParameter(const FunctionCallbackInfo<Value>& info, int index) {
-	if(info.Length() <= index || (!Buffer::HasInstance(info[index]) && !info[index]->IsString()))
-		return INVALID_OPTION_VALUE_ERROR_CODE;
-	else if(info[index]->IsString()) {
-		String::Utf8Value val(info[index]);
-		return std::string(*val, val.length());
-	}
-	else
-		return std::string(Buffer::Data(info[index]->ToObject()), Buffer::Length(info[index]->ToObject()));
+  if(info.Length() <= index || (!Buffer::HasInstance(info[index]) && !info[index]->IsString()))
+    return INVALID_OPTION_VALUE_ERROR_CODE;
+  else if(info[index]->IsString()) {
+    String::Utf8Value val(info[index]);
+    return std::string(*val, val.length());
+  }
+  else
+    return std::string(Buffer::Data(info[index]->ToObject()), Buffer::Length(info[index]->ToObject()));
 };
 
 Parameter FdbOptions::GetOptionParameter(const FunctionCallbackInfo<Value>& info, Scope scope, int optionValue, int index) {
-	if(info.Length() > index) {
-		int64_t val;
-		switch(parameterTypes[scope][optionValue]) {
-			case FdbOptions::String:
-				return GetStringParameter(info, index);
+  if(info.Length() > index) {
+    int64_t val;
+    switch(parameterTypes[scope][optionValue]) {
+      case FdbOptions::String:
+        return GetStringParameter(info, index);
 
-			case FdbOptions::Bytes:
-				if(!Buffer::HasInstance(info[index]))
-					return INVALID_OPTION_VALUE_ERROR_CODE;
+      case FdbOptions::Bytes:
+        if(!Buffer::HasInstance(info[index]))
+          return INVALID_OPTION_VALUE_ERROR_CODE;
 
-				return std::string(Buffer::Data(info[index]->ToObject()), Buffer::Length(info[index]->ToObject()));
+        return std::string(Buffer::Data(info[index]->ToObject()), Buffer::Length(info[index]->ToObject()));
 
-			case FdbOptions::Int:
-				if(!info[index]->IsNumber())
-					return INVALID_OPTION_VALUE_ERROR_CODE;
-				val = info[index]->IntegerValue();
-				return std::string((const char*)&val, 8);
+      case FdbOptions::Int:
+        if(!info[index]->IsNumber())
+          return INVALID_OPTION_VALUE_ERROR_CODE;
+        val = info[index]->IntegerValue();
+        return std::string((const char*)&val, 8);
 
 
-			case FdbOptions::None:
-				return Parameter();
-		}
-	}
+      case FdbOptions::None:
+        return Parameter();
+    }
+  }
 
-	return Parameter();
+  return Parameter();
 }
 
 void SetNetworkOption(const FunctionCallbackInfo<Value>& info) {
-	FDBNetworkOption op = (FDBNetworkOption)info.Data()->Uint32Value();
+  FDBNetworkOption op = (FDBNetworkOption)info.Data()->Uint32Value();
 
-	Parameter param = FdbOptions::GetOptionParameter(info, FdbOptions::NetworkOption, op);
-	fdb_error_t errorCode = param.errorCode;
-	if(errorCode == 0)
-		errorCode = fdb_network_set_option(op, param.getValue(), param.getLength());
+  Parameter param = FdbOptions::GetOptionParameter(info, FdbOptions::NetworkOption, op);
+  fdb_error_t errorCode = param.errorCode;
+  if(errorCode == 0)
+    errorCode = fdb_network_set_option(op, param.getValue(), param.getLength());
 
-	if(errorCode)
-		return Nan::ThrowError(FdbError::NewInstance(errorCode, fdb_get_error(errorCode)));
+  if(errorCode)
+    return Nan::ThrowError(FdbError::NewInstance(errorCode, fdb_get_error(errorCode)));
 
-	info.GetReturnValue().SetNull();
+  info.GetReturnValue().SetNull();
 }
 
 void SetClusterOption(const FunctionCallbackInfo<Value>& info) {
-	Isolate *isolate = Isolate::GetCurrent();
-	FdbOptions *options = ObjectWrap::Unwrap<FdbOptions>(info.Holder());
-	Local<Value> source = Local<Value>::New(isolate, options->GetSource());
+  Isolate *isolate = Isolate::GetCurrent();
+  FdbOptions *options = ObjectWrap::Unwrap<FdbOptions>(info.Holder());
+  Local<Value> source = Local<Value>::New(isolate, options->GetSource());
 
-	if(source.IsEmpty())
-		return info.GetReturnValue().SetNull();
+  if(source.IsEmpty())
+    return info.GetReturnValue().SetNull();
 
-	Cluster *cluster = ObjectWrap::Unwrap<Cluster>(source->ToObject());
-	FDBClusterOption op = (FDBClusterOption)info.Data()->Uint32Value();
+  Cluster *cluster = ObjectWrap::Unwrap<Cluster>(source->ToObject());
+  FDBClusterOption op = (FDBClusterOption)info.Data()->Uint32Value();
 
-	Parameter param = FdbOptions::GetOptionParameter(info, FdbOptions::ClusterOption, op);
-	fdb_error_t errorCode = param.errorCode;
-	if(errorCode == 0)
-		errorCode = fdb_cluster_set_option(cluster->GetCluster(), op, param.getValue(), param.getLength());
+  Parameter param = FdbOptions::GetOptionParameter(info, FdbOptions::ClusterOption, op);
+  fdb_error_t errorCode = param.errorCode;
+  if(errorCode == 0)
+    errorCode = fdb_cluster_set_option(cluster->GetCluster(), op, param.getValue(), param.getLength());
 
-	if(errorCode)
-		return Nan::ThrowError(FdbError::NewInstance(errorCode, fdb_get_error(errorCode)));
+  if(errorCode)
+    return Nan::ThrowError(FdbError::NewInstance(errorCode, fdb_get_error(errorCode)));
 
-	info.GetReturnValue().SetNull();
+  info.GetReturnValue().SetNull();
 }
 
 void SetDatabaseOption(const FunctionCallbackInfo<Value>& info) {
-	Isolate *isolate = Isolate::GetCurrent();
-	FdbOptions *options = ObjectWrap::Unwrap<FdbOptions>(info.Holder());
-	Local<Value> source = Local<Value>::New(isolate, options->GetSource());
+  Isolate *isolate = Isolate::GetCurrent();
+  FdbOptions *options = ObjectWrap::Unwrap<FdbOptions>(info.Holder());
+  Local<Value> source = Local<Value>::New(isolate, options->GetSource());
 
-	if(source.IsEmpty())
-		return info.GetReturnValue().SetNull();
+  if(source.IsEmpty())
+    return info.GetReturnValue().SetNull();
 
-	Database *db = ObjectWrap::Unwrap<Database>(source->ToObject());
-	FDBDatabaseOption op = (FDBDatabaseOption)info.Data()->Uint32Value();
+  Database *db = ObjectWrap::Unwrap<Database>(source->ToObject());
+  FDBDatabaseOption op = (FDBDatabaseOption)info.Data()->Uint32Value();
 
-	Parameter param = FdbOptions::GetOptionParameter(info, FdbOptions::DatabaseOption, op);
-	fdb_error_t errorCode = param.errorCode;
-	if(errorCode == 0)
-		errorCode = fdb_database_set_option(db->GetDatabase(), op, param.getValue(), param.getLength());
+  Parameter param = FdbOptions::GetOptionParameter(info, FdbOptions::DatabaseOption, op);
+  fdb_error_t errorCode = param.errorCode;
+  if(errorCode == 0)
+    errorCode = fdb_database_set_option(db->GetDatabase(), op, param.getValue(), param.getLength());
 
-	if(errorCode)
-		return Nan::ThrowError(FdbError::NewInstance(errorCode, fdb_get_error(errorCode)));
+  if(errorCode)
+    return Nan::ThrowError(FdbError::NewInstance(errorCode, fdb_get_error(errorCode)));
 
-	info.GetReturnValue().SetNull();
+  info.GetReturnValue().SetNull();
 }
 
 void SetTransactionOption(const FunctionCallbackInfo<Value>& info) {
-	Isolate *isolate = Isolate::GetCurrent();
-	FdbOptions *options = ObjectWrap::Unwrap<FdbOptions>(info.Holder());
-	Local<Value> source = Local<Value>::New(isolate, options->GetSource());
+  Isolate *isolate = Isolate::GetCurrent();
+  FdbOptions *options = ObjectWrap::Unwrap<FdbOptions>(info.Holder());
+  Local<Value> source = Local<Value>::New(isolate, options->GetSource());
 
-	if(source.IsEmpty())
-		return info.GetReturnValue().SetNull();
+  if(source.IsEmpty())
+    return info.GetReturnValue().SetNull();
 
-	Transaction *tr = ObjectWrap::Unwrap<Transaction>(source->ToObject());
-	FDBTransactionOption op = (FDBTransactionOption)info.Data()->Uint32Value();
+  Transaction *tr = ObjectWrap::Unwrap<Transaction>(source->ToObject());
+  FDBTransactionOption op = (FDBTransactionOption)info.Data()->Uint32Value();
 
-	Parameter param = FdbOptions::GetOptionParameter(info, FdbOptions::TransactionOption, op);
-	fdb_error_t errorCode = param.errorCode;
-	if(errorCode == 0)
-		errorCode = fdb_transaction_set_option(tr->GetTransaction(), op, param.getValue(), param.getLength());
+  Parameter param = FdbOptions::GetOptionParameter(info, FdbOptions::TransactionOption, op);
+  fdb_error_t errorCode = param.errorCode;
+  if(errorCode == 0)
+    errorCode = fdb_transaction_set_option(tr->GetTransaction(), op, param.getValue(), param.getLength());
 
-	if(errorCode)
-		return Nan::ThrowError(FdbError::NewInstance(errorCode, fdb_get_error(errorCode)));
+  if(errorCode)
+    return Nan::ThrowError(FdbError::NewInstance(errorCode, fdb_get_error(errorCode)));
 
-	info.GetReturnValue().SetNull();
+  info.GetReturnValue().SetNull();
 }
 
 void CallAtomicOperation(const FunctionCallbackInfo<Value>& info) {
-	Transaction *tr = ObjectWrap::Unwrap<Transaction>(info.Holder());
-	Parameter key = GetStringParameter(info, 0);
-	Parameter value = GetStringParameter(info, 1);
+  Transaction *tr = ObjectWrap::Unwrap<Transaction>(info.Holder());
+  Parameter key = GetStringParameter(info, 0);
+  Parameter value = GetStringParameter(info, 1);
 
-	fdb_error_t errorCode = key.errorCode > 0 ? key.errorCode : value.errorCode;
-	if(errorCode > 0)
-		return Nan::ThrowError(FdbError::NewInstance(errorCode, fdb_get_error(errorCode)));
+  fdb_error_t errorCode = key.errorCode > 0 ? key.errorCode : value.errorCode;
+  if(errorCode > 0)
+    return Nan::ThrowError(FdbError::NewInstance(errorCode, fdb_get_error(errorCode)));
 
-	fdb_transaction_atomic_op(tr->GetTransaction(), key.getValue(), key.getLength(), value.getValue(), value.getLength(), (FDBMutationType)info.Data()->Uint32Value());
+  fdb_transaction_atomic_op(tr->GetTransaction(), key.getValue(), key.getLength(), value.getValue(), value.getLength(), (FDBMutationType)info.Data()->Uint32Value());
 
-	info.GetReturnValue().SetNull();
+  info.GetReturnValue().SetNull();
 }
 
 //Converts names using underscores as word separators to camel case (but preserves existing capitalization, if present). If isSetter, prepends the word 'set' to each name
 std::string FdbOptions::ToJavaScriptName(std::string optionName, bool isSetter) {
-	if(isSetter)
-		optionName = "set_" + optionName;
+  if(isSetter)
+    optionName = "set_" + optionName;
 
-	size_t start = 0;
-	while(start < optionName.size()) {
-		if(start != 0)
-			optionName[start] = ::toupper(optionName[start]);
-		size_t index = optionName.find_first_of('_', start);
-		if(index == std::string::npos)
-			break;
+  size_t start = 0;
+  while(start < optionName.size()) {
+    if(start != 0)
+      optionName[start] = ::toupper(optionName[start]);
+    size_t index = optionName.find_first_of('_', start);
+    if(index == std::string::npos)
+      break;
 
-		optionName.erase(optionName.begin() + index);
+    optionName.erase(optionName.begin() + index);
 
-		start = index;
-	}
+    start = index;
+  }
 
-	return optionName;
+  return optionName;
 }
 
 void FdbOptions::Init() {
-	optionTemplates = new PersistentFnTemplateMap(Isolate::GetCurrent());
+  optionTemplates = new PersistentFnTemplateMap(Isolate::GetCurrent());
 
-	scopeInfo[NetworkOption] = ScopeInfo("FdbNetworkOptions", SetNetworkOption);
-	scopeInfo[ClusterOption] = ScopeInfo("FdbClusterOptions", SetClusterOption);
-	scopeInfo[DatabaseOption] = ScopeInfo("FdbDatabaseOptions", SetDatabaseOption);
-	scopeInfo[TransactionOption] = ScopeInfo("FdbTransactionOptions", SetTransactionOption);
-	scopeInfo[StreamingMode] = ScopeInfo("FdbStreamingMode", NULL);
-	scopeInfo[MutationType] = ScopeInfo("AtomicOperations", CallAtomicOperation);
-	//scopeInfo[ConflictRangeType] = ScopeInfo("ConflictRangeType", NULL);
+  scopeInfo[NetworkOption] = ScopeInfo("FdbNetworkOptions", SetNetworkOption);
+  scopeInfo[ClusterOption] = ScopeInfo("FdbClusterOptions", SetClusterOption);
+  scopeInfo[DatabaseOption] = ScopeInfo("FdbDatabaseOptions", SetDatabaseOption);
+  scopeInfo[TransactionOption] = ScopeInfo("FdbTransactionOptions", SetTransactionOption);
+  scopeInfo[StreamingMode] = ScopeInfo("FdbStreamingMode", NULL);
+  scopeInfo[MutationType] = ScopeInfo("AtomicOperations", CallAtomicOperation);
+  //scopeInfo[ConflictRangeType] = ScopeInfo("ConflictRangeType", NULL);
 
-	for(auto itr = scopeInfo.begin(); itr != scopeInfo.end(); ++itr)
-		InitOptionsTemplate(itr->first, itr->second.templateClassName.c_str());
+  for(auto itr = scopeInfo.begin(); itr != scopeInfo.end(); ++itr)
+    InitOptionsTemplate(itr->first, itr->second.templateClassName.c_str());
 
-	InitOptions();
+  InitOptions();
 }
