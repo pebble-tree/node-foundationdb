@@ -119,11 +119,11 @@ private:
 
 		Local<Function> callback = Local<Function>::New(isolate, nc->cbFunc);
 
-		v8::TryCatch ex;
+		Nan::TryCatch ex;
 		callback->Call(isolate->GetCurrentContext()->Global(), 2, args);
 
 		if(ex.HasCaught())
-			fprintf(stderr, "\n%s\n", *String::Utf8Value(ex.StackTrace()->ToString()));
+			fprintf(stderr, "\n%s\n", *String::Utf8Value(ex.StackTrace().ToLocalChecked()->ToString()));
 
 		nc->close();
 	}
