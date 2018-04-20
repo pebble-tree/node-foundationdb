@@ -81,8 +81,8 @@ class FdbOptions : public node::ObjectWrap {
 			ConflictRangeType
 		};
 
-		static v8::Handle<v8::Value> CreateOptions(Scope scope, v8::Handle<v8::Value> source = v8::Null(v8::Isolate::GetCurrent()));
-		static v8::Handle<v8::Value> CreateEnum(Scope scope);
+		static v8::Local<v8::Value> CreateOptions(Scope scope, v8::Local<v8::Value> source = v8::Null(v8::Isolate::GetCurrent()));
+		static v8::Local<v8::Value> CreateEnum(Scope scope);
 
 		static Parameter GetOptionParameter(const v8::FunctionCallbackInfo<v8::Value>& info, Scope scope, int optionValue, int index = 0);
 
@@ -95,7 +95,7 @@ class FdbOptions : public node::ObjectWrap {
 		typedef v8::PersistentValueMap<Scope, v8::FunctionTemplate, v8::DefaultPersistentValueMapTraits<Scope, v8::FunctionTemplate > > PersistentFnTemplateMap;
 
 		static void New(const v8::FunctionCallbackInfo<v8::Value>& info);
-		static v8::Handle<v8::Value> NewInstance(v8::Local<v8::FunctionTemplate> optionsTemplate, v8::Handle<v8::Value> source);
+		static v8::Local<v8::Value> NewInstance(v8::Local<v8::FunctionTemplate> optionsTemplate, v8::Local<v8::Value> source);
 
 		FdbOptions();
 

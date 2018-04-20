@@ -29,12 +29,13 @@
 
 #include <foundationdb/fdb_c.h>
 #include <node.h>
+#include <nan.h>
 
 class Database: public node::ObjectWrap {
 	public:
 		static void Init();
-		static v8::Handle<v8::Value> NewInstance(FDBDatabase *ptr);
-		static void New(const v8::FunctionCallbackInfo<v8::Value>& info);
+		static v8::Local<v8::Value> NewInstance(FDBDatabase *ptr);
+		static void New(const Nan::FunctionCallbackInfo<v8::Value>& info);
 
 		FDBDatabase* GetDatabase() { return db; }
 
@@ -42,8 +43,8 @@ class Database: public node::ObjectWrap {
 		Database();
 		~Database();
 
-		static void CreateTransaction(const v8::FunctionCallbackInfo<v8::Value>& info);
-		static v8::Persistent<v8::Function> constructor;
+		static void CreateTransaction(const Nan::FunctionCallbackInfo<v8::Value>& info);
+		static Nan::Persistent<v8::Function> constructor;
 
 		FDBDatabase *db;
 };

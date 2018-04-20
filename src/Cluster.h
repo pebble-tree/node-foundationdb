@@ -29,21 +29,22 @@
 #include <foundationdb/fdb_c.h>
 #include <node.h>
 #include <node_object_wrap.h>
+#include <nan.h>
 
 class Cluster : public node::ObjectWrap {
 	public:
 		static void Init();
-		static v8::Handle<v8::Value> NewInstance(FDBCluster *ptr);
-		static void New(const v8::FunctionCallbackInfo<v8::Value>& info);
-		static void OpenDatabase(const v8::FunctionCallbackInfo<v8::Value>& info);
-		static void Destroy(const v8::FunctionCallbackInfo<v8::Value>& info);
+		static v8::Local<v8::Value> NewInstance(FDBCluster *ptr);
+		static void New(const Nan::FunctionCallbackInfo<v8::Value>& info);
+		static void OpenDatabase(const Nan::FunctionCallbackInfo<v8::Value>& info);
+		static void Destroy(const Nan::FunctionCallbackInfo<v8::Value>& info);
 
 		FDBCluster* GetCluster() { return cluster; }
 
 	private:
 		Cluster();
 		~Cluster();
-		static v8::Persistent<v8::Function> constructor;
+		static Nan::Persistent<v8::Function> constructor;
 		FDBCluster *cluster;
 };
 

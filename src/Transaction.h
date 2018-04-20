@@ -34,59 +34,59 @@
 class Transaction: public node::ObjectWrap {
 	public:
 		static void Init();
-		static v8::Handle<v8::Value> NewInstance(FDBTransaction *ptr);
-		static void New(const v8::FunctionCallbackInfo<v8::Value>& info);
+		static v8::Local<v8::Value> NewInstance(FDBTransaction *ptr);
+		static void New(const Nan::FunctionCallbackInfo<v8::Value>& info);
 
-		static void Get(const v8::FunctionCallbackInfo<v8::Value>& info);
-		static void GetKey(const v8::FunctionCallbackInfo<v8::Value>& info);
-		static void Set(const v8::FunctionCallbackInfo<v8::Value>& info);
-		static void Commit(const v8::FunctionCallbackInfo<v8::Value>& info);
-		static void Clear(const v8::FunctionCallbackInfo<v8::Value>& info);
-		static void ClearRange(const v8::FunctionCallbackInfo<v8::Value>& info);
-		static void GetRange(const v8::FunctionCallbackInfo<v8::Value>& info);
-		static void Watch(const v8::FunctionCallbackInfo<v8::Value>& info);
+		static void Get(const Nan::FunctionCallbackInfo<v8::Value>& info);
+		static void GetKey(const Nan::FunctionCallbackInfo<v8::Value>& info);
+		static void Set(const Nan::FunctionCallbackInfo<v8::Value>& info);
+		static void Commit(const Nan::FunctionCallbackInfo<v8::Value>& info);
+		static void Clear(const Nan::FunctionCallbackInfo<v8::Value>& info);
+		static void ClearRange(const Nan::FunctionCallbackInfo<v8::Value>& info);
+		static void GetRange(const Nan::FunctionCallbackInfo<v8::Value>& info);
+		static void Watch(const Nan::FunctionCallbackInfo<v8::Value>& info);
 
-		static void AddConflictRange(const v8::FunctionCallbackInfo<v8::Value>& info, FDBConflictRangeType type);
-		static void AddReadConflictRange(const v8::FunctionCallbackInfo<v8::Value>& info);
-		static void AddWriteConflictRange(const v8::FunctionCallbackInfo<v8::Value>& info);
+		static void AddConflictRange(const Nan::FunctionCallbackInfo<v8::Value>& info, FDBConflictRangeType type);
+		static void AddReadConflictRange(const Nan::FunctionCallbackInfo<v8::Value>& info);
+		static void AddWriteConflictRange(const Nan::FunctionCallbackInfo<v8::Value>& info);
 
-		static void OnError(const v8::FunctionCallbackInfo<v8::Value>& info);
-		static void Reset(const v8::FunctionCallbackInfo<v8::Value>& info);
+		static void OnError(const Nan::FunctionCallbackInfo<v8::Value>& info);
+		static void Reset(const Nan::FunctionCallbackInfo<v8::Value>& info);
 
-		static void SetReadVersion(const v8::FunctionCallbackInfo<v8::Value>& info);
-		static void GetReadVersion(const v8::FunctionCallbackInfo<v8::Value>& info);
-		static void GetCommittedVersion(const v8::FunctionCallbackInfo<v8::Value>& info);
+		static void SetReadVersion(const Nan::FunctionCallbackInfo<v8::Value>& info);
+		static void GetReadVersion(const Nan::FunctionCallbackInfo<v8::Value>& info);
+		static void GetCommittedVersion(const Nan::FunctionCallbackInfo<v8::Value>& info);
 
-		static void Cancel(const v8::FunctionCallbackInfo<v8::Value>& info);
+		static void Cancel(const Nan::FunctionCallbackInfo<v8::Value>& info);
 
-		static void GetAddressesForKey(const v8::FunctionCallbackInfo<v8::Value>& info);
+		static void GetAddressesForKey(const Nan::FunctionCallbackInfo<v8::Value>& info);
 
 		FDBTransaction* GetTransaction() { return tr; }
 	private:
 		Transaction();
 		~Transaction();
 
-		static v8::Persistent<v8::Function> constructor;
+		static Nan::Persistent<v8::Function> constructor;
 		FDBTransaction *tr;
 
-		static FDBTransaction* GetTransactionFromArgs(const v8::FunctionCallbackInfo<v8::Value>& info);
-		static v8::Handle<v8::Function> GetCallback(const v8::Handle<v8::Value> funcVal);
+		static FDBTransaction* GetTransactionFromArgs(const Nan::FunctionCallbackInfo<v8::Value>& info);
+		static v8::Local<v8::Function> GetCallback(const v8::Local<v8::Value> funcVal);
 };
 
 class Watch : public node::ObjectWrap {
 	public:
 		static void Init();
 
-		static v8::Handle<v8::Value> NewInstance(NodeCallback *callback);
-		static void New(const v8::FunctionCallbackInfo<v8::Value>& info);
+		static v8::Local<v8::Value> NewInstance(NodeCallback *callback);
+		static void New(const Nan::FunctionCallbackInfo<v8::Value>& info);
 
-		static void Cancel(const v8::FunctionCallbackInfo<v8::Value>& info);
+		static void Cancel(const Nan::FunctionCallbackInfo<v8::Value>& info);
 
 	private:
 		Watch();
 		~Watch();
 
-		static v8::Persistent<v8::Function> constructor;
+		static Nan::Persistent<v8::Function> constructor;
 		NodeCallback *callback;
 };
 

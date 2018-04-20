@@ -31,9 +31,9 @@
 
 class FdbError {
 	public:
-		static v8::Handle<v8::Value> NewInstance(fdb_error_t code, const char *description);
+		static v8::Local<v8::Value> NewInstance(fdb_error_t code, const char *description);
 
-		static void Init( v8::Handle<v8::Object> module );
+		static void Init( v8::Local<v8::Object> module );
 
 	private:
 		FdbError();  // not implemented by design

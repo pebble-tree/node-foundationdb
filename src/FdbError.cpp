@@ -22,21 +22,21 @@
  */
 
 #include <node.h>
+#include <nan.h>
 #include "FdbError.h"
 
 using namespace v8;
 using namespace node;
 
-static Persistent<Object> module;
+static Nan::Persistent<Object> module;
 
-void FdbError::Init(Handle<Object> module) {
-	Isolate *isolate = Isolate::GetCurrent();
-	::module.Reset(isolate, module);
+void FdbError::Init(Local<Object> module) {
+	::module.Reset(module);
 }
 
-Handle<Value> FdbError::NewInstance(fdb_error_t code, const char *description) {
+Local<Value> FdbError::NewInstance(fdb_error_t code, const char *description) {
 	Isolate *isolate = Isolate::GetCurrent();
-	EscapableHandleScope scope(isolate);
+	Nan::EscapableHandleScope scope;
 
 	Local<Object> moduleObj = Local<Object>::New(isolate, module);
 	Local<Value> constructor = moduleObj->Get( String::NewFromUtf8(isolate, "FDBError", String::kInternalizedString) );

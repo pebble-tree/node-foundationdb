@@ -82,9 +82,9 @@ void FdbOptions::Clear() {
 
 void FdbOptions::WeakCallback(const WeakCallbackData<Value, FdbOptions>& data) { }
 
-Handle<Value> FdbOptions::NewInstance(Local<FunctionTemplate> optionsTemplate, Handle<Value> source) {
+Local<Value> FdbOptions::NewInstance(Local<FunctionTemplate> optionsTemplate, Local<Value> source) {
 	Isolate *isolate = Isolate::GetCurrent();
-	EscapableHandleScope scope(isolate);
+	Nan::EscapableHandleScope scope;
 
 	Local<FunctionTemplate> funcTpl = Local<FunctionTemplate>::New(isolate, optionsTemplate);
 	Local<Object> instance = funcTpl->GetFunction()->NewInstance();
@@ -96,11 +96,11 @@ Handle<Value> FdbOptions::NewInstance(Local<FunctionTemplate> optionsTemplate, H
 	return scope.Escape(instance);
 }
 
-Handle<Value> FdbOptions::CreateOptions(Scope scope, Handle<Value> source) {
+Local<Value> FdbOptions::CreateOptions(Scope scope, Local<Value> source) {
 	return NewInstance(optionTemplates->Get(scope), source);
 }
 
-Handle<Value> FdbOptions::CreateEnum(Scope scope) {
+Local<Value> FdbOptions::CreateEnum(Scope scope) {
 	Local<FunctionTemplate> funcTpl = optionTemplates->Get(scope);
 	return funcTpl->GetFunction()->NewInstance();
 }
@@ -153,7 +153,7 @@ void SetNetworkOption(const FunctionCallbackInfo<Value>& info) {
 		errorCode = fdb_network_set_option(op, param.getValue(), param.getLength());
 
 	if(errorCode)
-		return NanThrowError(FdbError::NewInstance(errorCode, fdb_get_error(errorCode)));
+		return Nan::ThrowError(FdbError::NewInstance(errorCode, fdb_get_error(errorCode)));
 
 	info.GetReturnValue().SetNull();
 }
@@ -171,7 +171,7 @@ void SetClusterOption(const FunctionCallbackInfo<Value>& info) {
 		errorCode = fdb_cluster_set_option(cluster->GetCluster(), op, param.getValue(), param.getLength());
 
 	if(errorCode)
-		return NanThrowError(FdbError::NewInstance(errorCode, fdb_get_error(errorCode)));
+		return Nan::ThrowError(FdbError::NewInstance(errorCode, fdb_get_error(errorCode)));
 
 	info.GetReturnValue().SetNull();
 }
@@ -189,7 +189,7 @@ void SetDatabaseOption(const FunctionCallbackInfo<Value>& info) {
 		errorCode = fdb_database_set_option(db->GetDatabase(), op, param.getValue(), param.getLength());
 
 	if(errorCode)
-		return NanThrowError(FdbError::NewInstance(errorCode, fdb_get_error(errorCode)));
+		return Nan::ThrowError(FdbError::NewInstance(errorCode, fdb_get_error(errorCode)));
 
 	info.GetReturnValue().SetNull();
 }
@@ -207,7 +207,7 @@ void SetTransactionOption(const FunctionCallbackInfo<Value>& info) {
 		errorCode = fdb_transaction_set_option(tr->GetTransaction(), op, param.getValue(), param.getLength());
 
 	if(errorCode)
-		return NanThrowError(FdbError::NewInstance(errorCode, fdb_get_error(errorCode)));
+		return Nan::ThrowError(FdbError::NewInstance(errorCode, fdb_get_error(errorCode)));
 
 	info.GetReturnValue().SetNull();
 }
@@ -219,7 +219,7 @@ void CallAtomicOperation(const FunctionCallbackInfo<Value>& info) {
 
 	fdb_error_t errorCode = key.errorCode > 0 ? key.errorCode : value.errorCode;
 	if(errorCode > 0)
-		return NanThrowError(FdbError::NewInstance(errorCode, fdb_get_error(errorCode)));
+		return Nan::ThrowError(FdbError::NewInstance(errorCode, fdb_get_error(errorCode)));
 
 	fdb_transaction_atomic_op(tr->GetTransaction(), key.getValue(), key.getLength(), value.getValue(), value.getLength(), (FDBMutationType)info.Data()->Uint32Value());
 

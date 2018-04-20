@@ -48,9 +48,8 @@ using namespace node;
 struct NodeCallback {
 
 public:
-	NodeCallback(FDBFuture *future, Handle<Function> cbFunc0) : future(future), refCount(1) {
-		Isolate *isolate = Isolate::GetCurrent();
-		cbFunc.Reset(isolate, cbFunc0);
+	NodeCallback(FDBFuture *future, Local<Function> cbFunc0) : future(future), refCount(1) {
+		cbFunc.Reset(cbFunc0);
 		uv_async_init(uv_default_loop(), &handle, &NodeCallback::nodeThreadCallback);
 		uv_ref((uv_handle_t*)&handle);
 		handle.data = this;
@@ -104,17 +103,17 @@ private:
 
 		uv_unref((uv_handle_t*)handle);
 
-		Handle<Value> jsError;
-		Handle<Value> jsValue;
+		Local<Value> jsError;
+		Local<Value> jsValue;
 
 		fdb_error_t errorCode;
 		jsValue = nc->extractValue(future, errorCode);
 		if (errorCode == 0)
-			jsError = NanNull();
+			jsError = Nan::Null();
 		else
 			jsError = FdbError::NewInstance(errorCode, fdb_get_error(errorCode));
 
-		Handle<Value> args[2] = { jsError, jsValue };
+		Local<Value> args[2] = { jsError, jsValue };
 
 		Local<Function> callback = Local<Function>::New(isolate, nc->cbFunc);
 
@@ -129,18 +128,15 @@ private:
 
 	FDBFuture* future;
 	uv_async_t handle;
-	Persistent<Function> cbFunc;
+	Nan::Persistent<Function> cbFunc;
 	int refCount;
 
 protected:
-	virtual Handle<Value> extractValue(FDBFuture* future, fdb_error_t& outErr) = 0;
+	virtual Local<Value> extractValue(FDBFuture* future, fdb_error_t& outErr) = 0;
 
-	static Handle<Value> makeBuffer(const char *arr, int length) {
-		Isolate *isolate = Isolate::GetCurrent();
-		EscapableHandleScope scope(isolate);
-		Local<Object> buf = Buffer::New(isolate, length);
-		memcpy(Buffer::Data(buf), (const char*)arr, length);
-
+	static Local<Value> makeBuffer(const char *arr, int length) {
+		Nan::EscapableHandleScope scope;
+		Local<Object> buf = Nan::CopyBuffer(arr, length).ToLocalChecked();
 		return scope.Escape(buf);
 	}
 };
