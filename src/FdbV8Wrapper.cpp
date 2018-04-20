@@ -130,8 +130,8 @@ NAN_MODULE_INIT(init){
 	Nan::Set(target, Nan::New<v8::String>("atomic").ToLocalChecked(), FdbOptions::CreateOptions(FdbOptions::MutationType));
 }
 
-#if NODE_VERSION_AT_LEAST(0, 8, 0)
+#if NODE_VERSION_AT_LEAST(8, 9, 0)
 NODE_MODULE(fdblib, init);
 #else
-#error "Node.js versions before v0.8.0 are not supported"
+#error "Node.js versions before v8.9.0 are not supported"
 #endif
