@@ -1,11 +1,6 @@
 {
   "name": "foundationdb",
-  "version": "0.0.1",
-  "author": {
-    "name": "FoundationDB",
-    "email": "distribution@foundationdb.com",
-    "url": "https://foundationdb.com"
-  },
+  "version": "0.0.2",
   "description": "Node.js bindings for the FoundationDB database",
   "keywords": [
     "FoundationDB",
@@ -13,7 +8,7 @@
     "NoSQL",
     "ACID"
   ],
-  "homepage": "https://foundationdb.com",
+  "homepage": "https://foundationdb.org",
   "license": "MIT",
   "main": "./lib/fdb.js",
   "cpu": [
@@ -27,7 +22,8 @@
     "backtrace": "^0.0.2",
     "jshint": ">= 2.5.6",
     "node-gyp": "^3.6.2",
-    "promises-aplus-tests": ">= 2.1.0"
+    "promises-aplus-tests": ">= 2.1.0",
+    "xml2js": "^0.4.19"
   },
   "engines": {
     "node": ">=8.0.0"

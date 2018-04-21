@@ -33,7 +33,7 @@
 #include "Cluster.h"
 #include "Version.h"
 #include "FdbError.h"
-// #include "FdbOptions.h"
+#include "options.h"
 
 uv_thread_t fdbThread;
 
@@ -74,7 +74,10 @@ void CreateCluster(const Nan::FunctionCallbackInfo<Value>& info) {
   Isolate *isolate = Isolate::GetCurrent();
   Nan::EscapableHandleScope scope;
 
-  FDBFuture *f = fdb_create_cluster(*String::Utf8Value(info[0]->ToString()));
+  const char *path = (info.Length() < 1 || info[0]->IsNull() || info[0]->IsUndefined())
+    ? NULL : *String::Utf8Value(info[0]->ToString());
+
+  FDBFuture *f = fdb_create_cluster(path);
   fdb_error_t errorCode = fdb_future_block_until_ready(f);
 
   FDBCluster *cluster;
@@ -86,6 +89,10 @@ void CreateCluster(const Nan::FunctionCallbackInfo<Value>& info) {
 
   Local<Value> jsValue = Local<Value>::New(isolate, Cluster::NewInstance(cluster));
   info.GetReturnValue().Set(jsValue);
+}
+
+void SetNetworkOption(const Nan::FunctionCallbackInfo<Value>& info) {
+  set_option_wrapped(NULL, OptNetwork, info);
 }
 
 void StartNetwork(const Nan::FunctionCallbackInfo<Value>& info) {
@@ -118,11 +125,11 @@ NAN_MODULE_INIT(init){
   Database::Init();
   Transaction::Init();
   Cluster::Init();
-  // FdbOptions::Init();
   Watch::Init();
 
   Nan::Set(target, Nan::New<v8::String>("apiVersion").ToLocalChecked(), Nan::New<v8::FunctionTemplate>(ApiVersion)->GetFunction());
   Nan::Set(target, Nan::New<v8::String>("createCluster").ToLocalChecked(), Nan::New<v8::FunctionTemplate>(CreateCluster)->GetFunction());
+  Nan::Set(target, Nan::New<v8::String>("setNetworkOption").ToLocalChecked(), Nan::New<v8::FunctionTemplate>(SetNetworkOption)->GetFunction());
   Nan::Set(target, Nan::New<v8::String>("startNetwork").ToLocalChecked(), Nan::New<v8::FunctionTemplate>(StartNetwork)->GetFunction());
   Nan::Set(target, Nan::New<v8::String>("stopNetwork").ToLocalChecked(), Nan::New<v8::FunctionTemplate>(StopNetwork)->GetFunction());
   // Nan::Set(target, Nan::New<v8::String>("options").ToLocalChecked(), FdbOptions::CreateOptions(FdbOptions::NetworkOption));

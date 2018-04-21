@@ -3,7 +3,7 @@
     {
       'target_name': 'fdblib',
       # 'sources': [ 'src/FdbV8Wrapper.cpp', 'src/Database.cpp', 'src/Transaction.cpp', 'src/Cluster.cpp', 'src/FdbError.cpp', 'src/FdbOptions.cpp', 'src/FdbOptions.g.cpp' ],
-      'sources': [ 'src/FdbV8Wrapper.cpp', 'src/Database.cpp', 'src/Transaction.cpp', 'src/Cluster.cpp', 'src/FdbError.cpp' ],
+      'sources': [ 'src/FdbV8Wrapper.cpp', 'src/Database.cpp', 'src/Transaction.cpp', 'src/Cluster.cpp', 'src/FdbError.cpp', 'src/options.cpp' ],
       'conditions': [
         ['OS=="linux"', {
           'link_settings': { 'libraries': ['-lfdb_c'] },

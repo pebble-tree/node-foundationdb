@@ -31,6 +31,8 @@
 #include <node_object_wrap.h>
 #include <nan.h>
 
+// This *holds* a cluster. The cluster itself is created in FdbV8Wrapper.cpp.
+
 class Cluster : public node::ObjectWrap {
   public:
     static void Init();

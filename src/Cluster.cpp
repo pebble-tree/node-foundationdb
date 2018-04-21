@@ -29,8 +29,8 @@
 
 #include "Cluster.h"
 #include "Database.h"
-#include "FdbOptions.h"
 #include "NodeCallback.h"
+#include "options.h"
 
 using namespace v8;
 using namespace std;
@@ -41,26 +41,6 @@ Cluster::~Cluster() {
 }
 
 Nan::Persistent<Function> Cluster::constructor;
-
-void Cluster::OpenDatabase(const Nan::FunctionCallbackInfo<Value>& info) {
-  Cluster *clusterPtr = ObjectWrap::Unwrap<Cluster>(info.Holder());
-
-  std::string dbName = *String::Utf8Value(info[0]->ToString());
-  FDBFuture *f = fdb_cluster_create_database(clusterPtr->cluster, (uint8_t*)dbName.c_str(), (int)strlen(dbName.c_str()));
-
-  fdb_error_t errorCode = fdb_future_block_until_ready(f);
-
-  FDBDatabase *database;
-  if(errorCode == 0)
-    errorCode = fdb_future_get_database(f, &database);
-
-  if(errorCode != 0)
-    return Nan::ThrowError(FdbError::NewInstance(errorCode, fdb_get_error(errorCode)));
-
-  Local<Value> jsValue = Database::NewInstance(database);
-
-  info.GetReturnValue().Set(jsValue);
-}
 
 void Cluster::Init() {
   Local<FunctionTemplate> tpl = Nan::New<FunctionTemplate>(New);
@@ -91,4 +71,24 @@ Local<Value> Cluster::NewInstance(FDBCluster *ptr) {
   //   FdbOptions::CreateOptions(FdbOptions::ClusterOption, instance));
 
   return scope.Escape(instance);
+}
+
+void Cluster::OpenDatabase(const Nan::FunctionCallbackInfo<Value>& info) {
+  Cluster *clusterPtr = ObjectWrap::Unwrap<Cluster>(info.Holder());
+
+  std::string dbName = *String::Utf8Value(info[0]->ToString());
+  FDBFuture *f = fdb_cluster_create_database(clusterPtr->cluster, (uint8_t*)dbName.c_str(), (int)strlen(dbName.c_str()));
+
+  fdb_error_t errorCode = fdb_future_block_until_ready(f);
+
+  FDBDatabase *database;
+  if(errorCode == 0)
+    errorCode = fdb_future_get_database(f, &database);
+
+  if(errorCode != 0)
+    return Nan::ThrowError(FdbError::NewInstance(errorCode, fdb_get_error(errorCode)));
+
+  Local<Value> jsValue = Database::NewInstance(database);
+
+  info.GetReturnValue().Set(jsValue);
 }
