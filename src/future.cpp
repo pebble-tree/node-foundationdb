@@ -13,14 +13,13 @@
 
 using namespace v8;
 
-template<class T> struct Ctx {
+template<class T> struct CtxBase {
   FDBFuture *future;
   void (*fn)(FDBFuture*, T*);
   uv_async_t async;
 };
 template<class T> void resolveFutureInMainLoop(FDBFuture *f, T* ctx, void (*fn)(FDBFuture *f, T*)) {
   // printf("resolveFutureInMainLoop called\n");
-  // Ctx *ctx = new Ctx;
   ctx->future = f;
   ctx->fn = fn;
 
@@ -50,18 +49,18 @@ template<class T> void resolveFutureInMainLoop(FDBFuture *f, T* ctx, void (*fn)(
 Local<Promise> fdbFutureToJSPromise(FDBFuture *f, ExtractValueFn *extractFn) {
   // Using inheritance here because Persistent doesn't seem to like being
   // copied, and this avoids another allocation & indirection.
-  struct Ctx2: Ctx<Ctx2> {
+  struct Ctx: CtxBase<Ctx> {
     Nan::Persistent<Promise::Resolver> persistent;
     ExtractValueFn *extractFn;
   };
-  Ctx2 *ctx = new Ctx2;
+  Ctx *ctx = new Ctx;
 
   Isolate *isolate = Isolate::GetCurrent();
   auto resolver = Promise::Resolver::New(isolate);
   ctx->persistent.Reset(resolver);
   ctx->extractFn = extractFn;
 
-  resolveFutureInMainLoop<Ctx2>(f, ctx, [](FDBFuture *f, Ctx2 *ctx) {
+  resolveFutureInMainLoop<Ctx>(f, ctx, [](FDBFuture *f, Ctx *ctx) {
     Nan::HandleScope scope;
     auto resolver = Nan::New(ctx->persistent);
 
@@ -78,16 +77,16 @@ Local<Promise> fdbFutureToJSPromise(FDBFuture *f, ExtractValueFn *extractFn) {
 }
 
 void fdbFutureToCallback(FDBFuture *f, Local<Function> cbFunc, ExtractValueFn *extractFn) {
-  struct Ctx2: Ctx<Ctx2> {
+  struct Ctx: CtxBase<Ctx> {
     Nan::Persistent<Function> cbFunc;
     ExtractValueFn *extractFn;
   };
-  Ctx2 *ctx = new Ctx2;
+  Ctx *ctx = new Ctx;
 
   ctx->cbFunc.Reset(cbFunc);
   ctx->extractFn = extractFn;
 
-  resolveFutureInMainLoop<Ctx2>(f, ctx, [](FDBFuture *f, Ctx2 *ctx) {
+  resolveFutureInMainLoop<Ctx>(f, ctx, [](FDBFuture *f, Ctx *ctx) {
     Nan::HandleScope scope;
 
     v8::Isolate *isolate = v8::Isolate::GetCurrent();
@@ -141,11 +140,11 @@ void initWatch() {
 }
 
 Local<Object> watchFuture(FDBFuture *f, Local<Function> listener) {
-  struct Ctx2: Ctx<Ctx2> {
+  struct Ctx: CtxBase<Ctx> {
     Nan::Persistent<Function> listener;
     Nan::Persistent<Object> jsWatch;
   };
-  Ctx2 *ctx = new Ctx2;
+  Ctx *ctx = new Ctx;
 
   ctx->listener.Reset(listener);
 
@@ -155,7 +154,7 @@ Local<Object> watchFuture(FDBFuture *f, Local<Function> listener) {
   jsWatch->SetAlignedPointerInInternalField(0, f);
   ctx->jsWatch.Reset(jsWatch);
 
-  resolveFutureInMainLoop<Ctx2>(f, ctx, [](FDBFuture *f, Ctx2 *ctx) {
+  resolveFutureInMainLoop<Ctx>(f, ctx, [](FDBFuture *f, Ctx *ctx) {
     Nan::HandleScope scope;
 
     v8::Isolate *isolate = v8::Isolate::GetCurrent();
