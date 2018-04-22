@@ -8,15 +8,17 @@ This is not yet production ready. The APIs will drift slightly over the next few
 
 **You need to have the FDB client library on your machine before you can use this node module**. This is also true on any machines you deploy to. I'm sorry about that. We've been [discussing it](https://github.com/apple/foundationdb/issues/129).
 
-> Step 1: [Download a copy of foundationdb](https://www.foundationdb.org/download/)
+#### Step 1
 
-> Step 2:
+[Download a copy of foundationdb](https://www.foundationdb.org/download/)
+
+#### Step 2
 
 ```
 npm install --save foundationdb
 ```
 
-> Step 3:
+#### Step 3
 
 ```javascript
 const fdb = require('foundationdb')
