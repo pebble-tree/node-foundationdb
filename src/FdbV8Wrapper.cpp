@@ -119,8 +119,6 @@ void SetNetworkOption(const Nan::FunctionCallbackInfo<Value>& info) {
 }
 
 void StartNetwork(const Nan::FunctionCallbackInfo<Value>& info) {
-  info.GetReturnValue().SetNull();
-
   if(!networkStarted) {
     networkStarted = true;
     runNetwork();
@@ -137,12 +135,18 @@ void StopNetwork(const Nan::FunctionCallbackInfo<Value>& info) {
 
   //This line forces garbage collection.  Useful for doing valgrind tests
   //while(!V8::IdleNotification());
-
-  info.GetReturnValue().SetNull();
-
-  // FdbOptions::Clear();
 }
 
+// (test, code) -> bool.
+void ErrorPredicate(const Nan::FunctionCallbackInfo<Value>& info) {
+  int test = info[0]->Int32Value();
+  fdb_error_t code = info[1]->Int32Value();
+
+  fdb_bool_t result = fdb_error_predicate(test, code);
+
+  Isolate *isolate = Isolate::GetCurrent();
+  info.GetReturnValue().Set(Boolean::New(isolate, result));
+}
 
 NAN_MODULE_INIT(init){
   FdbError::Init( target );
@@ -151,15 +155,18 @@ NAN_MODULE_INIT(init){
   Cluster::Init();
   initWatch();
 
-  Nan::Set(target, Nan::New<v8::String>("apiVersion").ToLocalChecked(), Nan::New<v8::FunctionTemplate>(ApiVersion)->GetFunction());
-  Nan::Set(target, Nan::New<v8::String>("createCluster").ToLocalChecked(), Nan::New<v8::FunctionTemplate>(CreateCluster)->GetFunction());
-  Nan::Set(target, Nan::New<v8::String>("createClusterSync").ToLocalChecked(), Nan::New<v8::FunctionTemplate>(CreateClusterSync)->GetFunction());
-  Nan::Set(target, Nan::New<v8::String>("setNetworkOption").ToLocalChecked(), Nan::New<v8::FunctionTemplate>(SetNetworkOption)->GetFunction());
-  Nan::Set(target, Nan::New<v8::String>("startNetwork").ToLocalChecked(), Nan::New<v8::FunctionTemplate>(StartNetwork)->GetFunction());
-  Nan::Set(target, Nan::New<v8::String>("stopNetwork").ToLocalChecked(), Nan::New<v8::FunctionTemplate>(StopNetwork)->GetFunction());
-  // Nan::Set(target, Nan::New<v8::String>("options").ToLocalChecked(), FdbOptions::CreateOptions(FdbOptions::NetworkOption));
-  // Nan::Set(target, Nan::New<v8::String>("streamingMode").ToLocalChecked(), FdbOptions::CreateEnum(FdbOptions::StreamingMode));
-  // Nan::Set(target, Nan::New<v8::String>("atomic").ToLocalChecked(), FdbOptions::CreateOptions(FdbOptions::MutationType));
+#define FN(name, fn) Nan::Set(target, Nan::New<v8::String>(name).ToLocalChecked(), Nan::New<v8::FunctionTemplate>(fn)->GetFunction())
+  FN("apiVersion", ApiVersion);
+
+  FN("startNetwork", StartNetwork);
+  FN("stopNetwork", StopNetwork);
+
+  FN("setNetworkOption", SetNetworkOption);
+
+  FN("createCluster", CreateCluster);
+  FN("createClusterSync", CreateClusterSync);
+
+  FN("errorPredicate", ErrorPredicate);
 }
 
 #if NODE_VERSION_AT_LEAST(8, 9, 0)

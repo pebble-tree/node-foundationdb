@@ -70,7 +70,6 @@ class Transaction: public node::ObjectWrap {
 
 
   private:
-    Transaction();
     ~Transaction();
 
     static Nan::Persistent<v8::Function> constructor;

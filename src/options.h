@@ -5,7 +5,6 @@
 
 enum OptionType {
   OptNetwork,
-  // OptCluster,
   OptDatabase,
   OptTransaction,
 };

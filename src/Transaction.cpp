@@ -40,10 +40,7 @@ using namespace std;
 using namespace node;
 
 
-
 // Transaction Implementation
-Transaction::Transaction() { };
-
 Transaction::~Transaction() {
   fdb_transaction_destroy(tr);
 };
@@ -51,17 +48,13 @@ Transaction::~Transaction() {
 Nan::Persistent<Function> Transaction::constructor;
 
 
-
 struct StringParams {
   bool owned;
   uint8_t *str;
   int len;
 
-  /*
-   *  String arguments always have to be buffers to
-   *  preserve bytes. Otherwise, stuff gets converted
-   *  to UTF-8.
-   */
+  // String arguments can either be buffers or strings. If they're strings we
+  // need to copy the bytes locally in order to utf8 convert the content.
   StringParams(Local<Value> keyVal) {
     if (keyVal->IsString()) {
       owned = true;
@@ -242,7 +235,7 @@ void Transaction::Get(const Nan::FunctionCallbackInfo<Value>& info) {
 // GetKey(key, selOrEq, offset, isSnapshot, [cb])
 void Transaction::GetKey(const Nan::FunctionCallbackInfo<Value>& info) {
   StringParams key(info[0]);
-  int selectorOrEqual = info[1]->Int32Value();
+  bool selectorOrEqual = info[1]->BooleanValue();
   int selectorOffset = info[2]->Int32Value();
   bool snapshot = info[3]->BooleanValue();
 
@@ -310,7 +303,7 @@ void Transaction::GetRange(const Nan::FunctionCallbackInfo<Value>& info) {
 
 
 
-// clearRange(start, end, [cb]). Clears range [start, end).
+// clearRange(start, end). Clears range [start, end).
 void Transaction::ClearRange(const Nan::FunctionCallbackInfo<Value>& info) {
   StringParams begin(info[0]);
   StringParams end(info[1]);
@@ -340,8 +333,18 @@ void Transaction::Watch(const Nan::FunctionCallbackInfo<Value>& info) {
 
 
 
+// addConflictRange(start, end)
+void Transaction::AddReadConflictRange(const Nan::FunctionCallbackInfo<Value>& info) {
+  AddConflictRange(info, FDB_CONFLICT_RANGE_TYPE_READ);
+}
+
+// addConflictRange(start, end)
+void Transaction::AddWriteConflictRange(const Nan::FunctionCallbackInfo<Value>& info) {
+  AddConflictRange(info, FDB_CONFLICT_RANGE_TYPE_WRITE);
+}
 
 
+// setReadVersion(version)
 void Transaction::SetReadVersion(const Nan::FunctionCallbackInfo<Value>& info) {
   // TODO: Support info[0] being an opaque buffer.
   int64_t version = info[0]->IntegerValue();
@@ -394,16 +397,6 @@ void Transaction::AddConflictRange(const Nan::FunctionCallbackInfo<Value>& info,
   if(errorCode) Nan::ThrowError(FdbError::NewInstance(errorCode));
 }
 
-// addConflictRange(start, end)
-void Transaction::AddReadConflictRange(const Nan::FunctionCallbackInfo<Value>& info) {
-  return AddConflictRange(info, FDB_CONFLICT_RANGE_TYPE_READ);
-}
-
-// addConflictRange(start, end)
-void Transaction::AddWriteConflictRange(const Nan::FunctionCallbackInfo<Value>& info) {
-  return AddConflictRange(info, FDB_CONFLICT_RANGE_TYPE_WRITE);
-}
-
 
 
 
@@ -442,21 +435,29 @@ void Transaction::Init() {
 
   Nan::SetPrototypeMethod(tpl, "commit", Commit);
   Nan::SetPrototypeMethod(tpl, "reset", Reset);
+  Nan::SetPrototypeMethod(tpl, "cancel", Cancel);
   Nan::SetPrototypeMethod(tpl, "onError", OnError);
 
   Nan::SetPrototypeMethod(tpl, "get", Get);
-  Nan::SetPrototypeMethod(tpl, "getRange", GetRange);
   Nan::SetPrototypeMethod(tpl, "getKey", GetKey);
-  Nan::SetPrototypeMethod(tpl, "watch", Watch);
   Nan::SetPrototypeMethod(tpl, "set", Set);
   Nan::SetPrototypeMethod(tpl, "clear", Clear);
+
+  Nan::SetPrototypeMethod(tpl, "atomicOp", AtomicOp);
+
+  Nan::SetPrototypeMethod(tpl, "getRange", GetRange);
   Nan::SetPrototypeMethod(tpl, "clearRange", ClearRange);
+
+  Nan::SetPrototypeMethod(tpl, "watch", Watch);
+
   Nan::SetPrototypeMethod(tpl, "addReadConflictRange", AddReadConflictRange);
   Nan::SetPrototypeMethod(tpl, "addWriteConflictRange", AddWriteConflictRange);
+
   Nan::SetPrototypeMethod(tpl, "getReadVersion", GetReadVersion);
   Nan::SetPrototypeMethod(tpl, "setReadVersion", SetReadVersion);
   Nan::SetPrototypeMethod(tpl, "getCommittedVersion", GetCommittedVersion);
-  Nan::SetPrototypeMethod(tpl, "cancel", Cancel);
+  Nan::SetPrototypeMethod(tpl, "getVersionStamp", GetVersionStamp);
+
   Nan::SetPrototypeMethod(tpl, "getAddressesForKey", GetAddressesForKey);
 
   constructor.Reset(tpl->GetFunction());
