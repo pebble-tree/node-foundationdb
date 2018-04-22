@@ -27,7 +27,6 @@
 #include <cstring>
 
 #include "Database.h"
-#include "NodeCallback.h"
 #include "options.h"
 
 using namespace v8;

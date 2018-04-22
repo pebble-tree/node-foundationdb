@@ -29,7 +29,6 @@
 
 #include "Cluster.h"
 #include "Database.h"
-#include "options.h"
 #include "future.h"
 
 using namespace v8;
