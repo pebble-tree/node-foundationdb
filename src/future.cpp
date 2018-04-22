@@ -15,7 +15,7 @@ using namespace v8;
 
 template<class T> struct Ctx {
   FDBFuture *future;
-  void (*fn)(FDBFuture *f, T *);
+  void (*fn)(FDBFuture*, T*);
   uv_async_t async;
 };
 template<class T> void resolveFutureInMainLoop(FDBFuture *f, T* ctx, void (*fn)(FDBFuture *f, T*)) {
@@ -64,6 +64,7 @@ Local<Promise> fdbFutureToJSPromise(FDBFuture *f, ExtractValueFn *extractFn) {
     auto value = ctx->extractFn(f, &err);
     if (err != 0) resolver->Reject(FdbError::NewInstance(err));
     else resolver->Resolve(value);
+    v8::Isolate::GetCurrent()->RunMicrotasks();
 
     ctx->persistent.Reset();
   });
@@ -114,3 +115,93 @@ Local<Value> futureToJS(FDBFuture *f, Local<Value> cbOrNull, ExtractValueFn *ext
   }
   return v8::Undefined(Isolate::GetCurrent());
 }
+
+
+
+
+// struct Watch : public node::ObjectWrap {
+
+//   static v8::Local<v8::Value> NewInstance(NodeCallback *callback);
+//   static void New(const Nan::FunctionCallbackInfo<v8::Value>& info) {
+//     Watch *c = new Watch();
+//     c->Wrap(info.Holder());
+//   }
+
+//   static void Cancel(const Nan::FunctionCallbackInfo<v8::Value>& info) {
+//     FDBFuture *future = node::ObjectWrap::Unwrap<Watch>(info.Holder())->futureOrNull;
+//     if (future) fdb_future_cancel(future);
+//   }
+
+//   FDBFuture *futureOrNull;
+// };
+
+
+static void Cancel(const Nan::FunctionCallbackInfo<v8::Value>& info) {
+  Local<Object> t = info.This();
+  FDBFuture *future = (FDBFuture *)(t->GetAlignedPointerFromInternalField(0));
+  if (future) fdb_future_cancel(future);
+}
+
+static Nan::Persistent<v8::Function> watchConstructor;
+
+void initWatch() {
+  Local<FunctionTemplate> tpl = Nan::New<FunctionTemplate>();
+
+  tpl->SetClassName(Nan::New<v8::String>("Watch").ToLocalChecked());
+  tpl->InstanceTemplate()->SetInternalFieldCount(1);
+
+  Nan::SetPrototypeMethod(tpl, "cancel", Cancel);
+
+  watchConstructor.Reset(tpl->GetFunction());
+}
+
+Local<Object> watchFuture(FDBFuture *f, Local<Function> listener) {
+  struct Ctx2: Ctx<Ctx2> {
+    Nan::Persistent<Function> listener;
+    Nan::Persistent<Object> jsWatch;
+  };
+  Ctx2 *ctx = new Ctx2;
+
+  ctx->listener.Reset(listener);
+
+  v8::Isolate *isolate = v8::Isolate::GetCurrent();
+  Local<Function> localCon = Local<Function>::New(isolate, watchConstructor);
+  Local<Object> jsWatch = Nan::NewInstance(localCon).ToLocalChecked();
+  jsWatch->SetAlignedPointerInInternalField(0, f);
+  ctx->jsWatch.Reset(jsWatch);
+
+  resolveFutureInMainLoop<Ctx2>(f, ctx, [](FDBFuture *f, Ctx2 *ctx) {
+    printf("resolveFutureInMainLoop\n");
+
+    Nan::HandleScope scope;
+
+    v8::Isolate *isolate = v8::Isolate::GetCurrent();
+
+    fdb_error_t errorCode = fdb_future_get_error(ctx->future);
+
+    // You can no longer cancel the watcher. Remove the reference to the
+    // future, which is about to be destroyed.
+    Local<Object> jsWatch = Local<Object>::New(isolate, ctx->jsWatch);
+    jsWatch->SetAlignedPointerInInternalField(0, NULL);
+
+    // If the operation was cancelled (err 1101), we won't call the listener.
+    if (errorCode != 1101) {
+
+      Local<v8::Value> jsNull = v8::Null(isolate);
+      Local<Value> jsError = (errorCode == 0)
+        ? jsNull : FdbError::NewInstance(errorCode, fdb_get_error(errorCode));
+
+      Local<Value> args[] = { jsError };
+      Local<Function> callback = Local<Function>::New(isolate, ctx->listener);
+
+      // If this throws it'll bubble up to the node uncaught exception handler, which is what we want.
+      callback->Call(isolate->GetCurrentContext()->Global(), 1, args);
+    }
+
+    ctx->listener.Reset();
+    ctx->jsWatch.Reset();
+  });
+
+  return jsWatch;
+}
+

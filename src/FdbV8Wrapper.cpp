@@ -149,7 +149,7 @@ NAN_MODULE_INIT(init){
   Database::Init();
   Transaction::Init();
   Cluster::Init();
-  Watch::Init();
+  initWatch();
 
   Nan::Set(target, Nan::New<v8::String>("apiVersion").ToLocalChecked(), Nan::New<v8::FunctionTemplate>(ApiVersion)->GetFunction());
   Nan::Set(target, Nan::New<v8::String>("createCluster").ToLocalChecked(), Nan::New<v8::FunctionTemplate>(CreateCluster)->GetFunction());

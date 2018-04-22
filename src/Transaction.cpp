@@ -320,6 +320,26 @@ void Transaction::ClearRange(const Nan::FunctionCallbackInfo<Value>& info) {
 
 
 
+// watch("somekey", listener) -> {cancel()}. This does not return a promise.
+// Due to race conditions the listener may be called even after cancel has been called.
+//
+// TODO: Move this over to the new infrastructure.
+void Transaction::Watch(const Nan::FunctionCallbackInfo<Value>& info) {
+  StringParams key(info[0]);
+
+  Isolate *isolate = Isolate::GetCurrent();
+  FDBTransaction *tr = GetTransactionFromArgs(info);
+
+  Local<Function> listener = Local<Function>::New(isolate, Local<Function>::Cast(info[1]));
+
+  FDBFuture *f = fdb_transaction_watch(tr, key.str, key.len);
+
+  Local<Value> watch = watchFuture(f, listener);
+  info.GetReturnValue().Set(watch);
+}
+
+
+
 
 
 
@@ -443,92 +463,3 @@ void Transaction::Init() {
   constructor.Reset(tpl->GetFunction());
 }
 
-
-
-
-// Gross clean me up!
-struct NodeVoidCallback : NodeCallback {
-
-  NodeVoidCallback(FDBFuture *future, Local<Function> cbFunc) : NodeCallback(future, cbFunc) { }
-
-  virtual Local<Value> extractValue(FDBFuture* future, fdb_error_t& outErr) {
-    Isolate *isolate = Isolate::GetCurrent();
-    outErr = fdb_future_get_error(future);
-    return Undefined(isolate);
-  }
-};
-
-// watch("somekey", listener) -> {cancel()}. This does not return a promise.
-// Due to race conditions the listener may be called even after cancel has been called.
-//
-// TODO: Move this over to the new infrastructure.
-void Transaction::Watch(const Nan::FunctionCallbackInfo<Value>& info) {
-  StringParams key(info[0]);
-
-  Isolate *isolate = Isolate::GetCurrent();
-  FDBTransaction *tr = GetTransactionFromArgs(info);
-
-  Local<Function> cb = Local<Function>::New(isolate, Local<Function>::Cast(info[1]));
-
-  FDBFuture *f = fdb_transaction_watch(tr, key.str, key.len);
-  NodeVoidCallback *callback = new NodeVoidCallback(f, cb);
-  Local<Value> watch = Watch::NewInstance(callback);
-
-  callback->start();
-  info.GetReturnValue().Set(watch);
-}
-
-
-
-
-// Watch implementation
-Watch::Watch() : callback(NULL) { };
-
-Watch::~Watch() {
-  if(callback) {
-    if(callback->getFuture())
-      fdb_future_cancel(callback->getFuture());
-
-    callback->delRef();
-  }
-};
-
-Nan::Persistent<Function> Watch::constructor;
-
-Local<Value> Watch::NewInstance(NodeCallback *callback) {
-  Isolate *isolate = Isolate::GetCurrent();
-  Nan::EscapableHandleScope scope;
-
-  Local<Function> watchConstructor = Local<Function>::New(isolate, constructor);
-  Local<Object> instance = Nan::NewInstance(watchConstructor).ToLocalChecked();
-
-  Watch *watchObj = ObjectWrap::Unwrap<Watch>(instance);
-  watchObj->callback = callback;
-  callback->addRef();
-
-  return scope.Escape(instance);
-}
-
-void Watch::New(const Nan::FunctionCallbackInfo<Value>& info) {
-  Watch *c = new Watch();
-  c->Wrap(info.Holder());
-}
-
-void Watch::Cancel(const Nan::FunctionCallbackInfo<Value>& info) {
-  NodeCallback *callback = node::ObjectWrap::Unwrap<Watch>(info.Holder())->callback;
-
-  if(callback && callback->getFuture()) {
-    fdb_future_cancel(callback->getFuture());
-  }
-}
-
-void Watch::Init() {
-  Local<FunctionTemplate> tpl = Nan::New<FunctionTemplate>(New);
-
-  tpl->SetClassName(Nan::New<v8::String>("Watch").ToLocalChecked());
-  tpl->InstanceTemplate()->SetInternalFieldCount(1);
-
-  Nan::SetPrototypeMethod(tpl, "cancel", Cancel);
-
-  constructor.Reset(tpl->GetFunction());
-}
