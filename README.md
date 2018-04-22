@@ -6,11 +6,17 @@ This is not yet production ready. The APIs will drift slightly over the next few
 
 ## Usage
 
+**You need to have the FDB client library on your machine before you can use this node module**. This is also true on any machines you deploy to. I'm sorry about that. We've been [discussing it](https://github.com/apple/foundationdb/issues/129).
+
+> Step 1: [Download a copy of foundationdb](https://www.foundationdb.org/download/)
+
+> Step 2:
+
 ```
 npm install --save foundationdb
 ```
 
-And in your code:
+> Step 3:
 
 ```javascript
 const fdb = require('foundationdb')
@@ -51,6 +57,7 @@ The bindings do not currently support the `Directory` and `Tuple` layers. We hav
 - [ ] Directory support
 - [ ] Basic local testing
 - [ ] Testing integrated with the harness for the other bindings
+- [ ] Add leveldown compatibilty
 - [ ] Cut 1.0
 
 
