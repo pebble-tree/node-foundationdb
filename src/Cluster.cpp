@@ -29,8 +29,8 @@
 
 #include "Cluster.h"
 #include "Database.h"
-#include "NodeCallback.h"
 #include "options.h"
+#include "future.h"
 
 using namespace v8;
 using namespace std;
@@ -48,6 +48,7 @@ void Cluster::Init() {
   tpl->SetClassName(Nan::New<v8::String>("Cluster").ToLocalChecked());
   tpl->InstanceTemplate()->SetInternalFieldCount(1);
 
+  Nan::SetPrototypeMethod(tpl, "openDatabaseSync", OpenDatabaseSync);
   Nan::SetPrototypeMethod(tpl, "openDatabase", OpenDatabase);
 
   constructor.Reset(tpl->GetFunction());
@@ -73,11 +74,14 @@ Local<Value> Cluster::NewInstance(FDBCluster *ptr) {
   return scope.Escape(instance);
 }
 
-void Cluster::OpenDatabase(const Nan::FunctionCallbackInfo<Value>& info) {
-  Cluster *clusterPtr = ObjectWrap::Unwrap<Cluster>(info.Holder());
+static FDBFuture *createDbFuture(FDBCluster *cluster, Local<Value> name) {
+  std::string dbName = *String::Utf8Value(name->ToString());
+  return fdb_cluster_create_database(cluster, (uint8_t*)dbName.c_str(), (int)strlen(dbName.c_str()));
+}
 
-  std::string dbName = *String::Utf8Value(info[0]->ToString());
-  FDBFuture *f = fdb_cluster_create_database(clusterPtr->cluster, (uint8_t*)dbName.c_str(), (int)strlen(dbName.c_str()));
+void Cluster::OpenDatabaseSync(const Nan::FunctionCallbackInfo<Value>& info) {
+  Cluster *clusterPtr = ObjectWrap::Unwrap<Cluster>(info.Holder());
+  FDBFuture *f = createDbFuture(clusterPtr->cluster, info[0]);
 
   fdb_error_t errorCode = fdb_future_block_until_ready(f);
 
@@ -91,4 +95,18 @@ void Cluster::OpenDatabase(const Nan::FunctionCallbackInfo<Value>& info) {
   Local<Value> jsValue = Database::NewInstance(database);
 
   info.GetReturnValue().Set(jsValue);
+}
+
+void Cluster::OpenDatabase(const Nan::FunctionCallbackInfo<Value>& info) {
+  Cluster *clusterPtr = ObjectWrap::Unwrap<Cluster>(info.Holder());
+  FDBFuture *f = createDbFuture(clusterPtr->cluster, info[0]);
+
+  auto promise = futureToJS(f, info[1], [](FDBFuture* f, fdb_error_t* errOut) -> Local<Value> {
+    FDBDatabase *database;
+    *errOut = fdb_future_get_database(f, &database);
+
+    if (*errOut == 0) return Database::NewInstance(database);
+    else return Nan::Undefined();
+  });
+  info.GetReturnValue().Set(promise);
 }

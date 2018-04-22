@@ -38,6 +38,7 @@ class Cluster : public node::ObjectWrap {
     static void Init();
     static v8::Local<v8::Value> NewInstance(FDBCluster *ptr);
     static void New(const Nan::FunctionCallbackInfo<v8::Value>& info);
+    static void OpenDatabaseSync(const Nan::FunctionCallbackInfo<v8::Value>& info);
     static void OpenDatabase(const Nan::FunctionCallbackInfo<v8::Value>& info);
     static void Destroy(const Nan::FunctionCallbackInfo<v8::Value>& info);
 

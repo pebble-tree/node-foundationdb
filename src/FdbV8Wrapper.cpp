@@ -29,7 +29,6 @@
 #include <node_version.h>
 
 #include "Database.h"
-#include "NodeCallback.h"
 #include "Cluster.h"
 #include "Version.h"
 #include "FdbError.h"
