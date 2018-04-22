@@ -10,7 +10,7 @@ This is not yet production ready. The APIs will drift slightly over the next few
 
 #### Step 1
 
-[Download a copy of foundationdb](https://www.foundationdb.org/download/)
+[Install foundationdb](https://www.foundationdb.org/download/). At a minimum you need the client library + C bindings.
 
 #### Step 2
 
