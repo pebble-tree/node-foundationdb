@@ -36,14 +36,10 @@
 #include <node_version.h>
 #include <foundationdb/fdb_c.h>
 
-#if NODE_VERSION_AT_LEAST(0, 7, 9)
-#else
-#error Node version too old
-#endif
-
-using namespace std;
-using namespace v8;
-using namespace node;
+using v8::Local;
+using v8::Value;
+using v8::Function;
+// using namespace node;
 
 struct NodeCallback {
 
@@ -99,7 +95,7 @@ private:
   static void nodeThreadCallback(uv_async_t *handle) {
     Nan::HandleScope scope;
 
-    Isolate *isolate = Isolate::GetCurrent();
+    v8::Isolate *isolate = v8::Isolate::GetCurrent();
     NodeCallback *nc = (NodeCallback*)handle->data;
     FDBFuture *future = nc->future;
 
@@ -108,7 +104,7 @@ private:
     Local<Value> jsError;
     Local<Value> jsValue;
 
-    fdb_error_t errorCode;
+    fdb_error_t errorCode = 0;
     jsValue = nc->extractValue(future, errorCode);
     if (errorCode == 0)
       jsError = Nan::Null();
@@ -123,7 +119,7 @@ private:
     callback->Call(isolate->GetCurrentContext()->Global(), 2, args);
 
     if(ex.HasCaught())
-      fprintf(stderr, "\n%s\n", *String::Utf8Value(ex.StackTrace().ToLocalChecked()->ToString()));
+      fprintf(stderr, "\n%s\n", *v8::String::Utf8Value(ex.StackTrace().ToLocalChecked()->ToString()));
 
     nc->close();
   }
@@ -138,7 +134,7 @@ protected:
 
   static Local<Value> makeBuffer(const char *arr, int length) {
     Nan::EscapableHandleScope scope;
-    Local<Object> buf = Nan::CopyBuffer(arr, length).ToLocalChecked();
+    Local<v8::Object> buf = Nan::CopyBuffer(arr, length).ToLocalChecked();
     return scope.Escape(buf);
   }
 };

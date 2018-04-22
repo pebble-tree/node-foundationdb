@@ -34,6 +34,10 @@ void FdbError::Init(Local<Object> module) {
   ::module.Reset(module);
 }
 
+Local<Value> FdbError::NewInstance(fdb_error_t code) {
+  return FdbError::NewInstance(code, fdb_get_error(code));
+}
+
 Local<Value> FdbError::NewInstance(fdb_error_t code, const char *description) {
   Isolate *isolate = Isolate::GetCurrent();
   Nan::EscapableHandleScope scope;

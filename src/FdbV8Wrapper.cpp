@@ -34,13 +34,16 @@
 #include "Version.h"
 #include "FdbError.h"
 #include "options.h"
-
-uv_thread_t fdbThread;
+#include "future.h"
 
 using namespace v8;
 using namespace std;
 
-bool networkStarted = false;
+
+static uv_thread_t fdbThread;
+
+static bool networkStarted = false;
+
 
 void ApiVersion(const Nan::FunctionCallbackInfo<Value>& info) {
   int apiVersion = info[0]->Int32Value();
@@ -49,11 +52,12 @@ void ApiVersion(const Nan::FunctionCallbackInfo<Value>& info) {
   if(errorCode != 0) {
     if (errorCode == 2203)
       return Nan::ThrowError(FdbError::NewInstance(errorCode, "API version not supported by the installed FoundationDB C library"));
-    return Nan::ThrowError(FdbError::NewInstance(errorCode, fdb_get_error(errorCode)));
+    return Nan::ThrowError(FdbError::NewInstance(errorCode));
   }
 
   info.GetReturnValue().SetNull();
 }
+
 
 static void networkThread(void *arg) {
   fdb_error_t errorCode = fdb_run_network();
@@ -65,30 +69,50 @@ static void runNetwork() {
   fdb_error_t errorCode = fdb_setup_network();
 
   if(errorCode != 0)
-    return Nan::ThrowError(FdbError::NewInstance(errorCode, fdb_get_error(errorCode)));
+    return Nan::ThrowError(FdbError::NewInstance(errorCode));
 
   uv_thread_create(&fdbThread, networkThread, NULL);  // FIXME: Return code?
 }
 
-void CreateCluster(const Nan::FunctionCallbackInfo<Value>& info) {
+
+static FDBFuture *createClusterFuture(Local<Value> filenameOrNull) {
+  const char *path = (filenameOrNull->IsNull() || filenameOrNull->IsUndefined())
+    ? NULL : *String::Utf8Value(filenameOrNull->ToString());
+
+  return fdb_create_cluster(path);
+}
+
+void CreateClusterSync(const Nan::FunctionCallbackInfo<Value>& info) {
   Isolate *isolate = Isolate::GetCurrent();
   Nan::EscapableHandleScope scope;
 
-  const char *path = (info.Length() < 1 || info[0]->IsNull() || info[0]->IsUndefined())
-    ? NULL : *String::Utf8Value(info[0]->ToString());
-
-  FDBFuture *f = fdb_create_cluster(path);
+  FDBFuture *f = createClusterFuture(info[0]);
   fdb_error_t errorCode = fdb_future_block_until_ready(f);
 
   FDBCluster *cluster;
-  if(errorCode == 0)
-    errorCode = fdb_future_get_cluster(f, &cluster);
+  if(errorCode == 0) errorCode = fdb_future_get_cluster(f, &cluster);
 
-  if(errorCode != 0)
-    return Nan::ThrowError(FdbError::NewInstance(errorCode, fdb_get_error(errorCode)));
+  if(errorCode) return Nan::ThrowError(FdbError::NewInstance(errorCode));
 
   Local<Value> jsValue = Local<Value>::New(isolate, Cluster::NewInstance(cluster));
   info.GetReturnValue().Set(jsValue);
+}
+
+void CreateCluster(const Nan::FunctionCallbackInfo<Value>& info) {
+  FDBFuture *f = createClusterFuture(info[0]);
+  auto promise = futureToJS(f, info[1], [](FDBFuture* f, fdb_error_t* errOut) -> Local<Value> {
+    Isolate *isolate = Isolate::GetCurrent();
+
+    FDBCluster *cluster;
+    auto errorCode = fdb_future_get_cluster(f, &cluster);
+    if (errorCode) {
+      *errOut = errorCode;
+      return Undefined(isolate);
+    }
+
+    return Local<Value>::New(isolate, Cluster::NewInstance(cluster));
+  });
+  info.GetReturnValue().Set(promise);
 }
 
 void SetNetworkOption(const Nan::FunctionCallbackInfo<Value>& info) {
@@ -108,7 +132,7 @@ void StopNetwork(const Nan::FunctionCallbackInfo<Value>& info) {
   fdb_error_t errorCode = fdb_stop_network();
 
   if(errorCode != 0)
-    return Nan::ThrowError(FdbError::NewInstance(errorCode, fdb_get_error(errorCode)));
+    return Nan::ThrowError(FdbError::NewInstance(errorCode));
 
   uv_thread_join(&fdbThread);
 
@@ -120,6 +144,7 @@ void StopNetwork(const Nan::FunctionCallbackInfo<Value>& info) {
   // FdbOptions::Clear();
 }
 
+
 NAN_MODULE_INIT(init){
   FdbError::Init( target );
   Database::Init();
@@ -129,6 +154,7 @@ NAN_MODULE_INIT(init){
 
   Nan::Set(target, Nan::New<v8::String>("apiVersion").ToLocalChecked(), Nan::New<v8::FunctionTemplate>(ApiVersion)->GetFunction());
   Nan::Set(target, Nan::New<v8::String>("createCluster").ToLocalChecked(), Nan::New<v8::FunctionTemplate>(CreateCluster)->GetFunction());
+  Nan::Set(target, Nan::New<v8::String>("createClusterSync").ToLocalChecked(), Nan::New<v8::FunctionTemplate>(CreateClusterSync)->GetFunction());
   Nan::Set(target, Nan::New<v8::String>("setNetworkOption").ToLocalChecked(), Nan::New<v8::FunctionTemplate>(SetNetworkOption)->GetFunction());
   Nan::Set(target, Nan::New<v8::String>("startNetwork").ToLocalChecked(), Nan::New<v8::FunctionTemplate>(StartNetwork)->GetFunction());
   Nan::Set(target, Nan::New<v8::String>("stopNetwork").ToLocalChecked(), Nan::New<v8::FunctionTemplate>(StopNetwork)->GetFunction());

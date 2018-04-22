@@ -32,7 +32,6 @@
 #include "Transaction.h"
 #include "NodeCallback.h"
 #include "FdbError.h"
-#include "FdbOptions.h"
 
 using namespace v8;
 using namespace std;
