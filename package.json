@@ -1,6 +1,6 @@
 {
   "name": "foundationdb",
-  "version": "0.0.2",
+  "version": "0.1.0",
   "description": "Node.js bindings for the FoundationDB database",
   "keywords": [
     "FoundationDB",
@@ -16,7 +16,7 @@
     "x64"
   ],
   "scripts": {
-    "build": "tsc"
+    "install": "node-gyp rebuild"
   },
   "dependencies": {
     "bindings": "*",
@@ -31,9 +31,6 @@
   },
   "engines": {
     "node": ">=8.0.0"
-  },
-  "scripts": {
-    "install": "node-gyp rebuild"
   },
   "gypfile": true
 }
