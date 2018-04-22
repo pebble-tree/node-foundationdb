@@ -33,8 +33,10 @@ template<class T> void resolveFutureInMainLoop(FDBFuture *f, T* ctx, void (*fn)(
     ctx->fn(ctx->future, ctx);
 
     fdb_future_destroy(ctx->future);
-    uv_close((uv_handle_t *)async, NULL);
-    delete ctx;
+    uv_close((uv_handle_t *)async, [](uv_handle_t *handle) {
+      T* ctx = static_cast<T*>(handle->data);
+      delete ctx;
+    });
   }));
 
   assert(0 == fdb_future_set_callback(f, [](FDBFuture *f, void *_ctx) {
