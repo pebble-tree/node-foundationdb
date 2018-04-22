@@ -22,20 +22,14 @@ npm install --save foundationdb
 
 ```javascript
 const fdb = require('foundationdb')
+// or  import fdb from 'foundationdb'
 
-const db = fdb.openSync('fdb.cluster')
+const db = fdb.openSync('fdb.cluster') // or just openSync() if the database is local.
 
 db.transact(async tn => {
-	console.log(await tn.getStr('hi'))
-	tn.set('hi', 'yo')
+  console.log('key hi has value', await tn.getStr('hi'))
+  tn.set('hi', 'yo')
 })
-```
-
-Or from typescript:
-
-```typescript
-import fdb from 'foundationdb'
-// ... Same as above but everything has types!
 ```
 
 The bindings currently support all the standard KV operations except range reads. They should be added over the next week or so.
