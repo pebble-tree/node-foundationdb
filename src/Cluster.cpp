@@ -30,6 +30,7 @@
 #include "Cluster.h"
 #include "Database.h"
 #include "future.h"
+#include "FdbError.h"
 
 using namespace v8;
 using namespace std;

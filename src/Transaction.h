@@ -28,8 +28,7 @@
 
 #include <foundationdb/fdb_c.h>
 #include <node.h>
-
-#include "NodeCallback.h"
+#include <nan.h>
 
 class Transaction: public node::ObjectWrap {
   public:
@@ -70,9 +69,6 @@ class Transaction: public node::ObjectWrap {
     static void GetAddressesForKey(const Nan::FunctionCallbackInfo<v8::Value>& info);
 
 
-
-
-    FDBTransaction* GetTransaction() { return tr; }
   private:
     Transaction();
     ~Transaction();
@@ -82,23 +78,6 @@ class Transaction: public node::ObjectWrap {
 
     static void AddConflictRange(const Nan::FunctionCallbackInfo<v8::Value>& info, FDBConflictRangeType type);
     static FDBTransaction* GetTransactionFromArgs(const Nan::FunctionCallbackInfo<v8::Value>& info);
-};
-
-class Watch : public node::ObjectWrap {
-  public:
-    static void Init();
-
-    static v8::Local<v8::Value> NewInstance(NodeCallback *callback);
-    static void New(const Nan::FunctionCallbackInfo<v8::Value>& info);
-
-    static void Cancel(const Nan::FunctionCallbackInfo<v8::Value>& info);
-
-  private:
-    Watch();
-    ~Watch();
-
-    static Nan::Persistent<v8::Function> constructor;
-    NodeCallback *callback;
 };
 
 #endif

@@ -31,7 +31,6 @@
 
 #include "options.h"
 #include "Transaction.h"
-#include "NodeCallback.h"
 #include "FdbError.h"
 
 #include "future.h"

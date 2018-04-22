@@ -19,6 +19,7 @@ template<class T> struct Ctx {
   uv_async_t async;
 };
 template<class T> void resolveFutureInMainLoop(FDBFuture *f, T* ctx, void (*fn)(FDBFuture *f, T*)) {
+  // printf("resolveFutureInMainLoop called\n");
   // Ctx *ctx = new Ctx;
   ctx->future = f;
   ctx->fn = fn;
@@ -27,6 +28,7 @@ template<class T> void resolveFutureInMainLoop(FDBFuture *f, T* ctx, void (*fn)(
   ctx->async.data = ctx;
   // TODO: Handle error on async_init failing. Probably just assert.
   assert(0 == uv_async_init(uv_default_loop(), &ctx->async, [](uv_async_t *async) {
+    // printf("uv_async fired\n");
     T* ctx = static_cast<T*>(async->data);
     ctx->fn(ctx->future, ctx);
 
@@ -36,6 +38,7 @@ template<class T> void resolveFutureInMainLoop(FDBFuture *f, T* ctx, void (*fn)(
   }));
 
   assert(0 == fdb_future_set_callback(f, [](FDBFuture *f, void *_ctx) {
+    // printf("future callback fired\n");
     T* ctx = static_cast<T*>(_ctx);
     uv_async_send(&ctx->async);
   }, ctx));
@@ -116,26 +119,6 @@ Local<Value> futureToJS(FDBFuture *f, Local<Value> cbOrNull, ExtractValueFn *ext
   return v8::Undefined(Isolate::GetCurrent());
 }
 
-
-
-
-// struct Watch : public node::ObjectWrap {
-
-//   static v8::Local<v8::Value> NewInstance(NodeCallback *callback);
-//   static void New(const Nan::FunctionCallbackInfo<v8::Value>& info) {
-//     Watch *c = new Watch();
-//     c->Wrap(info.Holder());
-//   }
-
-//   static void Cancel(const Nan::FunctionCallbackInfo<v8::Value>& info) {
-//     FDBFuture *future = node::ObjectWrap::Unwrap<Watch>(info.Holder())->futureOrNull;
-//     if (future) fdb_future_cancel(future);
-//   }
-
-//   FDBFuture *futureOrNull;
-// };
-
-
 static void Cancel(const Nan::FunctionCallbackInfo<v8::Value>& info) {
   Local<Object> t = info.This();
   FDBFuture *future = (FDBFuture *)(t->GetAlignedPointerFromInternalField(0));
@@ -171,8 +154,6 @@ Local<Object> watchFuture(FDBFuture *f, Local<Function> listener) {
   ctx->jsWatch.Reset(jsWatch);
 
   resolveFutureInMainLoop<Ctx2>(f, ctx, [](FDBFuture *f, Ctx2 *ctx) {
-    printf("resolveFutureInMainLoop\n");
-
     Nan::HandleScope scope;
 
     v8::Isolate *isolate = v8::Isolate::GetCurrent();

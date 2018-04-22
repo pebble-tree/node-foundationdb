@@ -28,6 +28,7 @@
 
 #include "Database.h"
 #include "options.h"
+#include "FdbError.h"
 
 using namespace v8;
 using namespace std;
