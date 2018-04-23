@@ -4,16 +4,25 @@ import {
   Value,
   Version
 } from './native'
-import {eachOption} from './util'
+import {eachOption, strInc, strNext} from './util'
 import {KeySelector} from './keySelector'
+
+const byteZero = new Buffer(1)
+byteZero.writeUInt8(0, 0)
 
 export default class Transaction {
   _tn: NativeTransaction
+  isSnapshot: boolean
 
-  constructor(tn: NativeTransaction, opts: any) {
+  constructor(tn: NativeTransaction, snapshot: boolean, opts?: any) {
     this._tn = tn
-    eachOption('TransactionOption', opts, (code, val) => tn.setOption(code, val))
+    if (opts) eachOption('TransactionOption', opts, (code, val) => tn.setOption(code, val))
+    this.isSnapshot = snapshot
+  }
 
+  // Returns a mirror transaction which does snapshot reads.
+  snapshot(): Transaction {
+    return new Transaction(this._tn, true)
   }
 
   // You probably don't want to call any of these functions directly. Instead call db.transact(async tn => {...}).
@@ -33,12 +42,10 @@ export default class Transaction {
     return cb ? this._tn.onError(code, cb) : this._tn.onError(code)
   }
 
-
-
   get(key: Value): Promise<Buffer | null>
   get(key: Value, cb: Callback<Buffer | null>): void
   get(key: Value, cb?: Callback<Buffer | null>) {
-    return cb ? this._tn.get(key, false, cb) : this._tn.get(key, false)
+    return cb ? this._tn.get(key, this.isSnapshot, cb) : this._tn.get(key, this.isSnapshot)
   }
   getStr(key: Value): Promise<string | null> {
     return this.get(key).then(val => val ? val.toString() : null)
@@ -48,11 +55,9 @@ export default class Transaction {
   getKey(sel: KeySelector, cb: Callback<Value>): void
   getKey(sel: KeySelector, cb?: Callback<Value>) {
     return cb
-      ? this._tn.getKey(sel.key, sel.orEqual, sel.offset, false, cb)
-      : this._tn.getKey(sel.key, sel.orEqual, sel.offset, false)
+      ? this._tn.getKey(sel.key, sel.orEqual, sel.offset, this.isSnapshot, cb)
+      : this._tn.getKey(sel.key, sel.orEqual, sel.offset, this.isSnapshot)
   }
-
-  // TODO: getSnapshot, getKeySnapshot.
 
   set(key: Value, val: Value) { this._tn.set(key, val) }
   clear(key: Value) { this._tn.clear(key) }
@@ -65,6 +70,9 @@ export default class Transaction {
   // ): Promise<KVList>
 
   clearRange(start: Value, end: Value) { this._tn.clearRange(start, end) }
+  clearRangeStartsWith(prefix: Value) {
+    this.clearRange(prefix, strInc(prefix))
+  }
 
   watch(key: Value, listener: Callback<void>) {
     // This API is probably fine... I could return a Promise for the watch but
@@ -73,7 +81,16 @@ export default class Transaction {
   }
 
   addReadConflictRange(start: Value, end: Value) { this._tn.addReadConflictRange(start, end) }
+  addReadConflictKey(key: Value) {
+    const keyBuf = Buffer.from(key)
+    this.addReadConflictRange(keyBuf, strNext(keyBuf))
+  }
+
   addWriteConflictRange(start: Value, end: Value) { this._tn.addWriteConflictRange(start, end) }
+  addWriteConflictKey(key: Value) {
+    const keyBuf = Buffer.from(key)
+    this.addWriteConflictRange(keyBuf, strNext(keyBuf))
+  }
 
   setReadVersion(v: Version) { this._tn.setReadVersion(v) }
 

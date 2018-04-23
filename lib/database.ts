@@ -1,6 +1,8 @@
 import * as fdb from './native'
 import {eachOption} from './util'
 import Transaction from './transaction'
+import {Value} from './native'
+import {KeySelector} from './keySelector'
 
 export type DbOptions = any
 
@@ -13,11 +15,8 @@ export default class Database {
     eachOption('DatabaseOption', opts, (code, val) => db.setOption(code, val))
   }
 
-  createTransaction(opts?: any) {
-    return new Transaction(this._db.createTransaction(), opts)
-  }
-
-  async transact<T>(body: (tn: Transaction) => Promise<T>, opts?: any): Promise<T> {
+  // This is the API you want to use for non-trivial transactions.
+  async doTransaction<T>(body: (tn: Transaction) => Promise<T>, opts?: any): Promise<T> {
     const tn = this.createTransaction(opts)
 
     // Logic described here:
@@ -33,4 +32,68 @@ export default class Database {
       }
     } while (true)
   }
+
+  doOneshot(body: (tn: Transaction) => void, opts?: any): Promise<void> {
+    // TODO: Could this be written better? It doesn't need a retry loop.
+    return this.doTransaction(tn => {
+      body(tn)
+      return Promise.resolve()
+    })
+  }
+
+  // This is for advanced usage only. You probably don't want to create
+  // transactions manually. Use doTransaction instead.
+  createTransaction(opts?: any) {
+    return new Transaction(this._db.createTransaction(), opts)
+  }
+
+
+  get(key: Value): Promise<Buffer | null> {
+    return this.doTransaction(tn => tn.get(key))
+  }
+  getKey(selector: KeySelector): Promise<Value> {
+    return this.doTransaction(tn => tn.getKey(selector))
+  }
+
+  set(key: Value, value: Value) {
+    return this.doOneshot(tn => tn.set(key, value))
+  }
+
+  clear(key: Value) {
+    return this.doOneshot(tn => tn.clear(key))
+  }
+
+  clearRange(start: Value, end: Value) {
+    return this.doOneshot(tn => tn.clearRange(start, end))
+  }
+
+  clearRangeStartsWith(prefix: Value) {
+    return this.doOneshot(tn => tn.clearRangeStartsWith(prefix))
+  }
+
+  getAndWatch(key: Value, listener: fdb.Callback<void>): Promise<fdb.Watch & {value: Buffer | null}> {
+    return this.doTransaction(async tn => {
+      const value = await tn.get(key)
+      const watch = tn.watch(key, listener) as any
+      watch.value = value
+      return watch
+    })
+  }
+
+  // TODO: What happens if this set conflicts? Does the watch promise fire to be aborted?
+  setAndWatch(key: Value, value: Value, listener: fdb.Callback<void>): Promise<fdb.Watch> {
+    return this.doTransaction(async tn => {
+      tn.set(key, value)
+      return tn.watch(key, listener)
+    })
+  }
+
+  clearAndWatch(key: Value, listener: fdb.Callback<void>): Promise<fdb.Watch> {
+    return this.doTransaction(async tn => {
+      tn.clear(key)
+      return tn.watch(key, listener)
+    })
+  }
+
+  // TODO: getRange
 }
