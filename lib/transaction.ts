@@ -5,10 +5,29 @@ import {
   Version
 } from './native'
 import {eachOption, strInc, strNext} from './util'
-import {KeySelector} from './keySelector'
+import {KeySelector, toKeySelector} from './keySelector'
 
 const byteZero = new Buffer(1)
 byteZero.writeUInt8(0, 0)
+
+
+export enum StreamingMode {
+  // TODO: Ideally this should be generated along with options.g.json.
+  WantAll = -2,
+  Iterator = -1, // default.
+  Exact = 0,
+  Small = 1,
+  Medium = 2,
+  Large = 3,
+  Serial = 4,
+}
+
+export interface RangeOptions {
+  limit: number,
+  targetBytes: number,
+  reverse: boolean,
+  streamingMode: StreamingMode,
+}
 
 export default class Transaction {
   _tn: NativeTransaction
@@ -62,12 +81,20 @@ export default class Transaction {
   set(key: Value, val: Value) { this._tn.set(key, val) }
   clear(key: Value) { this._tn.clear(key) }
 
-  // getRange(
-  //   start: KeySelector | Value,
-  //   end: KeySelector | Value,
-  //   limit: number, target_bytes: number,
-  //   mode: StreamingMode, iter: number, isSnapshot: boolean, reverse: boolean
-  // ): Promise<KVList>
+  getRangeRaw(
+      _start: string | Buffer | KeySelector, // Consider also supporting string / buffers for these.
+      _end: string | Buffer | KeySelector,
+      opts: RangeOptions,
+      iter: number = 0) {
+
+    const start = toKeySelector(_start)
+    const end = toKeySelector(_end)
+    return this._tn.getRange(
+      start.key, start.orEqual, start.offset,
+      end.key, end.orEqual, end.offset,
+      opts.limit, opts.targetBytes, opts.streamingMode as number,
+      iter, this.isSnapshot, opts.reverse)
+  }
 
   clearRange(start: Value, end: Value) { this._tn.clearRange(start, end) }
   clearRangeStartsWith(prefix: Value) {
