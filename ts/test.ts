@@ -1,4 +1,4 @@
-import fdb from './index'
+import fdb = require('./index')
 
 process.on('unhandledRejection', err => { throw err })
 
