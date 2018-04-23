@@ -55,7 +55,7 @@ const createClusterSync = (clusterFile?: string) => {
   return wrapCluster(nativeMod.createClusterSync(clusterFile))
 }
 
-export default {
+export = {
   FDBError,
   // KeySelector,
   // transactional: Transactional,

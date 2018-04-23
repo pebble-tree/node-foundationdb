@@ -22,7 +22,6 @@ npm install --save foundationdb
 
 ```javascript
 const fdb = require('foundationdb')
-// or  import fdb from 'foundationdb'
 
 const db = fdb.openSync('fdb.cluster') // or just openSync() if the database is local.
 
