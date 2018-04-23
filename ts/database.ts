@@ -17,16 +17,16 @@ export default class Database {
     return new Transaction(this._db.createTransaction(), opts)
   }
 
-  async transact(body: (tn: Transaction) => Promise<void>, opts?: any) {
+  async transact<T>(body: (tn: Transaction) => Promise<T>, opts?: any): Promise<T> {
     const tn = this.createTransaction(opts)
 
     // Logic described here:
     // https://apple.github.io/foundationdb/api-c.html#c.fdb_transaction_on_error
     do {
       try {
-        await body(tn)
+        const result: T = await body(tn)
         await tn.commit()
-        break // Ok, success.
+        return result // Ok, success.
       } catch (err) {
         await tn.onError(err.code) // If this throws, punt error to caller.
         // If that passed, loop.

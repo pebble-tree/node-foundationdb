@@ -31,8 +31,8 @@ export interface NativeTransaction {
   onError(code: number, cb: Callback<void>): void
   onError(code: number): Promise<void>
 
-  get(key: Value, isSnapshot: boolean): Promise<Value>
-  get(key: Value, isSnapshot: boolean, cb: Callback<Value>): void
+  get(key: Value, isSnapshot: boolean): Promise<Buffer | null>
+  get(key: Value, isSnapshot: boolean, cb: Callback<Buffer | null>): void
   getKey(key: Value, orEqual: boolean, offset: number, isSnapshot: boolean): Promise<Value>
   getKey(key: Value, orEqual: boolean, offset: number, isSnapshot: boolean, cb: Callback<Value>): void
   set(key: Value, val: Value): void

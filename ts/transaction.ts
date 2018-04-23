@@ -35,9 +35,9 @@ export default class Transaction {
 
 
 
-  get(key: Value): Promise<Value>
-  get(key: Value, cb: Callback<Value>): void
-  get(key: Value, cb?: Callback<Value>) {
+  get(key: Value): Promise<Buffer | null>
+  get(key: Value, cb: Callback<Buffer | null>): void
+  get(key: Value, cb?: Callback<Buffer | null>) {
     return cb ? this._tn.get(key, false, cb) : this._tn.get(key, false)
   }
   getStr(key: Value): Promise<string | null> {
