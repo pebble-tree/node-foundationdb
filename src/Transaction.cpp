@@ -81,7 +81,7 @@ struct StringParams {
 
 // **** Transaction
 
-FDBTransaction* Transaction::GetTransactionFromArgs(const Nan::FunctionCallbackInfo<Value>& info) {
+FDBTransaction* Transaction::GetTransactionFromArgs(const FunctionCallbackInfo<Value>& info) {
   return node::ObjectWrap::Unwrap<Transaction>(info.Holder())->tr;
 }
 
@@ -187,7 +187,7 @@ static Local<Value> getVersion(FDBFuture* future, fdb_error_t* errOut) {
 
 
 // setOption(code, value).
-void Transaction::SetOption(const Nan::FunctionCallbackInfo<v8::Value>& args) {
+void Transaction::SetOption(const FunctionCallbackInfo<v8::Value>& args) {
   // database.setOptionStr(opt_id, "value")
   FDBTransaction *tr = GetTransactionFromArgs(args);
   set_option_wrapped(tr, OptTransaction, args);
@@ -195,23 +195,23 @@ void Transaction::SetOption(const Nan::FunctionCallbackInfo<v8::Value>& args) {
 
 
 // commit()
-void Transaction::Commit(const Nan::FunctionCallbackInfo<Value>& info) {
+void Transaction::Commit(const FunctionCallbackInfo<Value>& info) {
   FDBFuture *f = fdb_transaction_commit(GetTransactionFromArgs(info));
   info.GetReturnValue().Set(futureToJS(f, info[0], ignoreResult));
 }
 
 // Reset the transaction so it can be reused.
-void Transaction::Reset(const Nan::FunctionCallbackInfo<Value>& info) {
+void Transaction::Reset(const FunctionCallbackInfo<Value>& info) {
   fdb_transaction_reset(GetTransactionFromArgs(info));
 }
 
-void Transaction::Cancel(const Nan::FunctionCallbackInfo<Value>& info) {
+void Transaction::Cancel(const FunctionCallbackInfo<Value>& info) {
   fdb_transaction_cancel(GetTransactionFromArgs(info));
 }
 
 // See fdb_transaction_on_error documentation to see how to handle this.
 // This is all wrapped by JS.
-void Transaction::OnError(const Nan::FunctionCallbackInfo<Value>& info) {
+void Transaction::OnError(const FunctionCallbackInfo<Value>& info) {
   fdb_error_t errorCode = info[0]->Int32Value();
   FDBFuture *f = fdb_transaction_on_error(GetTransactionFromArgs(info), errorCode);
   info.GetReturnValue().Set(futureToJS(f, info[1], ignoreResult));
@@ -220,7 +220,7 @@ void Transaction::OnError(const Nan::FunctionCallbackInfo<Value>& info) {
 
 
 // Get(key, isSnapshot, [cb])
-void Transaction::Get(const Nan::FunctionCallbackInfo<Value>& info) {
+void Transaction::Get(const FunctionCallbackInfo<Value>& info) {
   StringParams key(info[0]);
   bool snapshot = info[1]->BooleanValue();
 
@@ -233,7 +233,7 @@ void Transaction::Get(const Nan::FunctionCallbackInfo<Value>& info) {
  * This function takes a KeySelector and returns a future.
  */
 // GetKey(key, selOrEq, offset, isSnapshot, [cb])
-void Transaction::GetKey(const Nan::FunctionCallbackInfo<Value>& info) {
+void Transaction::GetKey(const FunctionCallbackInfo<Value>& info) {
   StringParams key(info[0]);
   bool selectorOrEqual = info[1]->BooleanValue();
   int selectorOffset = info[2]->Int32Value();
@@ -245,7 +245,7 @@ void Transaction::GetKey(const Nan::FunctionCallbackInfo<Value>& info) {
 }
 
 // set(key, val). Syncronous.
-void Transaction::Set(const Nan::FunctionCallbackInfo<Value>& info){
+void Transaction::Set(const FunctionCallbackInfo<Value>& info){
   StringParams key(info[0]);
   StringParams val(info[1]);
   fdb_transaction_set(GetTransactionFromArgs(info), key.str, key.len, val.str, val.len);
@@ -253,13 +253,13 @@ void Transaction::Set(const Nan::FunctionCallbackInfo<Value>& info){
 
 // Delete value stored for key.
 // clear("somekey")
-void Transaction::Clear(const Nan::FunctionCallbackInfo<Value>& info) {
+void Transaction::Clear(const FunctionCallbackInfo<Value>& info) {
   StringParams key(info[0]);
   fdb_transaction_clear(GetTransactionFromArgs(info), key.str, key.len);
 }
 
 // atomicOp(key, operand key, mutationtype)
-void Transaction::AtomicOp(const Nan::FunctionCallbackInfo<Value>& info) {
+void Transaction::AtomicOp(const FunctionCallbackInfo<Value>& info) {
   StringParams key(info[0]);
   StringParams operand(info[1]);
   FDBMutationType operationType = (FDBMutationType)info[2]->Int32Value();
@@ -275,7 +275,7 @@ void Transaction::AtomicOp(const Nan::FunctionCallbackInfo<Value>& info) {
 //   snapshot, reverse,
 //   [cb]
 // )
-void Transaction::GetRange(const Nan::FunctionCallbackInfo<Value>& info) {
+void Transaction::GetRange(const FunctionCallbackInfo<Value>& info) {
   StringParams start(info[0]);
   int startOrEqual = info[1]->BooleanValue();
   int startOffset = info[2]->Int32Value();
@@ -304,7 +304,7 @@ void Transaction::GetRange(const Nan::FunctionCallbackInfo<Value>& info) {
 
 
 // clearRange(start, end). Clears range [start, end).
-void Transaction::ClearRange(const Nan::FunctionCallbackInfo<Value>& info) {
+void Transaction::ClearRange(const FunctionCallbackInfo<Value>& info) {
   StringParams begin(info[0]);
   StringParams end(info[1]);
   fdb_transaction_clear_range(GetTransactionFromArgs(info), begin.str, begin.len, end.str, end.len);
@@ -316,7 +316,7 @@ void Transaction::ClearRange(const Nan::FunctionCallbackInfo<Value>& info) {
 // Due to race conditions the listener may be called even after cancel has been called.
 //
 // TODO: Move this over to the new infrastructure.
-void Transaction::Watch(const Nan::FunctionCallbackInfo<Value>& info) {
+void Transaction::Watch(const FunctionCallbackInfo<Value>& info) {
   StringParams key(info[0]);
 
   Isolate *isolate = Isolate::GetCurrent();
@@ -334,29 +334,29 @@ void Transaction::Watch(const Nan::FunctionCallbackInfo<Value>& info) {
 
 
 // addConflictRange(start, end)
-void Transaction::AddReadConflictRange(const Nan::FunctionCallbackInfo<Value>& info) {
+void Transaction::AddReadConflictRange(const FunctionCallbackInfo<Value>& info) {
   AddConflictRange(info, FDB_CONFLICT_RANGE_TYPE_READ);
 }
 
 // addConflictRange(start, end)
-void Transaction::AddWriteConflictRange(const Nan::FunctionCallbackInfo<Value>& info) {
+void Transaction::AddWriteConflictRange(const FunctionCallbackInfo<Value>& info) {
   AddConflictRange(info, FDB_CONFLICT_RANGE_TYPE_WRITE);
 }
 
 
 // setReadVersion(version)
-void Transaction::SetReadVersion(const Nan::FunctionCallbackInfo<Value>& info) {
+void Transaction::SetReadVersion(const FunctionCallbackInfo<Value>& info) {
   // TODO: Support info[0] being an opaque buffer.
   int64_t version = info[0]->IntegerValue();
   fdb_transaction_set_read_version(GetTransactionFromArgs(info), version);
 }
 
-void Transaction::GetReadVersion(const Nan::FunctionCallbackInfo<Value>& info) {
+void Transaction::GetReadVersion(const FunctionCallbackInfo<Value>& info) {
   FDBFuture *f = fdb_transaction_get_read_version(GetTransactionFromArgs(info));
   info.GetReturnValue().Set(futureToJS(f, info[0], getVersion));
 }
 
-void Transaction::GetCommittedVersion(const Nan::FunctionCallbackInfo<Value>& info) {
+void Transaction::GetCommittedVersion(const FunctionCallbackInfo<Value>& info) {
   int64_t version;
   fdb_error_t errorCode = fdb_transaction_get_committed_version(GetTransactionFromArgs(info), &version);
 
@@ -369,13 +369,13 @@ void Transaction::GetCommittedVersion(const Nan::FunctionCallbackInfo<Value>& in
 }
 
 
-void Transaction::GetVersionStamp(const Nan::FunctionCallbackInfo<Value>& info) {
+void Transaction::GetVersionStamp(const FunctionCallbackInfo<Value>& info) {
   FDBFuture *f = fdb_transaction_get_read_version(GetTransactionFromArgs(info));
   info.GetReturnValue().Set(futureToJS(f, info[0], getKey));
 }
 
 // getAddressesForKey("somekey", [cb])
-void Transaction::GetAddressesForKey(const Nan::FunctionCallbackInfo<Value>& info) {
+void Transaction::GetAddressesForKey(const FunctionCallbackInfo<Value>& info) {
   StringParams key(info[0]);
 
   FDBFuture *f = fdb_transaction_get_addresses_for_key(GetTransactionFromArgs(info), key.str, key.len);
@@ -388,7 +388,7 @@ void Transaction::GetAddressesForKey(const Nan::FunctionCallbackInfo<Value>& inf
 
 
 // Not exposed to JS. Simple wrapper. Call AddReadConflictRange / AddWriteConflictRange.
-void Transaction::AddConflictRange(const Nan::FunctionCallbackInfo<Value>& info, FDBConflictRangeType type) {
+void Transaction::AddConflictRange(const FunctionCallbackInfo<Value>& info, FDBConflictRangeType type) {
   StringParams start(info[0]);
   StringParams end(info[1]);
 
@@ -405,7 +405,7 @@ void Transaction::AddConflictRange(const Nan::FunctionCallbackInfo<Value>& info,
 
 
 
-void Transaction::New(const Nan::FunctionCallbackInfo<Value>& info) {
+void Transaction::New(const FunctionCallbackInfo<Value>& info) {
   Transaction *tr = new Transaction();
   tr->Wrap(info.Holder());
 }
@@ -426,39 +426,40 @@ Local<Value> Transaction::NewInstance(FDBTransaction *ptr) {
 }
 
 void Transaction::Init() {
-  Local<FunctionTemplate> tpl = Nan::New<FunctionTemplate>(New);
+  Isolate *isolate = Isolate::GetCurrent();
+  Local<FunctionTemplate> tpl = FunctionTemplate::New(isolate, New);
 
   tpl->SetClassName(Nan::New<v8::String>("Transaction").ToLocalChecked());
   tpl->InstanceTemplate()->SetInternalFieldCount(1);
 
-  Nan::SetPrototypeMethod(tpl, "setOption", SetOption);
+  NODE_SET_PROTOTYPE_METHOD(tpl, "setOption", SetOption);
 
-  Nan::SetPrototypeMethod(tpl, "commit", Commit);
-  Nan::SetPrototypeMethod(tpl, "reset", Reset);
-  Nan::SetPrototypeMethod(tpl, "cancel", Cancel);
-  Nan::SetPrototypeMethod(tpl, "onError", OnError);
+  NODE_SET_PROTOTYPE_METHOD(tpl, "commit", Commit);
+  NODE_SET_PROTOTYPE_METHOD(tpl, "reset", Reset);
+  NODE_SET_PROTOTYPE_METHOD(tpl, "cancel", Cancel);
+  NODE_SET_PROTOTYPE_METHOD(tpl, "onError", OnError);
 
-  Nan::SetPrototypeMethod(tpl, "get", Get);
-  Nan::SetPrototypeMethod(tpl, "getKey", GetKey);
-  Nan::SetPrototypeMethod(tpl, "set", Set);
-  Nan::SetPrototypeMethod(tpl, "clear", Clear);
+  NODE_SET_PROTOTYPE_METHOD(tpl, "get", Get);
+  NODE_SET_PROTOTYPE_METHOD(tpl, "getKey", GetKey);
+  NODE_SET_PROTOTYPE_METHOD(tpl, "set", Set);
+  NODE_SET_PROTOTYPE_METHOD(tpl, "clear", Clear);
 
-  Nan::SetPrototypeMethod(tpl, "atomicOp", AtomicOp);
+  NODE_SET_PROTOTYPE_METHOD(tpl, "atomicOp", AtomicOp);
 
-  Nan::SetPrototypeMethod(tpl, "getRange", GetRange);
-  Nan::SetPrototypeMethod(tpl, "clearRange", ClearRange);
+  NODE_SET_PROTOTYPE_METHOD(tpl, "getRange", GetRange);
+  NODE_SET_PROTOTYPE_METHOD(tpl, "clearRange", ClearRange);
 
-  Nan::SetPrototypeMethod(tpl, "watch", Watch);
+  NODE_SET_PROTOTYPE_METHOD(tpl, "watch", Watch);
 
-  Nan::SetPrototypeMethod(tpl, "addReadConflictRange", AddReadConflictRange);
-  Nan::SetPrototypeMethod(tpl, "addWriteConflictRange", AddWriteConflictRange);
+  NODE_SET_PROTOTYPE_METHOD(tpl, "addReadConflictRange", AddReadConflictRange);
+  NODE_SET_PROTOTYPE_METHOD(tpl, "addWriteConflictRange", AddWriteConflictRange);
 
-  Nan::SetPrototypeMethod(tpl, "getReadVersion", GetReadVersion);
-  Nan::SetPrototypeMethod(tpl, "setReadVersion", SetReadVersion);
-  Nan::SetPrototypeMethod(tpl, "getCommittedVersion", GetCommittedVersion);
-  Nan::SetPrototypeMethod(tpl, "getVersionStamp", GetVersionStamp);
+  NODE_SET_PROTOTYPE_METHOD(tpl, "getReadVersion", GetReadVersion);
+  NODE_SET_PROTOTYPE_METHOD(tpl, "setReadVersion", SetReadVersion);
+  NODE_SET_PROTOTYPE_METHOD(tpl, "getCommittedVersion", GetCommittedVersion);
+  NODE_SET_PROTOTYPE_METHOD(tpl, "getVersionStamp", GetVersionStamp);
 
-  Nan::SetPrototypeMethod(tpl, "getAddressesForKey", GetAddressesForKey);
+  NODE_SET_PROTOTYPE_METHOD(tpl, "getAddressesForKey", GetAddressesForKey);
 
   constructor.Reset(tpl->GetFunction());
 }

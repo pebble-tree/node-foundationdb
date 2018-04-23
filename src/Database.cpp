@@ -42,18 +42,19 @@ Database::~Database() {
 Nan::Persistent<Function> Database::constructor;
 
 void Database::Init() {
-  Local<FunctionTemplate> tpl = Nan::New<FunctionTemplate>(New);
+  Isolate *isolate = Isolate::GetCurrent();
+  Local<FunctionTemplate> tpl = FunctionTemplate::New(isolate, New);
 
-  tpl->SetClassName(Nan::New<v8::String>("Database").ToLocalChecked());
+  tpl->SetClassName(Nan::New<String>("Database").ToLocalChecked());
   tpl->InstanceTemplate()->SetInternalFieldCount(1);
 
-  Nan::SetPrototypeMethod(tpl, "createTransaction", CreateTransaction);
-  Nan::SetPrototypeMethod(tpl, "setOption", SetOption);
+  NODE_SET_PROTOTYPE_METHOD(tpl, "createTransaction", CreateTransaction);
+  NODE_SET_PROTOTYPE_METHOD(tpl, "setOption", SetOption);
 
   constructor.Reset(tpl->GetFunction());
 }
 
-void Database::CreateTransaction(const Nan::FunctionCallbackInfo<v8::Value>& info) {
+void Database::CreateTransaction(const FunctionCallbackInfo<Value>& info) {
   Database *dbPtr = node::ObjectWrap::Unwrap<Database>(info.Holder());
   FDBDatabase *db = dbPtr->db;
   FDBTransaction *tr;
@@ -66,7 +67,7 @@ void Database::CreateTransaction(const Nan::FunctionCallbackInfo<v8::Value>& inf
   info.GetReturnValue().Set(Transaction::NewInstance(tr));
 }
 
-void Database::SetOption(const Nan::FunctionCallbackInfo<v8::Value>& args) {
+void Database::SetOption(const FunctionCallbackInfo<Value>& args) {
   // database.setOptionStr(opt_id, "value")
   Database *dbPtr = node::ObjectWrap::Unwrap<Database>(args.Holder());
   FDBDatabase *db = dbPtr->db;
@@ -74,7 +75,7 @@ void Database::SetOption(const Nan::FunctionCallbackInfo<v8::Value>& args) {
   set_option_wrapped(db, OptDatabase, args);
 }
 
-void Database::New(const Nan::FunctionCallbackInfo<Value>& info) {
+void Database::New(const FunctionCallbackInfo<Value>& info) {
   Database *db = new Database();
   db->Wrap(info.Holder());
 
@@ -90,7 +91,7 @@ Local<Value> Database::NewInstance(FDBDatabase *ptr) {
   Database *dbObj = ObjectWrap::Unwrap<Database>(instance);
   dbObj->db = ptr;
 
-  // instance->Set(Nan::New<v8::String>("options").ToLocalChecked(),
+  // instance->Set(Nan::New<String>("options").ToLocalChecked(),
   //   FdbOptions::CreateOptions(FdbOptions::DatabaseOption, instance));
 
   return scope.Escape(instance);

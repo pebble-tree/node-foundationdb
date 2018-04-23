@@ -18,7 +18,7 @@ static fdb_error_t set_option(void *target, OptionType type, int code, uint8_t c
   }
 }
 
-void set_option_wrapped(void *target, OptionType type, const Nan::FunctionCallbackInfo<v8::Value>& args) {
+void set_option_wrapped(void *target, OptionType type, const FunctionCallbackInfo<Value>& args) {
   // For network options, target is ignored.
   // args should contain code, value.
   Isolate *isolate = args.GetIsolate();

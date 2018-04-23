@@ -9,6 +9,6 @@ enum OptionType {
   OptTransaction,
 };
 
-void set_option_wrapped(void *target, OptionType type, const Nan::FunctionCallbackInfo<v8::Value>& args);
+void set_option_wrapped(void *target, OptionType type, const v8::FunctionCallbackInfo<v8::Value>& args);
 
 #endif

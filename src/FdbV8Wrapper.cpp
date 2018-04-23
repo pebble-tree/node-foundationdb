@@ -44,7 +44,7 @@ static uv_thread_t fdbThread;
 static bool networkStarted = false;
 
 
-void ApiVersion(const Nan::FunctionCallbackInfo<Value>& info) {
+void ApiVersion(const FunctionCallbackInfo<Value>& info) {
   int apiVersion = info[0]->Int32Value();
   fdb_error_t errorCode = fdb_select_api_version(apiVersion);
 
@@ -81,7 +81,7 @@ static FDBFuture *createClusterFuture(Local<Value> filenameOrNull) {
   return fdb_create_cluster(path);
 }
 
-void CreateClusterSync(const Nan::FunctionCallbackInfo<Value>& info) {
+void CreateClusterSync(const FunctionCallbackInfo<Value>& info) {
   Isolate *isolate = Isolate::GetCurrent();
   Nan::EscapableHandleScope scope;
 
@@ -97,7 +97,7 @@ void CreateClusterSync(const Nan::FunctionCallbackInfo<Value>& info) {
   info.GetReturnValue().Set(jsValue);
 }
 
-void CreateCluster(const Nan::FunctionCallbackInfo<Value>& info) {
+void CreateCluster(const FunctionCallbackInfo<Value>& info) {
   FDBFuture *f = createClusterFuture(info[0]);
   auto promise = futureToJS(f, info[1], [](FDBFuture* f, fdb_error_t* errOut) -> Local<Value> {
     Isolate *isolate = Isolate::GetCurrent();
@@ -114,18 +114,18 @@ void CreateCluster(const Nan::FunctionCallbackInfo<Value>& info) {
   info.GetReturnValue().Set(promise);
 }
 
-void SetNetworkOption(const Nan::FunctionCallbackInfo<Value>& info) {
+void SetNetworkOption(const FunctionCallbackInfo<Value>& info) {
   set_option_wrapped(NULL, OptNetwork, info);
 }
 
-void StartNetwork(const Nan::FunctionCallbackInfo<Value>& info) {
+void StartNetwork(const FunctionCallbackInfo<Value>& info) {
   if(!networkStarted) {
     networkStarted = true;
     runNetwork();
   }
 }
 
-void StopNetwork(const Nan::FunctionCallbackInfo<Value>& info) {
+void StopNetwork(const FunctionCallbackInfo<Value>& info) {
   fdb_error_t errorCode = fdb_stop_network();
 
   if(errorCode != 0)
@@ -138,7 +138,7 @@ void StopNetwork(const Nan::FunctionCallbackInfo<Value>& info) {
 }
 
 // (test, code) -> bool.
-void ErrorPredicate(const Nan::FunctionCallbackInfo<Value>& info) {
+void ErrorPredicate(const FunctionCallbackInfo<Value>& info) {
   int test = info[0]->Int32Value();
   fdb_error_t code = info[1]->Int32Value();
 
@@ -148,29 +148,29 @@ void ErrorPredicate(const Nan::FunctionCallbackInfo<Value>& info) {
   info.GetReturnValue().Set(Boolean::New(isolate, result));
 }
 
-NAN_MODULE_INIT(init){
-  FdbError::Init( target );
+void Init(Local<Object> exports, Local<Object> module) {
+  FdbError::Init( exports );
   Database::Init();
   Transaction::Init();
   Cluster::Init();
   initWatch();
 
-#define FN(name, fn) Nan::Set(target, Nan::New<v8::String>(name).ToLocalChecked(), Nan::New<v8::FunctionTemplate>(fn)->GetFunction())
-  FN("apiVersion", ApiVersion);
+// #define FN(name, fn) Nan::Set(exports, Nan::New<v8::String>(name).ToLocalChecked(), Nan::New<v8::FunctionTemplate>(fn)->GetFunction())
+  NODE_SET_METHOD(exports, "apiVersion", ApiVersion);
 
-  FN("startNetwork", StartNetwork);
-  FN("stopNetwork", StopNetwork);
+  NODE_SET_METHOD(exports, "startNetwork", StartNetwork);
+  NODE_SET_METHOD(exports, "stopNetwork", StopNetwork);
 
-  FN("setNetworkOption", SetNetworkOption);
+  NODE_SET_METHOD(exports, "setNetworkOption", SetNetworkOption);
 
-  FN("createCluster", CreateCluster);
-  FN("createClusterSync", CreateClusterSync);
+  NODE_SET_METHOD(exports, "createCluster", CreateCluster);
+  NODE_SET_METHOD(exports, "createClusterSync", CreateClusterSync);
 
-  FN("errorPredicate", ErrorPredicate);
+  NODE_SET_METHOD(exports, "errorPredicate", ErrorPredicate);
 }
 
 #if NODE_VERSION_AT_LEAST(8, 9, 0)
-NODE_MODULE(fdblib, init);
+NODE_MODULE(fdblib, Init);
 #else
 #error "Node.js versions before v8.9.0 are not supported"
 #endif
