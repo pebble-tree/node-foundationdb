@@ -210,11 +210,13 @@ The bindings do not currently support the `Directory` and `Tuple` layers. We hav
 - [x] Basic read range support
 - [x] Read range callback iterator support
 - [x] Read range async iterator
-- [ ] Document passing options
-- [ ] Document other transaction methods (get, set, getKey, etc)
+- [ ] API documentation for options (and TS types for them)
+- [ ] API documentation for all transaction methods (get, set, getKey, etc)
+- [ ] Test on windows (& fix any issues that arise)
 - [ ] Figure out a decent way to bundle the native `libfdb_c` code so users don't need to download their own copy
-- [ ] Tuple support
+- [x] Tuple support
 - [ ] Directory support
+- [ ] Subspace support
 - [ ] Add testing harness
 - [ ] Port basic tests
 - [ ] Testing integrated with the harness for the other bindings
