@@ -146,7 +146,7 @@ db.doTransaction(async tn => {
 
 If you want to process the results in batches, you can bulk iterate through the range. This has slightly better performance because it doesn't need to generate an iterator callback and promise for each key/value pair:
 
-```
+```javascript
 db.doTransaction(async tn => {
   for await (const batch of tn.getRangeBatch('x', 'y')) {
     for (let i = 0; i < batch.length; i++) {
