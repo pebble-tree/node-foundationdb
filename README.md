@@ -83,7 +83,7 @@ db.doTransaction will return whatever your promise returned when the transaction
 Example:
 
 ```javascript
-const result = await db.doTransaction(async tn => {
+const val = await db.doTransaction(async tn => {
   const val = await tn.get('key1')
   tn.set('key2', 'val3')
   // ... etc.
@@ -91,7 +91,7 @@ const result = await db.doTransaction(async tn => {
   return val
 })
 
-doWork(result)
+doWork(val) // val is whatever your function returned above.
 ```
 
 *Danger:* **DO NOT DO THIS**:
