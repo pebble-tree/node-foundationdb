@@ -25,13 +25,158 @@ const fdb = require('foundationdb')
 
 const db = fdb.openSync('fdb.cluster') // or just openSync() if the database is local.
 
-db.transact(async tn => {
+db.doTransaction(async tn => {
   console.log('key hi has value', await tn.getStr('hi'))
   tn.set('hi', 'yo')
 })
 ```
 
-The bindings currently support all the standard KV operations except range reads. They should be added over the next week or so.
+# API
+
+## Connecting to your cluster
+
+FoundationDB servers and clients use a [cluster file](https://apple.github.io/foundationdb/api-general.html#cluster-file) (typically named `fdb.cluster`) to connect to a cluster.
+
+The easiest way to connect to your foundationdb cluster is:
+
+```javascript
+const fdb = require('foundationdb')
+
+const db = fdb.openSync()
+```
+
+This will look for a cluster file in the location specified by the `FDB_CLUSTER_FILE` environment variable, then the current working directory, then the [default file](https://apple.github.io/foundationdb/administration.html#default-cluster-file). You can also manually specify a cluster file location:
+
+```javascript
+const fdb = require('foundationdb')
+const db = fdb.openSync('fdb.cluster')
+```
+
+Alternately, you can use the async API:
+
+```javascript
+const fdb = require('foundationdb')
+
+(async () => {
+  const cluster = await fdb.createCluster()
+  const db = await cluster.openDatabase('DB')
+})()
+```
+
+## Configuration
+
+> This is working, but documentation needs to be written. TODO.
+
+
+## Database transactions
+
+Transactions are the core unit of atomicity in FoundationDB.
+
+You almost always want to create transactions via `db.doTransaction(async tn => {...})`. doTransaction takes a body function in which you do the work you want to do to the database.
+
+The transaction will automatically be committed when the function's promise resolves. If the transaction had conflicts, it will be retried with exponential backoff.
+
+> **Note:** This function may be called multiple times in the case of conflicts.
+
+db.doTransaction will return whatever your promise returned when the transaction succeeded.
+
+Example:
+
+```javascript
+const result = await db.doTransaction(async tn => {
+  const val = await tn.get('key1')
+  tn.set('key2', 'val3')
+  // ... etc.
+
+  return val
+})
+
+doWork(result)
+```
+
+*Danger: DO NOT DO THIS*:
+
+```javascript
+await db.doTransaction(async tn => {
+  const val = await tn.get('key1')
+  doWork(val) // NO - doWork may be called multiple times
+})
+
+```
+
+## Range reads
+
+There are several ways to read a range of values. Note that [large transactions are an antipattern in foundationdb](https://apple.github.io/foundationdb/known-limitations.html#large-transactions). If you need to read more than 1MB of data or need to spend 5+ seconds iterating, you should [rethink your design](https://apple.github.io/foundationdb/known-limitations.html#long-transactions).
+
+### Async iteration
+
+In node 10+ or when compiling with Typescript or Babel, the best way to iterate through a range is using an [async iterator](https://github.com/tc39/proposal-async-iteration):
+
+```javascript
+db.doTransaction(async tn => {
+  for await (const [key, value] of tn.getRange('x', 'y')) {
+    console.log(key.toString(), 'is', value.toString())
+  }
+})
+```
+
+Async iterators are natively available in node 8 and 9 via the `node --harmony-async-iteration` flag.
+
+### Manual async iteration
+
+If `for await` isn't available yet, you can manually iterate through the iterator:
+
+```javascript
+db.doTransaction(async tn => {
+  const iter = tn.getRange('x', 'y')
+  while (true) {
+    const item = await iter.next()
+    if (item.done) break
+
+    const [key, value] = item.value
+    console.log(key.toString(), 'is', value.toString())
+  }
+})
+```
+
+### Batch iteration
+
+If you want to process the results in batches, you can bulk iterate through the range. This has slightly better performance because it doesn't need to generate an iterator callback and promise for each key/value pair:
+
+```
+db.doTransaction(async tn => {
+  for await (const batch of tn.getRangeBatch('x', 'y')) {
+    for (let i = 0; i < batch.length; i++) {
+      const [key, value] = batch[i]
+      console.log(key.toString(), 'is', value.toString())
+    }
+  }
+})
+```
+
+### Get an entire range to an array
+
+If you're going to load the range into an array anyway, its faster to bulk load the range into an array using:
+
+```
+await db.getRangeAll('x', 'y')
+```
+
+or as part of a snapshot:
+
+```
+db.doTransaction(async tn => {
+  // ...
+  await tn.getRangeAll('x', 'y')
+}
+```
+
+This will load the entire range in a single network request, and its a simpler API to work with if you need to do bulk operations.
+
+
+## Caveats
+
+The bindings currently support standard KV operations.
 
 The bindings do not currently support the `Directory` and `Tuple` layers. We have code, it just hasn't been ported to typescript. If someone wants to take a stab at it, raise an issue so we don't repeat work.
 

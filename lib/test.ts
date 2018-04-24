@@ -52,4 +52,5 @@ const rangeTest = async () => {
   // console.log(await db.getRangeAll('x', 'y'))
 }
 
-rangeTest()
+conflictWrites()
+// rangeTest()
