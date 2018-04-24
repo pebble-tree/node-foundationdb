@@ -3,6 +3,7 @@ import {eachOption} from './util'
 import Transaction from './transaction'
 import {Value} from './native'
 import {KeySelector} from './keySelector'
+import FDBError from './error'
 
 export type DbOptions = any
 
@@ -27,8 +28,11 @@ export default class Database {
         await tn.commit()
         return result // Ok, success.
       } catch (err) {
-        await tn.onError(err.code) // If this throws, punt error to caller.
-        // If that passed, loop.
+        // See if we can retry the transaction
+        if (err instanceof FDBError) {
+          await tn.onError(err.code) // If this throws, punt error to caller.
+          // If that passed, loop.
+        } else throw err
       }
     } while (true)
   }

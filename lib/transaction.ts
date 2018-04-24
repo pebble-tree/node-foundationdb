@@ -21,7 +21,7 @@ export interface RangeOptions {
 }
 
 // Polyfill for node 8 and 9 to make asyncIterators work (getRange / getRangeBatch).
-;(<any>Symbol).asyncIterator = (<any>Symbol).asyncIterator || Symbol.for("Symbol.asyncIterator")
+if ((<any>Symbol).asyncIterator == null) (<any>Symbol).asyncIterator = Symbol.for("Symbol.asyncIterator")
 
 export default class Transaction {
   _tn: NativeTransaction
