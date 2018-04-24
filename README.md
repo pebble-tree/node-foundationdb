@@ -94,12 +94,12 @@ const result = await db.doTransaction(async tn => {
 doWork(result)
 ```
 
-*Danger: DO NOT DO THIS*:
+*Danger:* **DO NOT DO THIS**:
 
 ```javascript
 await db.doTransaction(async tn => {
   const val = await tn.get('key1')
-  doWork(val) // NO - doWork may be called multiple times
+  doWork(val) // ! DANGER ! - doWork may be called multiple times
 })
 
 ```
