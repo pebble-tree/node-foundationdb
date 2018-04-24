@@ -14,6 +14,7 @@ import Database, {DbOptions} from './database'
 import keySelector, {KeySelector} from './keySelector'
 import * as util from './util'
 import {StreamingMode} from './opts.g'
+import * as tuple from './tuple'
 
 let initCalled = false
 const init = () => {
@@ -48,9 +49,9 @@ export = {
   FDBError,
   keySelector,
   StreamingMode,
+  tuple,
 
   // transactional: Transactional,
-  // tuple,
   // locality,
   // directory,
   // DirectoryLayer,
