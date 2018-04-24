@@ -36,19 +36,19 @@ export default class Transaction {
   }
 
   // You probably don't want to call any of these functions directly. Instead call db.transact(async tn => {...}).
-  commit(): Promise<void>
-  commit(cb: Callback<void>): void
-  commit(cb?: Callback<void>) {
+  rawCommit(): Promise<void>
+  rawCommit(cb: Callback<void>): void
+  rawCommit(cb?: Callback<void>) {
     // TODO: And maybe mark the tn as committed.
     return cb ? this._tn.commit(cb) : this._tn.commit()
   }
 
-  reset() { this._tn.reset() }
-  cancel() { this._tn.cancel() }
+  rawReset() { this._tn.reset() }
+  rawCancel() { this._tn.cancel() }
 
-  onError(code: number, cb: Callback<void>): void
-  onError(code: number): Promise<void>
-  onError(code: number, cb?: Callback<void>) {
+  rawOnError(code: number, cb: Callback<void>): void
+  rawOnError(code: number): Promise<void>
+  rawOnError(code: number, cb?: Callback<void>) {
     return cb ? this._tn.onError(code, cb) : this._tn.onError(code)
   }
 

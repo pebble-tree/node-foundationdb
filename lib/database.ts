@@ -18,19 +18,19 @@ export default class Database {
 
   // This is the API you want to use for non-trivial transactions.
   async doTransaction<T>(body: (tn: Transaction) => Promise<T>, opts?: any): Promise<T> {
-    const tn = this.createTransaction(opts)
+    const tn = this.createRawTransaction(opts)
 
     // Logic described here:
     // https://apple.github.io/foundationdb/api-c.html#c.fdb_transaction_on_error
     do {
       try {
         const result: T = await body(tn)
-        await tn.commit()
+        await tn.rawCommit()
         return result // Ok, success.
       } catch (err) {
         // See if we can retry the transaction
         if (err instanceof FDBError) {
-          await tn.onError(err.code) // If this throws, punt error to caller.
+          await tn.rawOnError(err.code) // If this throws, punt error to caller.
           // If that passed, loop.
         } else throw err
       }
@@ -47,7 +47,7 @@ export default class Database {
 
   // This is for advanced usage only. You probably don't want to create
   // transactions manually. Use doTransaction instead.
-  createTransaction(opts?: any) {
+  createRawTransaction(opts?: any) {
     return new Transaction(this._db.createTransaction(), opts)
   }
 
