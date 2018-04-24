@@ -66,7 +66,8 @@ const rangeTest2 = async () => {
 
   console.log(batchToStr(await db.getRangeAll('a', 'c'))) // 'a', 'b'.
   console.log(batchToStr(await db.getRangeAll(fdb.keySelector.firstGreaterThan('a'), 'c'))) // 'b'
-  console.log(batchToStr(await db.getRangeAll(fdb.keySelector.firstGreaterThan('a'),
+  console.log(batchToStr(await db.getRangeAll(
+    fdb.keySelector.firstGreaterThan('a'),
     fdb.keySelector.firstGreaterThan('c')
   ))) // 'b'
 }

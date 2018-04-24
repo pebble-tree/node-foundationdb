@@ -41,7 +41,6 @@ The easiest way to connect to your foundationdb cluster is:
 
 ```javascript
 const fdb = require('foundationdb')
-
 const db = fdb.openSync()
 ```
 
@@ -64,6 +63,7 @@ const fdb = require('foundationdb')
   const db = await cluster.openDatabase('DB') // Database name must be 'DB'.
 })()
 ```
+
 
 ## Configuration
 
