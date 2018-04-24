@@ -14,8 +14,9 @@ static fdb_error_t set_option(void *target, OptionType type, int code, uint8_t c
     // case OptCluster: return fdb_cluster_set_option((FDBCluster *)target, (FDBClusterOption)code, value, length);
     case OptDatabase: return fdb_database_set_option((FDBDatabase *)target, (FDBDatabaseOption)code, value, length);
     case OptTransaction: return fdb_transaction_set_option((FDBTransaction *)target, (FDBTransactionOption)code, value, length);
-    //case OptTransaction: return fdb_transaction_set_option((FDBTransaction *)target, (FDBTransactionOption)code, value, length);
   }
+  // This should be unreachable, but I'm not sure if aborting makes sense... Hm.
+  return 0;
 }
 
 void set_option_wrapped(void *target, OptionType type, const FunctionCallbackInfo<Value>& args) {
@@ -38,17 +39,12 @@ void set_option_wrapped(void *target, OptionType type, const FunctionCallbackInf
   if (args[1]->IsUint32()) {
     uint64_t value = args[1]->Uint32Value();
     err = set_option(target, type, code, (const uint8_t *)&value, sizeof(value));
-
-    printf("%d %lld\n", code, value);
   } else if (args[1]->IsNull()) {
     err = set_option(target, type, code, NULL, 0);
-    printf("%d (null)\n", code);
   } else if (node::Buffer::HasInstance(args[1])) {
     uint8_t const *value = (uint8_t *)node::Buffer::Data(args[1]);
     int value_length = node::Buffer::Length(args[1]);
     err = set_option(target, type, code, value, value_length);
-
-    printf("%d %s\n", code, value);
   } else {
     isolate->ThrowException(Exception::TypeError(String::NewFromUtf8(isolate, "Second argument not a buffer")));
     return;
