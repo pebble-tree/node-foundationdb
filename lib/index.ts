@@ -27,10 +27,10 @@ const init = () => {
 }
 
 const wrapCluster = (cluster: fdb.NativeCluster) => ({
-  openDatabase(dbName: 'DB', opts: DbOptions) {
+  openDatabase(dbName: 'DB', opts?: DbOptions) {
     return cluster.openDatabase(dbName).then(db => new Database(db, opts))
   },
-  openDatabaseSync(dbName: 'DB', opts: DbOptions) {
+  openDatabaseSync(dbName: 'DB', opts?: DbOptions) {
     return new Database(cluster.openDatabaseSync(dbName), opts)
   },
 })

@@ -45,7 +45,9 @@ const fdb = require('foundationdb')
 const db = fdb.openSync()
 ```
 
-This will look for a cluster file in the location specified by the `FDB_CLUSTER_FILE` environment variable, then the current working directory, then the [default file](https://apple.github.io/foundationdb/administration.html#default-cluster-file). You can also manually specify a cluster file location:
+This will look for a cluster file in the location specified by the `FDB_CLUSTER_FILE` environment variable, then the current working directory, then the [default file](https://apple.github.io/foundationdb/administration.html#default-cluster-file). For local development this should *just work*.
+
+You can also manually specify a cluster file location:
 
 ```javascript
 const fdb = require('foundationdb')
@@ -59,7 +61,7 @@ const fdb = require('foundationdb')
 
 (async () => {
   const cluster = await fdb.createCluster()
-  const db = await cluster.openDatabase('DB')
+  const db = await cluster.openDatabase('DB') // Database name must be 'DB'.
 })()
 ```
 
