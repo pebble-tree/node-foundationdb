@@ -5,29 +5,23 @@ import {
   Version
 } from './native'
 import {eachOption, strInc, strNext} from './util'
-import {KeySelector, toKeySelector} from './keySelector'
+import {
+  KeySelector, toKeySelector,
+  firstGreaterThan, firstGreaterOrEqual
+} from './keySelector'
+import {StreamingMode, MutationType} from './opts.g'
 
 const byteZero = new Buffer(1)
 byteZero.writeUInt8(0, 0)
 
-
-export enum StreamingMode {
-  // TODO: Ideally this should be generated along with options.g.json.
-  WantAll = -2,
-  Iterator = -1, // default.
-  Exact = 0,
-  Small = 1,
-  Medium = 2,
-  Large = 3,
-  Serial = 4,
-}
-
 export interface RangeOptions {
-  limit: number,
-  targetBytes: number,
-  reverse: boolean,
-  streamingMode: StreamingMode,
+  streamingMode?: StreamingMode, // defaults to 'iterator'
+  limit?: number,
+  reverse?: boolean,
 }
+
+// Polyfill for node 8 and 9 to make asyncIterators work (getRange / getRangeBatch).
+;(<any>Symbol).asyncIterator = (<any>Symbol).asyncIterator || Symbol.for("Symbol.asyncIterator")
 
 export default class Transaction {
   _tn: NativeTransaction
@@ -81,20 +75,72 @@ export default class Transaction {
   set(key: Value, val: Value) { this._tn.set(key, val) }
   clear(key: Value) { this._tn.clear(key) }
 
-  getRangeRaw(
-      _start: string | Buffer | KeySelector, // Consider also supporting string / buffers for these.
-      _end: string | Buffer | KeySelector,
-      opts: RangeOptions,
-      iter: number = 0) {
-
-    const start = toKeySelector(_start)
-    const end = toKeySelector(_end)
+  // getRangeRaw(start: KeySelector, end: KeySelector, opts: RangeOptions, iter: number = 0) {
+  getRangeRaw(start: KeySelector, end: KeySelector,
+      limit: number, targetBytes: number, streamingMode: StreamingMode, iter: number, reverse: boolean) {
     return this._tn.getRange(
       start.key, start.orEqual, start.offset,
       end.key, end.orEqual, end.offset,
-      opts.limit, opts.targetBytes, opts.streamingMode as number,
-      iter, this.isSnapshot, opts.reverse)
+      limit, targetBytes, streamingMode,
+      iter, this.isSnapshot, reverse)
   }
+
+  getRangeAll(
+      _start: string | Buffer | KeySelector,
+      _end: string | Buffer | KeySelector,
+      opts?: {
+        limit?: number,
+        targetBytes?: number,
+        reverse?: boolean
+      }) {
+    const start = toKeySelector(_start)
+    const end = toKeySelector(_end)
+
+    return this.getRangeRaw(start, end,
+      (opts && opts.limit) || 0,
+      (opts && opts.targetBytes) || 0,
+      StreamingMode.wantAll, 0,
+      opts && opts.reverse || false
+    ).then(result => result.results)
+  }
+
+  async *getRangeBatch(
+      _start: string | Buffer | KeySelector, // Consider also supporting string / buffers for these.
+      _end: string | Buffer | KeySelector,
+      opts: RangeOptions = {}) {
+    let start = toKeySelector(_start)
+    let end = toKeySelector(_end)
+    let limit = opts.limit || 0
+
+    let iter = 0
+    while (1) {
+      const {results, more} = await this.getRangeRaw(start, end,
+        limit, 0, opts.streamingMode || StreamingMode.iterator, ++iter, opts.reverse || false)
+
+      yield results
+      if (!more) break
+
+      if (results.length) {
+        if (!opts.reverse) start = firstGreaterThan(results[results.length-1].key)
+        else end = firstGreaterOrEqual(results[results.length-1].key)
+      }
+
+      if (limit) {
+        limit -= results.length
+        if (limit <= 0) break
+      }
+    }
+  }
+
+  async *getRange(
+      start: string | Buffer | KeySelector, // Consider also supporting string / buffers for these.
+      end: string | Buffer | KeySelector,
+      opts: RangeOptions = {}) {
+    for await (const batch of this.getRangeBatch(start, end, opts)) {
+      for (const pair of batch) yield pair
+    }
+  }
+
 
   clearRange(start: Value, end: Value) { this._tn.clearRange(start, end) }
   clearRangeStartsWith(prefix: Value) {
@@ -139,14 +185,14 @@ export default class Transaction {
     return this._tn.getAddressesForKey(key)
   }
 
-  add(key: Value, oper: Value) { this._tn.atomicOp(key, oper, 2) }
-  bitAnd(key: Value, oper: Value) { this._tn.atomicOp(key, oper, 6) }
-  bitOr(key: Value, oper: Value) { this._tn.atomicOp(key, oper, 7) }
-  bitXor(key: Value, oper: Value) { this._tn.atomicOp(key, oper, 8) }
-  max(key: Value, oper: Value) { this._tn.atomicOp(key, oper, 12) }
-  min(key: Value, oper: Value) { this._tn.atomicOp(key, oper, 13) }
-  setVersionstampedKey(key: Value, oper: Value) { this._tn.atomicOp(key, oper, 14) }
-  setVersionstampedValue(key: Value, oper: Value) { this._tn.atomicOp(key, oper, 15) }
-  byteMin(key: Value, oper: Value) { this._tn.atomicOp(key, oper, 16) }
-  byteMax(key: Value, oper: Value) { this._tn.atomicOp(key, oper, 17) }
+  add(key: Value, oper: Value) { this._tn.atomicOp(key, oper, MutationType.add) }
+  bitAnd(key: Value, oper: Value) { this._tn.atomicOp(key, oper, MutationType.bitAnd) }
+  bitOr(key: Value, oper: Value) { this._tn.atomicOp(key, oper, MutationType.bitOr) }
+  bitXor(key: Value, oper: Value) { this._tn.atomicOp(key, oper, MutationType.bitXor) }
+  max(key: Value, oper: Value) { this._tn.atomicOp(key, oper, MutationType.max) }
+  min(key: Value, oper: Value) { this._tn.atomicOp(key, oper, MutationType.min) }
+  setVersionstampedKey(key: Value, oper: Value) { this._tn.atomicOp(key, oper, MutationType.setVersionstampedKey) }
+  setVersionstampedValue(key: Value, oper: Value) { this._tn.atomicOp(key, oper, MutationType.setVersionstampedValue) }
+  byteMin(key: Value, oper: Value) { this._tn.atomicOp(key, oper, MutationType.byteMin) }
+  byteMax(key: Value, oper: Value) { this._tn.atomicOp(key, oper, MutationType.byteMax) }
 }

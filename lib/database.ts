@@ -49,10 +49,10 @@ export default class Database {
 
 
   get(key: Value): Promise<Buffer | null> {
-    return this.doTransaction(tn => tn.get(key))
+    return this.doTransaction(tn => tn.snapshot().get(key))
   }
   getKey(selector: KeySelector): Promise<Value> {
-    return this.doTransaction(tn => tn.getKey(selector))
+    return this.doTransaction(tn => tn.snapshot().getKey(selector))
   }
 
   set(key: Value, value: Value) {
@@ -95,5 +95,14 @@ export default class Database {
     })
   }
 
-  // TODO: getRange
+  getRangeAll(
+      start: string | Buffer | KeySelector,
+      end: string | Buffer | KeySelector,
+      opts?: {
+        limit?: number,
+        targetBytes?: number,
+        reverse?: boolean
+      }) {
+    return this.doTransaction(async tn => tn.snapshot().getRangeAll(start, end, opts))
+  }
 }

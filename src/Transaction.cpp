@@ -129,7 +129,7 @@ static Local<Value> getKeyValueList(FDBFuture* future, fdb_error_t* errOut) {
 
   /*
    * Constructing a JavaScript object with:
-   * { values: [{key, value}, {key, value}, ...], more }
+   * { results: [{key, value}, {key, value}, ...], more }
    */
 
   Local<Object> returnObj = Local<Object>::New(isolate, Object::New(isolate));
@@ -149,7 +149,7 @@ static Local<Value> getKeyValueList(FDBFuture* future, fdb_error_t* errOut) {
     jsValueArray->Set(Number::New(isolate, i), jsKeyValue);
   }
 
-  returnObj->Set(String::NewFromUtf8(isolate, "values", String::kInternalizedString), jsValueArray);
+  returnObj->Set(String::NewFromUtf8(isolate, "results", String::kInternalizedString), jsValueArray);
   returnObj->Set(String::NewFromUtf8(isolate, "more", String::kInternalizedString), Boolean::New(isolate, !!more));
 
   return returnObj;
