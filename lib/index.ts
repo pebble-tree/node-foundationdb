@@ -1,22 +1,19 @@
+// Stuff that hasn't been ported over:
 
-// const KeySelector = require('./keySelector')
-// const Cluster = require('./cluster')
 // const Transactional = require('./retryDecorator')
 // const tuple = require('./tuple')
 // const buffer = require('./bufferConversion')
+// const locality = require('./locality')
+// const directory = require('./directory')
+// const Subspace = require('./subspace')
 
 import apiVersion from './apiVersion'
 import FDBError from './error'
 import nativeMod, * as fdb from './native'
 import Database, {DbOptions} from './database'
+import keySelector, {KeySelector} from './keySelector'
 import * as util from './util'
-
-// const {nativeMod} = fdb
-
-// const locality = require('./locality')
-// const directory = require('./directory')
-// const Subspace = require('./subspace')
-// const {eachOption} = require('./fdbUtil')
+import {StreamingMode} from './opts.g'
 
 let initCalled = false
 const init = () => {
@@ -26,16 +23,8 @@ const init = () => {
   nativeMod.apiVersion(apiVersion)
   nativeMod.startNetwork()
 
-  process.on('exit', () => {
-    //Clearing out the caches makes memory debugging a little easier
-    // dbCache = null
-    // clusterCache = null
-
-    nativeMod.stopNetwork()
-  })
+  process.on('exit', () => nativeMod.stopNetwork())
 }
-
-
 
 const wrapCluster = (cluster: fdb.NativeCluster) => ({
   openDatabase(dbName: 'DB', opts: DbOptions) {
@@ -57,14 +46,15 @@ const createClusterSync = (clusterFile?: string) => {
 
 export = {
   FDBError,
-  // KeySelector,
+  keySelector,
+  StreamingMode,
+
   // transactional: Transactional,
   // tuple,
   // locality,
   // directory,
   // DirectoryLayer,
   // Subspace,
-  // streamingMode,
 
   // This must be called before
   configNetwork(netOpts: any) {

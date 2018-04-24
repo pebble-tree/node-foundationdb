@@ -5,10 +5,7 @@ import {
   Version
 } from './native'
 import {eachOption, strInc, strNext} from './util'
-import {
-  KeySelector, toKeySelector,
-  firstGreaterThan, firstGreaterOrEqual
-} from './keySelector'
+import keySelector, {KeySelector} from './keySelector'
 import {StreamingMode, MutationType} from './opts.g'
 
 const byteZero = new Buffer(1)
@@ -93,13 +90,13 @@ export default class Transaction {
         targetBytes?: number,
         reverse?: boolean
       }) {
-    const start = toKeySelector(_start)
-    const end = toKeySelector(_end)
+    const start = keySelector.from(_start)
+    const end = keySelector.from(_end)
 
     return this.getRangeRaw(start, end,
       (opts && opts.limit) || 0,
       (opts && opts.targetBytes) || 0,
-      StreamingMode.wantAll, 0,
+      StreamingMode.WantAll, 0,
       opts && opts.reverse || false
     ).then(result => result.results)
   }
@@ -108,21 +105,21 @@ export default class Transaction {
       _start: string | Buffer | KeySelector, // Consider also supporting string / buffers for these.
       _end: string | Buffer | KeySelector,
       opts: RangeOptions = {}) {
-    let start = toKeySelector(_start)
-    let end = toKeySelector(_end)
+    let start = keySelector.from(_start)
+    let end = keySelector.from(_end)
     let limit = opts.limit || 0
 
     let iter = 0
     while (1) {
       const {results, more} = await this.getRangeRaw(start, end,
-        limit, 0, opts.streamingMode || StreamingMode.iterator, ++iter, opts.reverse || false)
+        limit, 0, opts.streamingMode || StreamingMode.Iterator, ++iter, opts.reverse || false)
 
       yield results
       if (!more) break
 
       if (results.length) {
-        if (!opts.reverse) start = firstGreaterThan(results[results.length-1][0])
-        else end = firstGreaterOrEqual(results[results.length-1][0])
+        if (!opts.reverse) start = keySelector.firstGreaterThan(results[results.length-1][0])
+        else end = keySelector.firstGreaterOrEqual(results[results.length-1][0])
       }
 
       if (limit) {
@@ -185,14 +182,14 @@ export default class Transaction {
     return this._tn.getAddressesForKey(key)
   }
 
-  add(key: Value, oper: Value) { this._tn.atomicOp(key, oper, MutationType.add) }
-  bitAnd(key: Value, oper: Value) { this._tn.atomicOp(key, oper, MutationType.bitAnd) }
-  bitOr(key: Value, oper: Value) { this._tn.atomicOp(key, oper, MutationType.bitOr) }
-  bitXor(key: Value, oper: Value) { this._tn.atomicOp(key, oper, MutationType.bitXor) }
-  max(key: Value, oper: Value) { this._tn.atomicOp(key, oper, MutationType.max) }
-  min(key: Value, oper: Value) { this._tn.atomicOp(key, oper, MutationType.min) }
-  setVersionstampedKey(key: Value, oper: Value) { this._tn.atomicOp(key, oper, MutationType.setVersionstampedKey) }
-  setVersionstampedValue(key: Value, oper: Value) { this._tn.atomicOp(key, oper, MutationType.setVersionstampedValue) }
-  byteMin(key: Value, oper: Value) { this._tn.atomicOp(key, oper, MutationType.byteMin) }
-  byteMax(key: Value, oper: Value) { this._tn.atomicOp(key, oper, MutationType.byteMax) }
+  add(key: Value, oper: Value) { this._tn.atomicOp(key, oper, MutationType.Add) }
+  bitAnd(key: Value, oper: Value) { this._tn.atomicOp(key, oper, MutationType.BitAnd) }
+  bitOr(key: Value, oper: Value) { this._tn.atomicOp(key, oper, MutationType.BitOr) }
+  bitXor(key: Value, oper: Value) { this._tn.atomicOp(key, oper, MutationType.BitXor) }
+  max(key: Value, oper: Value) { this._tn.atomicOp(key, oper, MutationType.Max) }
+  min(key: Value, oper: Value) { this._tn.atomicOp(key, oper, MutationType.Min) }
+  setVersionstampedKey(key: Value, oper: Value) { this._tn.atomicOp(key, oper, MutationType.SetVersionstampedKey) }
+  setVersionstampedValue(key: Value, oper: Value) { this._tn.atomicOp(key, oper, MutationType.SetVersionstampedValue) }
+  byteMin(key: Value, oper: Value) { this._tn.atomicOp(key, oper, MutationType.ByteMin) }
+  byteMax(key: Value, oper: Value) { this._tn.atomicOp(key, oper, MutationType.ByteMax) }
 }

@@ -5,8 +5,9 @@ const xml = fs.readFileSync('/Users/josephg/3rdparty/foundationdb/fdbclient/vexi
 const filename = 'lib/opts.g.ts'
 const output = fs.createWriteStream(filename)
 
+// This returns results with the first letter capitalized too.
 const toCamelCase = str => str.replace(/(^\w|_\w)/g, c =>
-  c.length == 1 ? c : c[1].toUpperCase()
+  c.length == 1 ? c.toUpperCase() : c[1].toUpperCase()
 )
 
 const splitLines = str => str.split(/\s*(.{10,70})(?:\s+|$)/).filter(x => x)

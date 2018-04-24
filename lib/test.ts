@@ -35,6 +35,8 @@ const rangeTest = async () => {
     for (let i = 0; i < 100; i++) {
       tn.set('x' + i, 'hi '+i)
     }
+
+    tn.set('z', 'zzzval')
   })
 
   //   for await (const batch of tn.getRangeBatch('x', 'y')) {
@@ -43,14 +45,16 @@ const rangeTest = async () => {
   //   }
   // })
 
-  await db.doTransaction(async tn => {
-    for await (const [key, value] of tn.getRange('x', 'y')) {
-      console.log(key.toString(), 'is', value.toString())
-    }
-  })
+  // await db.doTransaction(async tn => {
+  //   for await (const [key, value] of tn.getRange('x', 'y')) {
+  //     console.log(key.toString(), 'is', value.toString())
+  //   }
+  // })
+
+  console.log(await db.getRangeAll('z', 'zz'))
 
   // console.log(await db.getRangeAll('x', 'y'))
 }
 
-conflictWrites()
-// rangeTest()
+// conflictWrites()
+rangeTest()
