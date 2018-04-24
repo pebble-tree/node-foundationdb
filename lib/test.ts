@@ -1,5 +1,4 @@
 import fdb = require('./index')
-import {StreamingMode} from './opts.g'
 import * as ks from './keySelector'
 
 process.on('unhandledRejection', err => { throw err.stack })
@@ -29,6 +28,8 @@ const conflictWrites = async () => {
   console.log('\nValue is now', fromBuf(await db.get('val')), 'after', txnAttempts, 'commit attempts')
 }
 
+const batchToStr = (batch: [Buffer, Buffer][]) => batch.map(([k,v]) => [k.toString(), v.toString()])
+
 const rangeTest = async () => {
   await db.clearRangeStartsWith('x')
   await db.doTransaction(async tn => {
@@ -56,5 +57,19 @@ const rangeTest = async () => {
   // console.log(await db.getRangeAll('x', 'y'))
 }
 
+const rangeTest2 = async () => {
+  await db.doTransaction(async tn => {
+    tn.set('a', 'A')
+    tn.set('b', 'B')
+    tn.set('c', 'C')
+  })
+
+  console.log(batchToStr(await db.getRangeAll('a', 'c'))) // 'a', 'b'.
+  console.log(batchToStr(await db.getRangeAll(fdb.keySelector.firstGreaterThan('a'), 'c'))) // 'b'
+  console.log(batchToStr(await db.getRangeAll(fdb.keySelector.firstGreaterThan('a'),
+    fdb.keySelector.firstGreaterThan('c')
+  ))) // 'b'
+}
+
 // conflictWrites()
-rangeTest()
+rangeTest2()

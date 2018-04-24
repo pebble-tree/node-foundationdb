@@ -108,6 +108,7 @@ await db.doTransaction(async tn => {
 
 There are several ways to read a range of values. Note that [large transactions are an antipattern in foundationdb](https://apple.github.io/foundationdb/known-limitations.html#large-transactions). If you need to read more than 1MB of data or need to spend 5+ seconds iterating, you should [rethink your design](https://apple.github.io/foundationdb/known-limitations.html#long-transactions).
 
+
 ### Async iteration
 
 In node 10+ or when compiling with Typescript or Babel, the best way to iterate through a range is using an [async iterator](https://github.com/tc39/proposal-async-iteration):
@@ -121,6 +122,7 @@ db.doTransaction(async tn => {
 ```
 
 Async iterators are natively available in node 8 and 9 via the `node --harmony-async-iteration` flag.
+
 
 ### Manual async iteration
 
@@ -139,6 +141,7 @@ db.doTransaction(async tn => {
 })
 ```
 
+
 ### Batch iteration
 
 If you want to process the results in batches, you can bulk iterate through the range. This has slightly better performance because it doesn't need to generate an iterator callback and promise for each key/value pair:
@@ -153,6 +156,7 @@ db.doTransaction(async tn => {
   }
 })
 ```
+
 
 ### Get an entire range to an array
 
@@ -173,6 +177,19 @@ db.doTransaction(async tn => {
 
 This will load the entire range in a single network request, and its a simpler API to work with if you need to do bulk operations.
 
+
+### Key selectors
+
+All range read functions support ranges to be specified using [selectors](https://apple.github.io/foundationdb/developer-guide.html#key-selectors) instead of simple keys. For example, to get a range not including the start but including the end:
+
+```javascript
+tn.getRange(
+  fdb.keySelector.firstGreater(start),
+  fdb.keySelector.firstGreaterThan(end)
+)
+```
+
+(Note you need to specify `keySelector.firstGreaterThan` and not simply `keySelector.lastLessOrEqual` because getRange is exclusive of the endpoint).
 
 ## Caveats
 
