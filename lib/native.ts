@@ -11,7 +11,7 @@ export type AtomicOp = number
 export type StreamingMode = number
 
 export type KVList = {
-  results: {key: Value, value: Value}[],
+  results: [Buffer, Buffer][], // [key, value] pair.
   more: boolean,
 }
 

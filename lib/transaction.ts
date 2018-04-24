@@ -121,8 +121,8 @@ export default class Transaction {
       if (!more) break
 
       if (results.length) {
-        if (!opts.reverse) start = firstGreaterThan(results[results.length-1].key)
-        else end = firstGreaterOrEqual(results[results.length-1].key)
+        if (!opts.reverse) start = firstGreaterThan(results[results.length-1][0])
+        else end = firstGreaterOrEqual(results[results.length-1][0])
       }
 
       if (limit) {

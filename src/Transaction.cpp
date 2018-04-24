@@ -129,24 +129,21 @@ static Local<Value> getKeyValueList(FDBFuture* future, fdb_error_t* errOut) {
 
   /*
    * Constructing a JavaScript object with:
-   * { results: [{key, value}, {key, value}, ...], more }
+   * { results: [[key, value], [key, value], ...], more }
    */
 
   Local<Object> returnObj = Local<Object>::New(isolate, Object::New(isolate));
   Local<Array> jsValueArray = Array::New(isolate, len);
 
-  Local<String> keySymbol = String::NewFromUtf8(isolate, "key", String::kInternalizedString);
-  Local<String> valueSymbol = String::NewFromUtf8(isolate, "value", String::kInternalizedString);
-
   for(int i = 0; i < len; i++) {
-    Local<Object> jsKeyValue = Object::New(isolate);
+    Local<Object> pair = Array::New(isolate, 2);
 
     Local<Value> jsKeyBuffer = Nan::CopyBuffer((const char*)kv[i].key, kv[i].key_length).ToLocalChecked();
     Local<Value> jsValueBuffer = Nan::CopyBuffer((const char*)kv[i].value, kv[i].value_length).ToLocalChecked();
 
-    jsKeyValue->Set(keySymbol, jsKeyBuffer);
-    jsKeyValue->Set(valueSymbol, jsValueBuffer);
-    jsValueArray->Set(Number::New(isolate, i), jsKeyValue);
+    pair->Set(0, jsKeyBuffer);
+    pair->Set(1, jsValueBuffer);
+    jsValueArray->Set(i, pair);
   }
 
   returnObj->Set(String::NewFromUtf8(isolate, "results", String::kInternalizedString), jsValueArray);

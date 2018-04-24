@@ -43,13 +43,13 @@ const rangeTest = async () => {
   //   }
   // })
 
-  // await db.doTransaction(async tn => {
-  //   for await (const {key, value} of tn.getRange('x', 'y')) {
-  //     console.log(key.toString(), 'is', value.toString())
-  //   }
-  // })
+  await db.doTransaction(async tn => {
+    for await (const [key, value] of tn.getRange('x', 'y')) {
+      console.log(key.toString(), 'is', value.toString())
+    }
+  })
 
-  console.log(await db.getRangeAll('x', 'y'))
+  // console.log(await db.getRangeAll('x', 'y'))
 }
 
 rangeTest()
