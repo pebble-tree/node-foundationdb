@@ -162,13 +162,13 @@ db.doTransaction(async tn => {
 
 If you're going to load the range into an array anyway, its faster to bulk load the range into an array using:
 
-```
+```javascript
 await db.getRangeAll('x', 'y')
 ```
 
 or as part of a snapshot:
 
-```
+```javascript
 db.doTransaction(async tn => {
   // ...
   await tn.getRangeAll('x', 'y')
@@ -205,16 +205,18 @@ The bindings do not currently support the `Directory` and `Tuple` layers. We hav
 - [x] Core rewritten in TS
 - [x] Primitive transactions working from node
 - [x] Transaction retry loop working
-- [ ] Documentation
-- [ ] Basic read range support
-- [ ] Read range callback iterator support
-- [ ] Read range async iterator
+- [x] Basic read range support
+- [x] Read range callback iterator support
+- [x] Read range async iterator
+- [ ] Document passing options
+- [ ] Document other transaction methods (get, set, getKey, etc)
 - [ ] Figure out a decent way to bundle the native `libfdb_c` code so users don't need to download their own copy
 - [ ] Tuple support
 - [ ] Directory support
-- [ ] Basic local testing
+- [ ] Add testing harness
+- [ ] Port basic tests
 - [ ] Testing integrated with the harness for the other bindings
-- [ ] Add leveldown compatibilty
+- [ ] Add leveldown compatibilty (?)
 - [ ] Cut 1.0
 
 
