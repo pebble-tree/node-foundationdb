@@ -60,7 +60,13 @@ describe('key value functionality', () => {
     assert.strictEqual(val, result)
   })
 
-  it('lets you cancel a txn')
+  it.skip('lets you cancel a txn', async () => {
+    // So right now when you cancel a transaction db.doTransaction throws with
+    // a transaction_cancelled error. I'm not sure if this API is what we want?
+    await db.doTransaction(async tn => {
+      tn.rawCancel()
+    })
+  })
 
   it('obeys transaction options', async function() {
     // We can't test all the options, but we can test at least one.
