@@ -3,6 +3,23 @@
 //
 // And the typecodes are here:
 // https://github.com/apple/foundationdb/blob/master/design/tuple.md
+// 
+// This code supports:
+// - null
+// - byte string
+// - unicode string
+// - arbitrary-precision integers (I think - we support some kind of integer)
+// 
+// It does not support:
+// - Nested tuples
+// - integers
+// - floats
+// - arbitrary-precision decimals
+// - true, false
+// - uuid
+// - 64 bit IDs
+// - versionstamps
+// - user type codes
 
 const sizeLimits: number[] = new Array(8)
 
