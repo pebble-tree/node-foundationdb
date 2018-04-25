@@ -5,7 +5,7 @@ import {KeySelector} from './keySelector'
 import FDBError from './error'
 
 import {eachOption} from './opts'
-import {DatabaseOptions, databaseOptionData} from './opts.g'
+import {DatabaseOptions, TransactionOptions, databaseOptionData} from './opts.g'
 
 
 export default class Database {
@@ -17,7 +17,7 @@ export default class Database {
   }
 
   // This is the API you want to use for non-trivial transactions.
-  async doTransaction<T>(body: (tn: Transaction) => Promise<T>, opts?: any): Promise<T> {
+  async doTransaction<T>(body: (tn: Transaction) => Promise<T>, opts?: TransactionOptions): Promise<T> {
     const tn = this.rawCreateTransaction(opts)
 
     // Logic described here:
@@ -37,7 +37,7 @@ export default class Database {
     } while (true)
   }
 
-  doOneshot(body: (tn: Transaction) => void, opts?: any): Promise<void> {
+  doOneshot(body: (tn: Transaction) => void, opts?: TransactionOptions): Promise<void> {
     // TODO: Could this be written better? It doesn't need a retry loop.
     return this.doTransaction(tn => {
       body(tn)
@@ -47,8 +47,8 @@ export default class Database {
 
   // This is for advanced usage only. You probably don't want to create
   // transactions manually. Use doTransaction instead.
-  rawCreateTransaction(opts?: any) {
-    return new Transaction(this._db.createTransaction(), opts)
+  rawCreateTransaction(opts?: TransactionOptions) {
+    return new Transaction(this._db.createTransaction(), false, opts)
   }
 
 

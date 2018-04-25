@@ -62,8 +62,20 @@ describe('key value functionality', () => {
 
   it('lets you cancel a txn')
 
+  it('obeys transaction options', async function() {
+    // We can't test all the options, but we can test at least one.
+    await db.doTransaction(async tn => {
+      const key = prefix + 'x'
+      tn.set(key, 'hi there')
+      assert.equal(await tn.get(key), null)
+    }, {read_your_writes_disable: true})
+  })
+
   it('retries conflicts', async function() {
-    this.slow(2000)
+    // Transactions do exponential backoff when they conflict, so the time
+    // this test takes to run is super variable based on how unlucky we get
+    // with concurrency.
+    this.slow(3000)
     const concurrentWrites = 30
     const key = prefix + 'num'
 

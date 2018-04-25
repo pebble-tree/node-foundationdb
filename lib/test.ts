@@ -77,5 +77,13 @@ const rangeTest2 = async () => {
   ))) // 'b'
 }
 
+const opts = async () => {
+  await db.doTransaction(async tn => {
+    tn.set('xyz', 'hidsffds')
+    console.log(await tn.get('xyz'))
+  }, {read_your_writes_disable:true})
+}
+
 // conflictWrites()
-rangeTest2()
+// rangeTest2()
+opts()

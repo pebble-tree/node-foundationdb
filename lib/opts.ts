@@ -29,7 +29,7 @@ export const eachOption = (data: OptionData, _opts: DatabaseOptions | NetworkOpt
 
     switch (type) {
       case 'none':
-        if (userVal !== 'true' && userVal !== 1) console.warn('Ignoring value for key', k)
+        if ((userVal as any) !== true && userVal !== 1) console.warn(`Warning: Ignoring value ${userVal} for option ${k}`)
         iterfn(details.code, null)
         break
       case 'string': case 'bytes':
