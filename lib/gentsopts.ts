@@ -1,11 +1,18 @@
+// This is not used as part of the project!
+// 
+// This is a script to generate opts.g.ts from the vexillographer fdb options file.
+// It is only necessary to re-run this when FDB adds / deprecates options.
+// 
+// Usage: node dist/lib/gentsopts.js <path to foundationdb checkout>
 import fs = require('fs')
 import xml2js = require('xml2js') // I could type this but its not important enough.
 
 const {parseString} = xml2js
-const xml = fs.readFileSync('/Users/josephg/3rdparty/foundationdb/fdbclient/vexillographer/fdb.options', 'utf8')
+const fdbSourceLocation = process.argv[2] || (process.env.HOME + '/3rdparty/foundationdb')
+const xml = fs.readFileSync(fdbSourceLocation + '/fdbclient/vexillographer/fdb.options', 'utf8')
 
-const filename = 'lib/opts.g.ts'
-const output = fs.createWriteStream(filename)
+const outFilename = 'lib/opts.g.ts'
+const output = fs.createWriteStream(outFilename)
 
 const comment = '\/\/' // I'm really sad that this is needed.
 output.write(`${comment} This file is auto-generated from gentsopts.ts. Do not edit.
@@ -98,5 +105,5 @@ parseString(xml, (err, result) => {
   //console.log(JSON.stringify(result, null, 2))
 
   output.end()
-  console.log('wrote', filename)
+  console.log('wrote', outFilename)
 })
