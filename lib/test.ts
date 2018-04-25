@@ -1,3 +1,8 @@
+// This isn't part of the distribution. Its just some manual tests to exercise
+// functionality locally.
+// 
+// This file should be removed for 1.0
+
 import fdb = require('./index')
 import * as ks from './keySelector'
 
