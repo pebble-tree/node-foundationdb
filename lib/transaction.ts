@@ -104,10 +104,10 @@ export default class Transaction {
 
   async *getRangeBatch(
       _start: string | Buffer | KeySelector, // Consider also supporting string / buffers for these.
-      _end: string | Buffer | KeySelector,
+      _end: string | Buffer | KeySelector | undefined, // If not specified, start is used as a prefix.
       opts: RangeOptions = {}) {
     let start = keySelector.from(_start)
-    let end = keySelector.from(_end)
+    let end = _end == null ? keySelector.firstGreaterOrEqual(strInc(start.key)) : keySelector.from(_end)
     let limit = opts.limit || 0
 
     let iter = 0
@@ -132,8 +132,8 @@ export default class Transaction {
 
   async *getRange(
       start: string | Buffer | KeySelector, // Consider also supporting string / buffers for these.
-      end: string | Buffer | KeySelector,
-      opts: RangeOptions = {}) {
+      end?: string | Buffer | KeySelector,
+      opts?: RangeOptions) {
     for await (const batch of this.getRangeBatch(start, end, opts)) {
       for (const pair of batch) yield pair
     }

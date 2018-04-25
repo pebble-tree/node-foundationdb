@@ -169,8 +169,4 @@ void Init(Local<Object> exports, Local<Object> module) {
   NODE_SET_METHOD(exports, "errorPredicate", ErrorPredicate);
 }
 
-#if NODE_VERSION_AT_LEAST(8, 9, 0)
 NODE_MODULE(NODE_GYP_MODULE_NAME, Init);
-#else
-#error "Node.js versions before v8.9.0 are not supported"
-#endif

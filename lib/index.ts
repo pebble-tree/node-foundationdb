@@ -47,6 +47,7 @@ const createClusterSync = (clusterFile?: string) => {
 }
 
 export = {
+  apiVersion, // The fdb API version that this build is paired to
   FDBError,
   keySelector,
   StreamingMode,

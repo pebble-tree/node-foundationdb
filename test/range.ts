@@ -62,6 +62,8 @@ describe('ranges', () => {
     })
   })
 
+  it('getRange without a specified end uses start as a prefix')
+
   describe('selectors', () => {
     const data = [['a', 'A'], ['b', 'B'], ['c', 'C']]
     beforeEach(async () => {
