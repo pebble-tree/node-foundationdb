@@ -1,19 +1,19 @@
 import * as fdb from './native'
-import {eachOption} from './util'
 import Transaction from './transaction'
 import {Value} from './native'
 import {KeySelector} from './keySelector'
 import FDBError from './error'
 
-export type DbOptions = any
+import {eachOption} from './opts'
+import {DatabaseOptions, databaseOptionData} from './opts.g'
 
 
 export default class Database {
   _db: fdb.NativeDatabase
 
-  constructor(db: fdb.NativeDatabase, opts: DbOptions) {
+  constructor(db: fdb.NativeDatabase, opts?: DatabaseOptions) {
     this._db = db
-    eachOption('DatabaseOption', opts, (code, val) => db.setOption(code, val))
+    if (opts) eachOption(databaseOptionData, opts, (code, val) => db.setOption(code, val))
   }
 
   // This is the API you want to use for non-trivial transactions.

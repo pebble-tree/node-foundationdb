@@ -10,10 +10,11 @@
 import apiVersion from './apiVersion'
 import FDBError from './error'
 import nativeMod, * as fdb from './native'
-import Database, {DbOptions} from './database'
+import Database from './database'
 import keySelector, {KeySelector} from './keySelector'
 import * as util from './util'
-import {StreamingMode} from './opts.g'
+import {eachOption} from './opts'
+import {NetworkOptions, DatabaseOptions, networkOptionData, StreamingMode} from './opts.g'
 import * as tuple from './tuple'
 
 let initCalled = false
@@ -28,10 +29,10 @@ const init = () => {
 }
 
 const wrapCluster = (cluster: fdb.NativeCluster) => ({
-  openDatabase(dbName: 'DB', opts?: DbOptions) {
+  openDatabase(dbName: 'DB', opts?: DatabaseOptions) {
     return cluster.openDatabase(dbName).then(db => new Database(db, opts))
   },
-  openDatabaseSync(dbName: 'DB', opts?: DbOptions) {
+  openDatabaseSync(dbName: 'DB', opts?: DatabaseOptions) {
     return new Database(cluster.openDatabaseSync(dbName), opts)
   },
 })
@@ -58,16 +59,16 @@ export = {
   // Subspace,
 
   // This must be called before
-  configNetwork(netOpts: any) {
+  configNetwork(netOpts: NetworkOptions) {
     if (initCalled) throw Error('configNetwork must be called before FDB connections are opened')
-    util.eachOption('NetworkOption', netOpts, (code, val) => nativeMod.setNetworkOption(code, val))
+    eachOption(networkOptionData, netOpts, (code, val) => nativeMod.setNetworkOption(code, val))
   },
 
   // Note if you need to you must configure your network before creating a cluster.
   createCluster,
   createClusterSync,
 
-  openSync(clusterFile?: string, dbOpts?: DbOptions) {
+  openSync(clusterFile?: string, dbOpts?: DatabaseOptions) {
     // TODO: Caching disabled for now. Is this the right call? I think so.
     // You should structure your app so it doesn't need to depend on a cache here.
     return createClusterSync(clusterFile).openDatabaseSync('DB', dbOpts)

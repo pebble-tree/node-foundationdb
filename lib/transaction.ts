@@ -4,9 +4,10 @@ import {
   Value,
   Version
 } from './native'
-import {eachOption, strInc, strNext} from './util'
+import {strInc, strNext} from './util'
 import keySelector, {KeySelector} from './keySelector'
-import {StreamingMode, MutationType} from './opts.g'
+import {eachOption} from './opts'
+import {TransactionOptions, transactionOptionData, StreamingMode, MutationType} from './opts.g'
 
 const byteZero = new Buffer(1)
 byteZero.writeUInt8(0, 0)
@@ -24,9 +25,9 @@ export default class Transaction {
   _tn: NativeTransaction
   isSnapshot: boolean
 
-  constructor(tn: NativeTransaction, snapshot: boolean, opts?: any) {
+  constructor(tn: NativeTransaction, snapshot: boolean, opts?: TransactionOptions) {
     this._tn = tn
-    if (opts) eachOption('TransactionOption', opts, (code, val) => tn.setOption(code, val))
+    if (opts) eachOption(transactionOptionData, opts, (code, val) => tn.setOption(code, val))
     this.isSnapshot = snapshot
   }
 
