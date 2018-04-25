@@ -75,7 +75,7 @@ Local<Value> Cluster::NewInstance(FDBCluster *ptr) {
 }
 
 static FDBFuture *createDbFuture(FDBCluster *cluster, Local<Value> name) {
-  std::string dbName = *String::Utf8Value(name->ToString());
+  std::string dbName = *Nan::Utf8String(name->ToString());
   return fdb_cluster_create_database(cluster, (uint8_t*)dbName.c_str(), (int)strlen(dbName.c_str()));
 }
 

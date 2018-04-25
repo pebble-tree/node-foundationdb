@@ -56,18 +56,24 @@ Local<Promise> fdbFutureToJSPromise(FDBFuture *f, ExtractValueFn *extractFn) {
   Ctx *ctx = new Ctx;
 
   Isolate *isolate = Isolate::GetCurrent();
-  auto resolver = Promise::Resolver::New(isolate);
+  auto resolver = Promise::Resolver::New(isolate->GetCurrentContext()).ToLocalChecked();
   ctx->persistent.Reset(resolver);
   ctx->extractFn = extractFn;
 
   resolveFutureInMainLoop<Ctx>(f, ctx, [](FDBFuture *f, Ctx *ctx) {
     Nan::HandleScope scope;
+    Isolate *isolate = Isolate::GetCurrent();
+    auto context = isolate->GetCurrentContext();
+
     auto resolver = Nan::New(ctx->persistent);
 
     fdb_error_t err = 0;
     auto value = ctx->extractFn(f, &err);
-    if (err != 0) resolver->Reject(FdbError::NewInstance(err));
-    else resolver->Resolve(value);
+
+    // These methods both return Maybe<bool> if the reject / resolve happened.
+    // It'd probably be better to assert that the Reject / Resolve applied.
+    if (err != 0) (void)resolver->Reject(context, FdbError::NewInstance(err));
+    else (void)resolver->Resolve(context, value);
     v8::Isolate::GetCurrent()->RunMicrotasks();
 
     ctx->persistent.Reset();

@@ -76,7 +76,7 @@ static void runNetwork() {
 
 static FDBFuture *createClusterFuture(Local<Value> filenameOrNull) {
   const char *path = (filenameOrNull->IsNull() || filenameOrNull->IsUndefined())
-    ? NULL : *String::Utf8Value(filenameOrNull->ToString());
+    ? NULL : *Nan::Utf8String(filenameOrNull->ToString());
 
   return fdb_create_cluster(path);
 }
