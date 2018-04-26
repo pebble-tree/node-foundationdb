@@ -2,7 +2,7 @@
 
 These bindings are currently in the process of being revived and renewed from some very old code.
 
-This is not yet production ready. The APIs will drift slightly over the next few weeks. But please give it a try and file issues against anything that isn't working yet.
+This is not yet entirely API-stable. The APIs will drift slightly over the next few weeks before 1.0 lands. But the bindings are correct (the foundationdb fuzzer runs clean).
 
 ## Usage
 
@@ -210,17 +210,17 @@ The bindings do not currently support the `Directory` and `Tuple` layers. We hav
 - [x] Basic read range support
 - [x] Read range callback iterator support
 - [x] Read range async iterator
-- [ ] API documentation for options (and TS types for them)
-- [ ] API documentation for all transaction methods (get, set, getKey, etc)
 - [x] Test on linux (& fix any issues that arise)
 - [x] Test on windows (& fix any issues that arise)
-- [ ] Figure out a decent way to bundle the native `libfdb_c` code so users don't need to download their own copy
 - [x] Tuple support
+- [x] Add testing harness
+- [x] Port basic tests
+- [x] Testing integrated with the harness for the other bindings
+- [ ] API documentation for options (and TS types for them)
+- [ ] API documentation for all transaction methods (get, set, getKey, etc)
+- [ ] Figure out a decent way to bundle the native `libfdb_c` code so users don't need to download their own copy
 - [ ] Directory support
 - [ ] Subspace support
-- [ ] Add testing harness
-- [x] Port basic tests
-- [ ] Testing integrated with the harness for the other bindings
 - [ ] Add leveldown compatibilty (?)
 - [ ] Cut 1.0
 
