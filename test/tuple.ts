@@ -5,18 +5,33 @@ import {TupleItem} from '../lib/tuple'
 
 const {tuple} = fdb
 describe('tuple', () => {
-  const assertRoundTrip = (val: TupleItem) => {
+  const assertRoundTrip = (val: TupleItem, strict: boolean = false) => {
     const packed = tuple.pack([val])
-    const unpacked = tuple.unpack(packed, true)[0]
+    const unpacked = tuple.unpack(packed, strict)[0]
     assert.deepStrictEqual(unpacked, val)
+  }
+  const assertRoundTripBytes = (orig: Buffer, strict: boolean = false) => {
+    const val = tuple.unpack(orig, strict)[0]
+    const packed = tuple.pack([val])
+    // console.log(orig.toString('hex'), val, packed.toString('hex'))
+    assert.deepStrictEqual(packed, orig)
   }
 
   it('roundtrips expected values', () => {
     const data = ['hi', null, '👾', 321, 0, -100]
     assertRoundTrip(data)
 
-    assertRoundTrip(0.75)
-    assertRoundTrip({type: 'singlefloat', value: 0.5})
+    assertRoundTrip(0.75, true)
+    assertRoundTrip({type: 'float', value: 0.5}, true)
+  })
+
+  it('preserves encoding of NaN values in strict mode', () => {
+    // There's a few ways NaN is encoded.
+    assertRoundTripBytes(Buffer.from('210007ffffffffffff', 'hex'), true) // double
+    assertRoundTripBytes(Buffer.from('21fff8000000000000', 'hex'), true)
+    assertRoundTripBytes(Buffer.from('20ffc00000', 'hex'), true) // TODO: 
+    assertRoundTripBytes(Buffer.from('20003fffff', 'hex'), true)
+    // Do any other nan encodings exist?
   })
 
   it('stalls on invalid input', () => {
@@ -55,5 +70,7 @@ describe('tuple', () => {
     testConformance('zero', 0, '\x14') // zero
     testConformance('integer', -5551212, '\x11\xabK\x93') // integer
     // testConformance(-42.
+    // testConformance('nan float', NaN, Buffer.from('0007ffffffffffff', 'hex')
+    testConformance('nan double', NaN, Buffer.from('21fff8000000000000', 'hex'))
   })
 })

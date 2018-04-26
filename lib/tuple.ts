@@ -10,17 +10,19 @@
 // - byte string
 // - unicode string
 // - float, double
+// - uuid
 // 
 // It does not support:
 // - arbitrary-precision decimals
-// - uuid
 // - 64 bit IDs
 // - versionstamps
 // - user type codes
-// 
-// Note that by default all numbers are encoded to / from double precision
-// numbers. If you want to encode a single precision float, wrap it as
-// {type: 'singlefloat, value: 123}.
+//
+// Note that this library canonicalizes some values by default. All numbers
+// are encoded to / from javascript double precision numbers. If you want to
+// encode a single precision float, wrap it as {type: 'float, value: 123}. If
+// you want to preserve exact byte encodings of inputs, pass `true` as the
+// final argument to decode.
 
 import assert = require('assert')
 
@@ -54,8 +56,15 @@ enum Code {
 export type TupleItem = null | Buffer | string | TupleArr | number | boolean | {
   type: 'uuid', value: Buffer
 } | {
-  // This is flattened into a double during decoding unless {strict: true}.
-  type: 'singlefloat', value: number
+  // This is flattened into a double during decoding if strictConformance is
+  // true. NaN has multiple binary encodings and node normalizes NaN to a
+  // single binary layout. To preserve the binary representation of NaNs
+  // across encoding / decoding, we'll store the original NaN encoding on the
+  // object. This is needed for the binding tester to pass.
+  type: 'float', value: number, rawEncoding?: Buffer, // Encoding used for NaN
+} | {
+  // As above, although this is only used for strictConformance + NaN value.
+  type: 'double', value: number, rawEncoding?: Buffer,
 }
 
 export interface TupleArr extends Array<TupleItem> {}
@@ -128,12 +137,13 @@ class BufferBuilder {
   }
 }
 
-function adjustFloat(data: Buffer, isEncode: boolean) {
+const adjustFloat = (data: Buffer, isEncode: boolean) => {
   if((isEncode && (data[0] & 0x80) === 0x80) || (!isEncode && (data[0] & 0x80) === 0x00)) {
     for(var i = 0; i < data.length; i++) {
       data[i] = ~data[i]
     }
   } else data[0] ^= 0x80
+  return data
 }
 
 const encode = (into: BufferBuilder, item: TupleItem) => {
@@ -196,13 +206,17 @@ const encode = (into: BufferBuilder, item: TupleItem) => {
     adjustFloat(bytes, true)
     into.appendBuffer(bytes)
 
-  } else if (typeof item === 'object' && item.type === 'singlefloat') {
-    into.appendByte(Code.Float)
-    const bytes = Buffer.allocUnsafe(4)
-    bytes.writeFloatBE(item.value, 0)
-    adjustFloat(bytes, true)
-    into.appendBuffer(bytes)
-
+  } else if (typeof item === 'object' && (item.type === 'float' || item.type === 'double')) {
+    const isFloat = item.type === 'float'
+    into.appendByte(isFloat ? Code.Float : Code.Double)
+    if (item.rawEncoding) into.appendBuffer(item.rawEncoding)
+    else {
+      const bytes = Buffer.allocUnsafe(isFloat ? 4 : 8)
+      if (isFloat) bytes.writeFloatBE(item.value, 0)
+      else bytes.writeDoubleBE(item.value, 0)
+      adjustFloat(bytes, true)
+      into.appendBuffer(bytes)
+    }
   } else if (typeof item === 'object' && item.type === 'uuid') {
     into.appendByte(Code.UUID)
     assert(item.value.length === 16, 'Invalid UUID: Should be 16 bytes exactly')
@@ -289,7 +303,12 @@ function decode(buf: Buffer, pos: {p: number}, strictConformance: boolean): Tupl
       buf.copy(numBuf, 0, p, p+8)
       adjustFloat(numBuf, false)
       pos.p += 8
-      return numBuf.readDoubleBE(0)
+      const value = numBuf.readDoubleBE(0)
+      return (isNaN(value) && strictConformance)
+        // Javascript normalizes NaN values, so we have to manually preserve
+        // the byte representation of the number.
+        ? {type: 'double', value, rawEncoding: adjustFloat(numBuf, true)}
+        : value
     }
     case Code.Float: {
       const numBuf = Buffer.alloc(4)
@@ -297,7 +316,11 @@ function decode(buf: Buffer, pos: {p: number}, strictConformance: boolean): Tupl
       adjustFloat(numBuf, false)
       pos.p += 4
       const value = numBuf.readFloatBE(0)
-      return strictConformance ? {type: 'singlefloat', value} : value
+      return strictConformance
+        ? (isNaN(value)
+          ? {type: 'float', value, rawEncoding: adjustFloat(numBuf, true)}
+          : {type: 'float', value})
+        : value
     }
     case Code.UUID: {
       const value = Buffer.alloc(16)
