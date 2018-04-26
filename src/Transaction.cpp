@@ -88,9 +88,9 @@ static void int64ToBEBytes(uint8_t* dataOut, uint64_t num) {
 // bytes be a ptr to an 8 byte array.
 static uint64_t BEBytesToInt64(uint8_t* bytes) {
   uint64_t result = 0;
-  for (int i = 7; i >= 0; i--) {
-    result |= bytes[i];
+  for (int i = 0; i < 8; i++) {
     result <<= 8;
+    result |= bytes[i];
   }
   return result;
 }
