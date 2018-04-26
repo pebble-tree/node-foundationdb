@@ -77,6 +77,23 @@ struct StringParams {
 };
 
 
+// dataOut must be a ptr to array of 8 items.
+static void int64ToBEBytes(uint8_t* dataOut, uint64_t num) {
+  for (int i = 0; i < 8; i++) {
+    dataOut[7-i] = num & 0xff;
+    num = num >> 8;
+  }
+}
+
+// bytes be a ptr to an 8 byte array.
+static uint64_t BEBytesToInt64(uint8_t* bytes) {
+  uint64_t result = 0;
+  for (int i = 7; i >= 0; i--) {
+    result |= bytes[i];
+    result <<= 8;
+  }
+  return result;
+}
 
 
 // **** Transaction
@@ -94,27 +111,27 @@ static Local<Value> ignoreResult(FDBFuture* future, fdb_error_t* errOut) {
 static Local<Value> getValue(FDBFuture* future, fdb_error_t* errOut) {
   Isolate *isolate = Isolate::GetCurrent();
 
-  const char *value;
+  const uint8_t *value;
   int valueLength;
   int valuePresent;
 
-  *errOut = fdb_future_get_value(future, &valuePresent, (const uint8_t**)&value, &valueLength);
+  *errOut = fdb_future_get_value(future, &valuePresent, &value, &valueLength);
   if (*errOut) return Undefined(isolate);
 
   return valuePresent
-    ? Local<Value>::New(isolate, Nan::CopyBuffer(value, valueLength).ToLocalChecked())
+    ? Local<Value>::New(isolate, Nan::CopyBuffer((const char *)value, valueLength).ToLocalChecked())
     : Local<Value>(Null(isolate));
 }
 
 static Local<Value> getKey(FDBFuture* future, fdb_error_t* errOut) {
   Isolate *isolate = Isolate::GetCurrent();
 
-  const char *key;
+  const uint8_t *key;
   int keyLength;
-  *errOut = fdb_future_get_key(future, (const uint8_t**)&key, &keyLength);
+  *errOut = fdb_future_get_key(future, &key, &keyLength);
 
   if (*errOut) return Undefined(isolate);
-  else return Local<Value>::New(isolate, Nan::CopyBuffer(key, keyLength).ToLocalChecked());
+  else return Local<Value>::New(isolate, Nan::CopyBuffer((const char *)key, keyLength).ToLocalChecked());
 }
 
 static Local<Value> getKeyValueList(FDBFuture* future, fdb_error_t* errOut) {
@@ -169,16 +186,24 @@ static Local<Value> getStringArray(FDBFuture* future, fdb_error_t* errOut) {
   return jsArray;
 }
 
+static Local<Value> versionToJSBuffer(int64_t version) {
+  // Versions are stored as an 8 byte buffer. They are stored big-endian so
+  // standard lexical comparison functions will do what you expect.
+  uint8_t data[8];
+  int64ToBEBytes(data, (uint64_t)version);
+  return Nan::CopyBuffer((char *)data, 8).ToLocalChecked();
+}
+
 static Local<Value> getVersion(FDBFuture* future, fdb_error_t* errOut) {
   Isolate *isolate = Isolate::GetCurrent();
 
   int64_t version;
   *errOut = fdb_future_get_version(future, &version);
 
-  //SOMEDAY: This limits the version to 53-bits. Is it worth writing this out
-  //into a buffer instead?
+  // See discussion about buffers vs storing the version as a JS number:
+  // https://forums.foundationdb.org/t/version-length-is-53-bits-enough/260/6
   if (*errOut) return Undefined(isolate);
-  else return Local<Value>::New(isolate, Number::New(isolate, (double)version));
+  else return Local<Value>::New(isolate, versionToJSBuffer(version));
 }
 
 
@@ -343,8 +368,16 @@ void Transaction::AddWriteConflictRange(const FunctionCallbackInfo<Value>& info)
 
 // setReadVersion(version)
 void Transaction::SetReadVersion(const FunctionCallbackInfo<Value>& info) {
-  // TODO: Support info[0] being an opaque buffer.
-  int64_t version = info[0]->IntegerValue();
+  // The version parameter must be an 8 byte buffer.
+  auto obj = info[0]->ToObject();
+  if (Buffer::Length(obj) != 8) {
+    // TODO: Also check that it is a buffer. I have no idea how to check that.
+    Nan::ThrowTypeError("Invalid version buffer - must be 8 bytes");
+    return;
+  }
+
+  uint8_t* data = (uint8_t*)(Buffer::Data(obj));
+  int64_t version = (int64_t)BEBytesToInt64(data);
   fdb_transaction_set_read_version(GetTransactionFromArgs(info), version);
 }
 
@@ -362,7 +395,7 @@ void Transaction::GetCommittedVersion(const FunctionCallbackInfo<Value>& info) {
   }
 
   // Again, if we change version to be a byte array this will need to change too.
-  info.GetReturnValue().Set((double)version);
+  info.GetReturnValue().Set(versionToJSBuffer(version));
 }
 
 

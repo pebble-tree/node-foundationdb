@@ -19,7 +19,7 @@ export type Watch = {
   clear(): void
 }
 
-export type Version = number
+export type Version = Buffer
 
 export interface NativeTransaction {
   setOption(code: number, param: string | number | Buffer | null): void
@@ -33,8 +33,8 @@ export interface NativeTransaction {
 
   get(key: Value, isSnapshot: boolean): Promise<Buffer | null>
   get(key: Value, isSnapshot: boolean, cb: Callback<Buffer | null>): void
-  getKey(key: Value, orEqual: boolean, offset: number, isSnapshot: boolean): Promise<Value>
-  getKey(key: Value, orEqual: boolean, offset: number, isSnapshot: boolean, cb: Callback<Value>): void
+  getKey(key: Value, orEqual: boolean, offset: number, isSnapshot: boolean): Promise<Buffer | null>
+  getKey(key: Value, orEqual: boolean, offset: number, isSnapshot: boolean, cb: Callback<Buffer | null>): void
   set(key: Value, val: Value): void
   clear(key: Value): void
 
@@ -64,10 +64,10 @@ export interface NativeTransaction {
   setReadVersion(v: Version): void
   getReadVersion(): Promise<Version>
   getReadVersion(cb: Callback<Version>): void
-  getCommittedVersion(): number
+  getCommittedVersion(): Version
 
-  getVersionStamp(): Promise<Value>
-  getVersionStamp(cb: Callback<Value>): void
+  getVersionStamp(): Promise<Buffer>
+  getVersionStamp(cb: Callback<Buffer>): void
 
   getAddressesForKey(key: Value): string[]
 }

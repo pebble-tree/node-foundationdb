@@ -2,7 +2,8 @@ import {
   NativeTransaction,
   Callback,
   Value,
-  Version
+  Version,
+  KVList
 } from './native'
 import {strInc, strNext} from './util'
 import keySelector, {KeySelector} from './keySelector'
@@ -12,11 +13,17 @@ import {TransactionOptions, transactionOptionData, StreamingMode, MutationType} 
 const byteZero = new Buffer(1)
 byteZero.writeUInt8(0, 0)
 
-export interface RangeOptions {
-  streamingMode?: StreamingMode, // defaults to 'iterator'
+export interface RangeOptionsBatch {
+  // defaults to Iterator for batch mode, WantAll for getRangeAll.
+  streamingMode?: StreamingMode,
   limit?: number,
   reverse?: boolean,
 }
+
+export interface RangeOptions extends RangeOptionsBatch {
+  targetBytes?: number,
+}
+
 
 // Polyfill for node 8 and 9 to make asyncIterators work (getRange / getRangeBatch).
 if ((<any>Symbol).asyncIterator == null) (<any>Symbol).asyncIterator = Symbol.for("Symbol.asyncIterator")
@@ -62,9 +69,9 @@ export default class Transaction {
     return this.get(key).then(val => val ? val.toString() : null)
   }
 
-  getKey(sel: KeySelector): Promise<Value>
-  getKey(sel: KeySelector, cb: Callback<Value>): void
-  getKey(sel: KeySelector, cb?: Callback<Value>) {
+  getKey(sel: KeySelector): Promise<Buffer | null>
+  getKey(sel: KeySelector, cb: Callback<Buffer | null>): void
+  getKey(sel: KeySelector, cb?: Callback<Buffer | null>) {
     return cb
       ? this._tn.getKey(sel.key, sel.orEqual, sel.offset, this.isSnapshot, cb)
       : this._tn.getKey(sel.key, sel.orEqual, sel.offset, this.isSnapshot)
@@ -75,7 +82,8 @@ export default class Transaction {
 
   // getRangeRaw(start: KeySelector, end: KeySelector, opts: RangeOptions, iter: number = 0) {
   getRangeRaw(start: KeySelector, end: KeySelector,
-      limit: number, targetBytes: number, streamingMode: StreamingMode, iter: number, reverse: boolean) {
+      limit: number, targetBytes: number, streamingMode: StreamingMode,
+      iter: number, reverse: boolean): Promise<KVList> {
     return this._tn.getRange(
       start.key, start.orEqual, start.offset,
       end.key, end.orEqual, end.offset,
@@ -85,21 +93,22 @@ export default class Transaction {
 
   getRangeAll(
       _start: string | Buffer | KeySelector,
-      _end: string | Buffer | KeySelector,
-      opts?: {
-        limit?: number,
-        targetBytes?: number,
-        reverse?: boolean
-      }) {
+      _end: string | Buffer | KeySelector | undefined, // if undefined, start is used as a prefix.
+      opts?: RangeOptions) {
     const start = keySelector.from(_start)
-    const end = keySelector.from(_end)
+    let end = _end == null ? keySelector.firstGreaterOrEqual(strInc(start.key)) : keySelector.from(_end)
+    const mode = (opts && opts.streamingMode) || StreamingMode.WantAll
 
     return this.getRangeRaw(start, end,
       (opts && opts.limit) || 0,
       (opts && opts.targetBytes) || 0,
-      StreamingMode.WantAll, 0,
+      mode, 0,
       opts && opts.reverse || false
     ).then(result => result.results)
+  }
+
+  getRangeAllStartsWith(prefix: string | Buffer | KeySelector, opts?: RangeOptions) {
+    return this.getRangeAll(prefix, undefined, opts)
   }
 
   async *getRangeBatch(
@@ -130,6 +139,8 @@ export default class Transaction {
     }
   }
 
+  // TODO: getRangeBatchStartsWith
+
   async *getRange(
       start: string | Buffer | KeySelector, // Consider also supporting string / buffers for these.
       end?: string | Buffer | KeySelector,
@@ -139,6 +150,7 @@ export default class Transaction {
     }
   }
 
+  // TODO: getRangeStartsWtih
 
   clearRange(start: Value, end: Value) { this._tn.clearRange(start, end) }
   clearRangeStartsWith(prefix: Value) {
@@ -173,9 +185,9 @@ export default class Transaction {
 
   getCommittedVersion() { return this._tn.getCommittedVersion() }
 
-  getVersionStamp(): Promise<Value>
-  getVersionStamp(cb: Callback<Value>): void
-  getVersionStamp(cb?: Callback<Value>) {
+  getVersionStamp(): Promise<Buffer>
+  getVersionStamp(cb: Callback<Buffer>): void
+  getVersionStamp(cb?: Callback<Buffer>) {
     return cb ? this._tn.getVersionStamp(cb) : this._tn.getVersionStamp()
   }
 

@@ -210,8 +210,6 @@ export function pack(arr: TupleItem[]) {
 
 // *** Decode
 
-const maxInt = Math.pow(2, 53) - 1
-const minInt = -Math.pow(2, 53)
 function decodeNumber(buf: Buffer, offset: number, numBytes: number) {
   const negative = numBytes < 0
   numBytes = Math.abs(numBytes)
@@ -229,7 +227,7 @@ function decodeNumber(buf: Buffer, offset: number, numBytes: number) {
     mult *= 0x100
   }
 
-  if (num > maxInt || num < minInt || (num === minInt && odd)) {
+  if (!Number.isSafeInteger(num)) {
     throw new RangeError('Cannot unpack signed integers larger than 54 bits')
   }
 

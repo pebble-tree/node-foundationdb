@@ -84,6 +84,23 @@ const opts = async () => {
   }, {read_your_writes_disable:true})
 }
 
+const versions = async () => {
+  // await db.doTransaction(async tn => {
+  //   await tn.get('x')
+  //   console.log(await tn.getReadVersion())
+  // })
+
+  const tn = db.rawCreateTransaction()
+  // tn.set('x', 'y')
+  tn.setVersionstampedValue('x', Buffer.from([1, 2,1,2,1,2,1,2,1,2]))
+  // await tn.rawCommit()
+  // console.log(await tn.getCommittedVersion())
+  console.log(await tn.getVersionStamp())
+  await tn.rawCommit()
+
+}
+
 // conflictWrites()
 // rangeTest2()
-opts()
+// opts()
+versions()

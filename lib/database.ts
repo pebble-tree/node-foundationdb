@@ -1,11 +1,15 @@
 import * as fdb from './native'
-import Transaction from './transaction'
+import Transaction, {RangeOptions} from './transaction'
 import {Value} from './native'
 import {KeySelector} from './keySelector'
 import FDBError from './error'
 
 import {eachOption} from './opts'
-import {DatabaseOptions, TransactionOptions, databaseOptionData} from './opts.g'
+import {DatabaseOptions,
+  TransactionOptions,
+  databaseOptionData,
+  StreamingMode
+} from './opts.g'
 
 
 export default class Database {
@@ -55,7 +59,7 @@ export default class Database {
   get(key: Value): Promise<Buffer | null> {
     return this.doTransaction(tn => tn.snapshot().get(key))
   }
-  getKey(selector: KeySelector): Promise<Value> {
+  getKey(selector: KeySelector): Promise<Buffer | null> {
     return this.doTransaction(tn => tn.snapshot().getKey(selector))
   }
 
@@ -99,14 +103,19 @@ export default class Database {
     })
   }
 
+  // getRangeRaw(start: KeySelector, end: KeySelector,
+  //     limit: number, targetBytes: number, streamingMode: StreamingMode, iter: number, reverse: boolean) {
+  //   return this.doTransaction(async tn => (
+  //     tn.getRangeRaw(start, end, limit, targetBytes, streamingMode, iter, reverse)
+  //   ))
+  // }
   getRangeAll(
       start: string | Buffer | KeySelector,
-      end: string | Buffer | KeySelector,
-      opts?: {
-        limit?: number,
-        targetBytes?: number,
-        reverse?: boolean
-      }) {
+      end: string | Buffer | KeySelector | undefined,
+      opts?: RangeOptions) {
     return this.doTransaction(async tn => tn.snapshot().getRangeAll(start, end, opts))
+  }
+  getRangeAllStartsWith(prefix: string | Buffer | KeySelector, opts?: RangeOptions) {
+    return this.getRangeAll(prefix, undefined, opts)
   }
 }
