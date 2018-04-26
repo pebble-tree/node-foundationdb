@@ -128,12 +128,12 @@ class BufferBuilder {
   }
 }
 
-const writeNumber = (into: BufferBuilder, bytes: Buffer) => {
-  const flip = bytes[0] & 0x80
-
-  // The first byte is always flipped.
-  into.appendByte(~bytes[0])
-  for (let i = 1; i < bytes.length; i++) into.appendByte(flip ? ~bytes[i] : bytes[i])
+function adjustFloat(data: Buffer, isEncode: boolean) {
+  if((isEncode && (data[0] & 0x80) === 0x80) || (!isEncode && (data[0] & 0x80) === 0x00)) {
+    for(var i = 0; i < data.length; i++) {
+      data[i] = ~data[i]
+    }
+  } else data[0] ^= 0x80
 }
 
 const encode = (into: BufferBuilder, item: TupleItem) => {
@@ -193,13 +193,15 @@ const encode = (into: BufferBuilder, item: TupleItem) => {
     // We need to look at the representation bytes - which needs a temporary buffer.
     const bytes = Buffer.allocUnsafe(8)
     bytes.writeDoubleBE(item, 0)
-    writeNumber(into, bytes)
+    adjustFloat(bytes, true)
+    into.appendBuffer(bytes)
 
   } else if (typeof item === 'object' && item.type === 'singlefloat') {
     into.appendByte(Code.Float)
     const bytes = Buffer.allocUnsafe(4)
     bytes.writeFloatBE(item.value, 0)
-    writeNumber(into, bytes)
+    adjustFloat(bytes, true)
+    into.appendBuffer(bytes)
 
   } else if (typeof item === 'object' && item.type === 'uuid') {
     into.appendByte(Code.UUID)
@@ -257,7 +259,7 @@ function decode(buf: Buffer, pos: {p: number}, strictConformance: boolean): Tupl
     case Code.True: return true
     case Code.Bytes: case Code.String: {
       const builder = new BufferBuilder()
-      for (;; p++) {
+      for (; p < buf.length; p++) {
         const byte = buf[p]
         if (byte === 0) {
           if (p+1 >= buf.length || buf[p+1] !== 0xff) break
@@ -285,22 +287,14 @@ function decode(buf: Buffer, pos: {p: number}, strictConformance: boolean): Tupl
     case Code.Double: {
       const numBuf = Buffer.alloc(8)
       buf.copy(numBuf, 0, p, p+8)
-      numBuf[0] = ~numBuf[0]
-      if (numBuf[0] & 0x80) {
-        // Flip remaining bits
-        for (let i = 1; i < numBuf.length; i++) numBuf[i] = ~numBuf[i]
-      }
+      adjustFloat(numBuf, false)
       pos.p += 8
       return numBuf.readDoubleBE(0)
     }
     case Code.Float: {
       const numBuf = Buffer.alloc(4)
       buf.copy(numBuf, 0, p, p+4)
-      numBuf[0] = ~numBuf[0]
-      if (numBuf[0] & 0x80) {
-        // Flip remaining bits
-        for (let i = 1; i < numBuf.length; i++) numBuf[i] = ~numBuf[i]
-      }
+      adjustFloat(numBuf, false)
       pos.p += 4
       const value = numBuf.readFloatBE(0)
       return strictConformance ? {type: 'singlefloat', value} : value

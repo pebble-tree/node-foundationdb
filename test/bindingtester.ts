@@ -56,12 +56,12 @@ const makeMachine = (db: Database, initialName: Buffer) => {
     } else throw e
   }
 
-  const unwrapNull = <T>(val: T | null) => val == null ? 'RESULT_NOT_PRESENT' : val
+  const unwrapNull = <T>(val: T | null) => val == null ? Buffer.from('RESULT_NOT_PRESENT') : val
   const wrapP = <T>(p: Promise<T>) => (p instanceof Promise) ? p.then(unwrapNull, catchFdbErr) : unwrapNull(p)
 
   const popValue = async () => {
     assert(stack.length, 'popValue when stack is empty')
-    return await wrapP<TupleItem>(stack.pop()!.data)
+    return stack.pop()!.data
   }
   const chk = async <T>(pred: (item: any) => boolean, typeLabel: string): Promise<T> => {
     const {instrId} = stack[stack.length-1]
@@ -88,10 +88,12 @@ const makeMachine = (db: Database, initialName: Buffer) => {
   }
 
   const pushValue = (data: any) => {
+    if (verbose) console.log('pushValue', instrId, data)
     stack.push({instrId, data})
   }
+  const pushLiteral = (data: string) => pushValue(Buffer.from(data, 'ascii'))
   const maybePush = (data: Promise<void> | void) => {
-    if (data) pushValue(data)
+    if (data) pushValue(wrapP(data))
   }
 
   // const orNone = (val: Buffer | null) => val == null ? 'RESULT_NOT_PRESENT' : val
@@ -156,7 +158,7 @@ const makeMachine = (db: Database, initialName: Buffer) => {
     },
     async on_error(tn) {
       const code = await popInt()
-      pushValue((<Transaction>tn).rawOnError(code).catch(catchFdbErr))
+      pushValue(wrapP((<Transaction>tn).rawOnError(code)))
     },
 
     // Transaction read functions
@@ -166,19 +168,22 @@ const makeMachine = (db: Database, initialName: Buffer) => {
     // },
     async get(oper) {
       const key = await popBuffer()
-      pushValue(oper.get(key).catch(catchFdbErr))
+      pushValue(wrapP(oper.get(key)))
     },
     async get_key(oper) {
       const keySel = await popSelector()
       const prefix = await popBuffer()
 
       const result = await wrapP(oper.getKey(keySel))
-      // console.log('get_key prefix', prefix, result)
-      if (result === 'RESULT_NOT_PRESENT') return result // Not sure if this is correct.
+      // if (verbose) {
+      //   console.log('get_key prefix', nodeUtil.inspect(prefix.toString('ascii')), result!.compare(prefix))
+      //   console.log('get_key result', nodeUtil.inspect(result!.toString('ascii')), result!.compare(prefix))
+      // }
+      if (result!.equals(Buffer.from('RESULT_NOT_PRESENT'))) return result // Gross.
 
       // result starts with prefix.
       if (bufBeginsWith(result!, prefix)) pushValue(result)
-      else if (result!.compare(prefix) > 0) pushValue(prefix) // RESULT < PREFIX
+      else if (result!.compare(prefix) < 0) pushValue(prefix) // RESULT < PREFIX
       else pushValue(util.strInc(prefix)) // RESULT > PREFIX
     },
     async get_range(oper) {
@@ -217,17 +222,25 @@ const makeMachine = (db: Database, initialName: Buffer) => {
       pushValue(tuple.pack(Array.prototype.concat.apply([], results)))
     },
     async get_read_version(oper) {
-      lastVersion = await (<Transaction>oper).getReadVersion().catch(catchFdbErr)
-      pushValue("GOT_READ_VERSION")
+      try {
+        lastVersion = await (<Transaction>oper).getReadVersion()
+        pushLiteral("GOT_READ_VERSION")
+      } catch (e) {
+        pushValue(catchFdbErr(e))
+      }
     },
     async get_versionstamp(oper) {
-      pushValue((<Transaction>oper).getVersionStamp().catch(catchFdbErr))
+      pushValue(wrapP((<Transaction>oper).getVersionStamp()))
     },
 
     // Transaction set operations
     async set(oper) {
       const key = await popStrBuf()
       const val = await popStrBuf()
+      if (verbose) {
+        const key2 = tuple.unpack(key as Buffer).map(v => Buffer.isBuffer(v) ? v.toString() : v)
+        if (key2[1] !== 'workspace') console.error('SET', key2, val)
+      }
       maybePush(oper.set(key, val))
     },
     set_read_version(oper) {
@@ -250,34 +263,35 @@ const makeMachine = (db: Database, initialName: Buffer) => {
     },
     async read_conflict_range(oper) {
       ;(<Transaction>oper).addReadConflictRange(await popStrBuf(), await popStrBuf())
-      pushValue("SET_CONFLICT_RANGE")
+      pushLiteral("SET_CONFLICT_RANGE")
     },
     async write_conflict_range(oper) {
       ;(<Transaction>oper).addWriteConflictRange(await popStrBuf(), await popStrBuf())
-      pushValue("SET_CONFLICT_RANGE")
+      pushLiteral("SET_CONFLICT_RANGE")
     },
     async read_conflict_key(oper) {
       ;(<Transaction>oper).addReadConflictKey(await popStrBuf())
-      pushValue("SET_CONFLICT_KEY")
+      pushLiteral("SET_CONFLICT_KEY")
     },
     async write_conflict_key(oper) {
       ;(<Transaction>oper).addWriteConflictKey(await popStrBuf())
-      pushValue("SET_CONFLICT_KEY")
+      pushLiteral("SET_CONFLICT_KEY")
     },
     disable_write_conflict(oper) {
       ;(<Transaction>oper).setOption(TransactionOption.NextWriteNoWriteConflictRange)
     },
 
-    commit(oper) {pushValue((<Transaction>oper).rawCommit().catch(catchFdbErr))},
+    commit(oper) {pushValue(wrapP((<Transaction>oper).rawCommit()))},
     reset(oper) {(<Transaction>oper).rawReset()},
     cancel(oper) {(<Transaction>oper).rawCancel()},
 
     get_committed_version(oper) {
       lastVersion = (<Transaction>oper).getCommittedVersion()
-      pushValue('GOT_COMMITTED_VERSION')
+      pushLiteral('GOT_COMMITTED_VERSION')
     },
     async wait_future() {
-      pushValue(await popValue())
+      const f = stack[stack.length-1]!.data
+      await f
     },
 
 
@@ -345,7 +359,7 @@ const makeMachine = (db: Database, initialName: Buffer) => {
           throw new fdb.FDBError('wait_empty', 1020)
         }
       }).catch(catchFdbErr)
-      pushValue('WAITED_FOR_EMPTY')
+      pushLiteral('WAITED_FOR_EMPTY')
     },
 
     // TODO: Port over the unit tests from the old JS code into here.
@@ -353,7 +367,8 @@ const makeMachine = (db: Database, initialName: Buffer) => {
   }
 
   return {
-    async run(instruction: TupleItem[]) {
+    async run(instrBuf: Buffer) {
+      const instruction = fdb.tuple.unpack(instrBuf, true)
       let [opcode, ...oper] = instruction as [string, TupleItem[]]
       let operand: Transaction | Database = transactions[tnNameKey()]
       if (opcode.endsWith('_SNAPSHOT')) {
@@ -365,8 +380,8 @@ const makeMachine = (db: Database, initialName: Buffer) => {
       }
 
       if (verbose) {
-        if (oper.length) console.log(chalk.magenta(opcode as string), threadColor(initialName.toString('ascii')), oper)
-        else console.log(chalk.magenta(opcode as string), threadColor(initialName.toString('ascii')))
+        if (oper.length) console.log(chalk.magenta(opcode as string), instrId, threadColor(initialName.toString('ascii')), oper, instrBuf.toString('hex'))
+        else console.log(chalk.magenta(opcode as string), instrId, threadColor(initialName.toString('ascii')))
       }
 
       try {
@@ -376,14 +391,14 @@ const makeMachine = (db: Database, initialName: Buffer) => {
         pushValue(err)
       }
 
-      instrId++
-
       if (verbose) {
         console.log(chalk.yellow('STATE'), instrId, threadColor(initialName.toString('ascii')), tnName.toString('ascii'), lastVersion)
         console.log(`stack length ${stack.length}:`)
-        if (stack.length >= 1) console.log('  Stack top:', stack[stack.length-1].data)
-        if (stack.length >= 2) console.log('  stack t-1:', stack[stack.length-2].data)
+        if (stack.length >= 1) console.log('  Stack top:', stack[stack.length-1].instrId, stack[stack.length-1].data)
+        if (stack.length >= 2) console.log('  stack t-1:', stack[stack.length-2].instrId, stack[stack.length-2].data)
       }
+
+      instrId++
     }
   }
 }
@@ -410,12 +425,11 @@ async function runFromPrefix(db: Database, prefix: Buffer) {
   let i = 0
   const thread = db.doTransaction(async tn => {
     for await (const [key, value] of tn.getRange(begin, end)) {
-      const instruction = fdb.tuple.unpack(value, true)
       // console.log(i++, prefix.toString(), instruction)
 
-      await machine.run(instruction)
+      await machine.run(value)
 
-      // if (++i >= 4800) verbose = true
+      // if (++i >= 310) return
     }
   })
 

@@ -1,29 +1,47 @@
 import 'mocha'
 import fdb = require('../lib')
 import assert = require('assert')
+import {TupleItem} from '../lib/tuple'
 
+const {tuple} = fdb
 describe('tuple', () => {
+  const assertRoundTrip = (val: TupleItem) => {
+    const packed = tuple.pack([val])
+    const unpacked = tuple.unpack(packed, true)[0]
+    assert.deepStrictEqual(unpacked, val)
+  }
+
   it('roundtrips expected values', () => {
     const data = ['hi', null, '👾', 321, 0, -100]
-    assert.deepStrictEqual(fdb.tuple.unpack(fdb.tuple.pack(data)), data)
+    assertRoundTrip(data)
+
+    assertRoundTrip(0.75)
+    assertRoundTrip({type: 'singlefloat', value: 0.5})
   })
+
+  it('stalls on invalid input', () => {
+    tuple.unpack(tuple.unpack(Buffer.from('\x01\x01tester_output\x00\xff\x01workspace\x01\x00', 'ascii'))[0] as Buffer)
+  })
+
+  // it('regression', () => {
+  //   const orig = Buffer.from('\x01\x01tester_output\x00\xff\x01workspace\x00\xff\x00', 'ascii')
+  //   assert.deepEqual(orig, tuple.pack(tuple.unpack(orig)))
+  // })
       
   describe('Conformance tests', () => {
     // These are from the examples here:
     // https://github.com/apple/foundationdb/blob/master/design/tuple.md
 
-    const testConformance = (name: string, value: any, expectedEncoding: string) => {
-      it(name, () => testEq(value, expectedEncoding))
+    const testConformance = (name: string, value: any, bytes: Buffer | string) => {
+      it(name, () => {
+        const encoded = tuple.pack([value])
+        assert.deepStrictEqual(encoded, Buffer.isBuffer(bytes) ? bytes : Buffer.from(bytes, 'ascii'))
+
+        const decoded = tuple.unpack(encoded)
+        assert.deepStrictEqual(decoded, [value])
+      })
     }
 
-    const testEq = (val: any, bytes: string) => {
-      const encoded = fdb.tuple.pack([val])
-      assert.deepStrictEqual(encoded, Buffer.from(bytes, 'ascii'))
-
-      const decoded = fdb.tuple.unpack(encoded)
-      assert.deepStrictEqual(decoded, [val])
-    }
-    
     testConformance('null', null, '\x00')
     testConformance('false', false, '\x26')
     testConformance('true', true, '\x27')
