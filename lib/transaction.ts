@@ -87,7 +87,6 @@ export default class Transaction {
   getRangeRaw(start: KeySelector, end: KeySelector,
       limit: number, targetBytes: number, streamingMode: StreamingMode,
       iter: number, reverse: boolean): Promise<KVList> {
-    console.log('stream', streamingMode)
     return this._tn.getRange(
       start.key, start.orEqual, start.offset,
       end.key, end.orEqual, end.offset,

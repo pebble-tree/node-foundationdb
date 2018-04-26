@@ -18,6 +18,8 @@ import nodeUtil = require('util')
 
 import chalk from 'chalk'
 
+const verbose = false
+
 const {keySelector, tuple} = fdb
 
 // The string keys are all buffers, encoded as hex.
@@ -46,7 +48,7 @@ const makeMachine = (db: Database, initialName: Buffer) => {
 
   const catchFdbErr = (e: Error) => {
     if (e instanceof fdb.FDBError) {
-      console.log('got fdb error', e)
+      // console.log('got fdb error', e)
       // This encoding is silly.
       return fdb.tuple.pack([Buffer.from('ERROR'), Buffer.from(e.code.toString())])
     } else throw e
@@ -119,7 +121,6 @@ const makeMachine = (db: Database, initialName: Buffer) => {
     async concat() {
       const a = await popStrBuf() // both strings or both bytes.
       const b = await popStrBuf()
-      console.log(a, b)
       assert(typeof a === typeof b, 'concat type mismatch')
       if (typeof a === 'string') pushValue(a + b)
       else pushValue(Buffer.concat([a as Buffer, b as Buffer]))
@@ -184,17 +185,12 @@ const makeMachine = (db: Database, initialName: Buffer) => {
       const limit = await popInt()
       const reverse = await popBool()
       const streamingMode = await popInt() as StreamingMode
-      console.log('get range', beginKey, endKey, limit, reverse, streamingMode)
+      // console.log('get range', beginKey, endKey, limit, reverse, streamingMode)
       const results = await oper.getRangeAll(
         keySelector.from(beginKey), keySelector.from(endKey),
         {streamingMode, limit, reverse}
       )
-      console.log('get range result', results)
-      // const results = await oper.getRangeRaw(keySelector.from(beginKey), keySelector.from(endKey),
-      //   limit, 0, streamingMode, 0, reverse)
-
-      // Flatten [[k,v], [k,v], ...] results into [k,v,k,v,...].
-      // pushValue(Array.prototype.concat.apply([], results.results))
+      // console.log('get range result', results)
       pushValue(tuple.pack(Array.prototype.concat.apply([], results)))
     },
     async get_range_starts_with(oper) {
@@ -230,11 +226,9 @@ const makeMachine = (db: Database, initialName: Buffer) => {
     async set(oper) {
       const key = await popStrBuf()
       const val = await popStrBuf()
-      console.log('SET', key, val)
       maybePush(oper.set(key, val))
     },
     set_read_version(oper) {
-      console.log('set read version', lastVersion)
       ;(<Transaction>oper).setReadVersion(lastVersion)
     },
     async clear(oper) {
@@ -359,30 +353,32 @@ const makeMachine = (db: Database, initialName: Buffer) => {
   return {
     async run(instruction: TupleItem[]) {
       let [opcode, ...oper] = instruction as [string, TupleItem[]]
-      try {
-        let operand: Transaction | Database = transactions[tnNameKey()]
-        if (opcode.endsWith('_SNAPSHOT')) {
-          opcode = opcode.slice(0, -'_SNAPSHOT'.length)
-          operand = (operand as Transaction).snapshot()
-        } else if (opcode.endsWith('_DATABASE')) {
-          opcode = opcode.slice(0, -'_DATABASE'.length)
-          operand = db
-        }
+      let operand: Transaction | Database = transactions[tnNameKey()]
+      if (opcode.endsWith('_SNAPSHOT')) {
+        opcode = opcode.slice(0, -'_SNAPSHOT'.length)
+        operand = (operand as Transaction).snapshot()
+      } else if (opcode.endsWith('_DATABASE')) {
+        opcode = opcode.slice(0, -'_DATABASE'.length)
+        operand = db
+      }
 
+      try {
         await operations[opcode.toLowerCase()](operand, ...oper)
       } catch (e) {
         if (e instanceof fdb.FDBError) {
-          console.log('got fdb error', e)
           // This encoding is silly.
           pushValue(fdb.tuple.pack([Buffer.from('ERROR'), Buffer.from(e.code.toString())]))
         } else throw e
       }
+
       instrId++
 
-      console.log(chalk.yellow('STATE'), instrId, tnName.toString('ascii'), lastVersion)
-      console.log(`stack length ${stack.length}:`)
-      if (stack.length >= 1) console.log('  Stack top:', stack[stack.length-1].data)
-      if (stack.length >= 2) console.log('  stack t-1:', stack[stack.length-2].data)
+      if (verbose) {
+        console.log(chalk.yellow('STATE'), instrId, tnName.toString('ascii'), lastVersion)
+        console.log(`stack length ${stack.length}:`)
+        if (stack.length >= 1) console.log('  Stack top:', stack[stack.length-1].data)
+        if (stack.length >= 2) console.log('  stack t-1:', stack[stack.length-2].data)
+      }
     }
   }
 }
@@ -409,7 +405,7 @@ async function runFromPrefix(db: Database, prefix: Buffer) {
     for await (const [key, value] of tn.getRange(begin, end)) {
       const instruction = fdb.tuple.unpack(value)
       // console.log(i++, prefix.toString(), instruction)
-      console.log(chalk.magenta(instruction[0] as string), instruction.slice(1))
+      if (verbose) console.log(chalk.magenta(instruction[0] as string), instruction.slice(1))
       await machine.run(instruction)
 
       // if (++i >= 171) break
