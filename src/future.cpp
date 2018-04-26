@@ -18,28 +18,30 @@ template<class T> struct CtxBase {
   void (*fn)(FDBFuture*, T*);
   uv_async_t async;
 };
+
 template<class T> void resolveFutureInMainLoop(FDBFuture *f, T* ctx, void (*fn)(FDBFuture *f, T*)) {
   // printf("resolveFutureInMainLoop called\n");
   ctx->future = f;
   ctx->fn = fn;
 
-  // uv_async_t async;
-  ctx->async.data = ctx;
   // TODO: Handle error on async_init failing. Probably just assert.
   assert(0 == uv_async_init(uv_default_loop(), &ctx->async, [](uv_async_t *async) {
-    // printf("uv_async fired\n");
+    // raise(SIGTRAP);
     T* ctx = static_cast<T*>(async->data);
     ctx->fn(ctx->future, ctx);
 
+    printf("fdb_future_destroy\n");
     fdb_future_destroy(ctx->future);
     uv_close((uv_handle_t *)async, [](uv_handle_t *handle) {
       T* ctx = static_cast<T*>(handle->data);
       delete ctx;
     });
   }));
+  // uv_async_t async;
+  ctx->async.data = ctx;
 
   assert(0 == fdb_future_set_callback(f, [](FDBFuture *f, void *_ctx) {
-    // printf("future callback fired\n");
+    // raise(SIGTRAP);
     T* ctx = static_cast<T*>(_ctx);
     uv_async_send(&ctx->async);
   }, ctx));

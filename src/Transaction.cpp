@@ -398,9 +398,8 @@ void Transaction::GetCommittedVersion(const FunctionCallbackInfo<Value>& info) {
   info.GetReturnValue().Set(versionToJSBuffer(version));
 }
 
-
 void Transaction::GetVersionStamp(const FunctionCallbackInfo<Value>& info) {
-  FDBFuture *f = fdb_transaction_get_read_version(GetTransactionFromArgs(info));
+  FDBFuture *f = fdb_transaction_get_versionstamp(GetTransactionFromArgs(info));
   info.GetReturnValue().Set(futureToJS(f, info[0], getKey));
 }
 
