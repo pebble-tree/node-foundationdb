@@ -48,7 +48,6 @@ const makeMachine = (db: Database, initialName: Buffer) => {
 
   const catchFdbErr = (e: Error) => {
     if (e instanceof fdb.FDBError) {
-      // console.log('got fdb error', e)
       // This encoding is silly.
       return fdb.tuple.pack([Buffer.from('ERROR'), Buffer.from(e.code.toString())])
     } else throw e
@@ -62,8 +61,9 @@ const makeMachine = (db: Database, initialName: Buffer) => {
     return await wrapP<TupleItem>(stack.pop()!.data)
   }
   const chk = async <T>(pred: (item: any) => boolean, typeLabel: string): Promise<T> => {
+    const {instrId} = stack[stack.length-1]
     let val = await popValue()
-    assert(pred(val), `Value does not match (${nodeUtil.inspect(val)}) is not a ${typeLabel}`)
+    assert(pred(val), `Unexpected type of ${nodeUtil.inspect(val, false, undefined, true)} inserted at ${instrId} - espected ${typeLabel}`)
     return val as any as T // :(
   }
   const popStr = () => chk<string>(val => typeof val === 'string', 'string')
@@ -157,14 +157,14 @@ const makeMachine = (db: Database, initialName: Buffer) => {
     },
 
     // Transaction read functions
-    async get(oper) {
-      const key = await popBuffer()
-      pushValue(await wrapP(oper.get(key)))
-    },
     // async get(oper) {
     //   const key = await popBuffer()
-    //   pushValue(oper.get(key))
+    //   pushValue(await wrapP(oper.get(key)))
     // },
+    async get(oper) {
+      const key = await popBuffer()
+      pushValue(oper.get(key))
+    },
     async get_key(oper) {
       const keySel = await popSelector()
       const prefix = await popBuffer()
@@ -174,9 +174,8 @@ const makeMachine = (db: Database, initialName: Buffer) => {
       if (result === 'RESULT_NOT_PRESENT') return result // Not sure if this is correct.
 
       // result starts with prefix.
-      const cmp = result!.compare(prefix, 0, prefix.length, 0, prefix.length)
-      if (cmp === 0) pushValue(result)
-      else if (cmp > 0) pushValue(prefix) // RESULT < PREFIX
+      if (bufBeginsWith(result!, prefix)) pushValue(result)
+      else if (result!.compare(prefix) > 0) pushValue(prefix) // RESULT < PREFIX
       else pushValue(util.strInc(prefix)) // RESULT > PREFIX
     },
     async get_range(oper) {
@@ -305,7 +304,7 @@ const makeMachine = (db: Database, initialName: Buffer) => {
         .map(buf => tuple.unpack(buf as Buffer, true))
         .sort((a: TupleItem[], b: TupleItem[]) => tuple.pack(a).compare(tuple.pack(b)))
 
-      for (const item of items) pushValue(item)
+      for (const item of items) pushValue(tuple.pack(item))
     },
     async encode_float() {
       const val = await popBuffer()
@@ -412,7 +411,7 @@ async function runFromPrefix(db: Database, prefix: Buffer) {
 
       await machine.run(instruction)
 
-      // if (++i >= 171) break
+      // if (++i >= 4800) verbose = true
     }
   })
 }
