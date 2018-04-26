@@ -300,10 +300,12 @@ const makeMachine = (db: Database, initialName: Buffer) => {
       pushValue(end)
     },
     async tuple_sort() {
-      throw Error('not implemented')
-      // const items = await popNValues()
-      // items.forEach(buf => assert(Buffer.isBuffer(buf)))
-      // items.map(buf => tuple.unpack(buf as Buffer))
+      // Look I'll be honest. I could put a compare function into the tuple type, but it doesn't do anything you can't trivially do yourself.
+      const items = (await popNValues())
+        .map(buf => tuple.unpack(buf as Buffer, true))
+        .sort((a: TupleItem[], b: TupleItem[]) => tuple.pack(a).compare(tuple.pack(b)))
+
+      for (const item of items) pushValue(item)
     },
     async encode_float() {
       const val = await popBuffer()
@@ -362,6 +364,8 @@ const makeMachine = (db: Database, initialName: Buffer) => {
         operand = db
       }
 
+      if (verbose) console.log(chalk.magenta(opcode as string), oper)
+
       try {
         await operations[opcode.toLowerCase()](operand, ...oper)
       } catch (e) {
@@ -403,9 +407,9 @@ async function runFromPrefix(db: Database, prefix: Buffer) {
   let i = 0
   db.doTransaction(async tn => {
     for await (const [key, value] of tn.getRange(begin, end)) {
-      const instruction = fdb.tuple.unpack(value)
+      const instruction = fdb.tuple.unpack(value, true)
       // console.log(i++, prefix.toString(), instruction)
-      if (verbose) console.log(chalk.magenta(instruction[0] as string), instruction.slice(1))
+
       await machine.run(instruction)
 
       // if (++i >= 171) break

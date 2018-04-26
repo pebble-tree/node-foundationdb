@@ -25,7 +25,7 @@ export interface RangeOptions extends RangeOptionsBatch {
 }
 
 
-// Polyfill for node 8 and 9 to make asyncIterators work (getRange / getRangeBatch).
+// Polyfill for node < 10.0 to make asyncIterators work (getRange / getRangeBatch).
 if ((<any>Symbol).asyncIterator == null) (<any>Symbol).asyncIterator = Symbol.for("Symbol.asyncIterator")
 
 export default class Transaction {
@@ -39,8 +39,10 @@ export default class Transaction {
   }
 
   setOption(opt: TransactionOption, value?: number | string | Buffer) {
+    // TODO: Check type of passed option is valid.
     this._tn.setOption(opt, (value == null) ? null : value)
   }
+
   // Returns a mirror transaction which does snapshot reads.
   snapshot(): Transaction {
     return new Transaction(this._tn, true)
@@ -50,7 +52,6 @@ export default class Transaction {
   rawCommit(): Promise<void>
   rawCommit(cb: Callback<void>): void
   rawCommit(cb?: Callback<void>) {
-    // TODO: And maybe mark the tn as committed.
     return cb ? this._tn.commit(cb) : this._tn.commit()
   }
 
@@ -83,7 +84,6 @@ export default class Transaction {
   set(key: Value, val: Value) { this._tn.set(key, val) }
   clear(key: Value) { this._tn.clear(key) }
 
-  // getRangeRaw(start: KeySelector, end: KeySelector, opts: RangeOptions, iter: number = 0) {
   getRangeRaw(start: KeySelector, end: KeySelector,
       limit: number, targetBytes: number, streamingMode: StreamingMode,
       iter: number, reverse: boolean): Promise<KVList> {
@@ -131,11 +131,8 @@ export default class Transaction {
       start: string | Buffer | KeySelector,
       end: string | Buffer | KeySelector | undefined, // if undefined, start is used as a prefix.
       opts: RangeOptions = {}) {
-    // const mode = (opts && opts.streamingMode) || StreamingMode.WantAll
-    const childOpts: RangeOptions = {
-      streamingMode: opts.streamingMode || StreamingMode.WantAll,
-      ...opts
-    }
+    const childOpts: RangeOptions = {...opts}
+    if (childOpts.streamingMode == null) childOpts.streamingMode = StreamingMode.WantAll
 
     const result: [Buffer, Buffer][] = []
     for await (const batch of this.getRangeBatch(start, end, childOpts)) {
@@ -164,7 +161,8 @@ export default class Transaction {
 
   watch(key: Value, listener: Callback<void>) {
     // This API is probably fine... I could return a Promise for the watch but
-    // its weird to cancel promises in JS.
+    // its weird to cancel promises in JS, and adding a .cancel() method to
+    // the primise feels weird.
     return this._tn.watch(key, listener)
   }
 

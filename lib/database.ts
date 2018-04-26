@@ -50,12 +50,12 @@ export default class Database {
     })
   }
 
-  // This is for advanced usage only. You probably don't want to create
-  // transactions manually. Use doTransaction instead.
+  // TODO: setOption.
+
+  // Infrequently used. You probably want to use doTransaction instead.
   rawCreateTransaction(opts?: TransactionOptions) {
     return new Transaction(this._db.createTransaction(), false, opts)
   }
-
 
   get(key: Value): Promise<Buffer | null> {
     return this.doTransaction(tn => tn.snapshot().get(key))
@@ -104,18 +104,13 @@ export default class Database {
     })
   }
 
-  // getRangeRaw(start: KeySelector, end: KeySelector,
-  //     limit: number, targetBytes: number, streamingMode: StreamingMode, iter: number, reverse: boolean) {
-  //   return this.doTransaction(async tn => (
-  //     tn.getRangeRaw(start, end, limit, targetBytes, streamingMode, iter, reverse)
-  //   ))
-  // }
   getRangeAll(
       start: string | Buffer | KeySelector,
       end: string | Buffer | KeySelector | undefined,
       opts?: RangeOptions) {
     return this.doTransaction(async tn => tn.snapshot().getRangeAll(start, end, opts))
   }
+
   getRangeAllStartsWith(prefix: string | Buffer | KeySelector, opts?: RangeOptions) {
     return this.getRangeAll(prefix, undefined, opts)
   }

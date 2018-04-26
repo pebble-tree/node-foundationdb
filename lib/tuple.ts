@@ -22,6 +22,7 @@
 // numbers. If you want to encode a single precision float, wrap it as
 // {type: 'singlefloat, value: 123}.
 
+import assert = require('assert')
 
 const numByteLen = (num: number) => {
   let max = 1
@@ -44,15 +45,15 @@ enum Code {
   Double = 0x21,
   False = 0x26,
   True = 0x27,
-  // UUID = 0x30,
+  UUID = 0x30,
 }
 
 // Supported tuple item types.
 // This awkwardness brougth to you by:
 // https://github.com/unional/typescript-guidelines/blob/master/pages/advance-types/recursive-types.md
 export type TupleItem = null | Buffer | string | TupleArr | number | boolean | {
-//   type: 'uuid', value: string
-// } | {
+  type: 'uuid', value: Buffer
+} | {
   // This is flattened into a double during decoding unless {strict: true}.
   type: 'singlefloat', value: number
 }
@@ -112,11 +113,18 @@ class BufferBuilder {
   }
 
   appendByte(val: number) { this.need(1); this.storage[this.used++] = val }
+
   appendString(val: string) {
     const len = Buffer.byteLength(val)
     this.need(len)
     this.storage.write(val, this.used)
     this.used += len
+  }
+
+  appendBuffer(val: Buffer) {
+    this.need(val.length)
+    val.copy(this.storage, this.used)
+    this.used += val.length
   }
 }
 
@@ -160,8 +168,7 @@ const encode = (into: BufferBuilder, item: TupleItem) => {
     }
     into.appendByte(0)
 
-  } else if (typeof item === 'number' && Number.isInteger(item)) {
-    if (!Number.isSafeInteger(item)) throw new RangeError('Cannot pack signed integer larger than 54 bits')
+  } else if (typeof item === 'number' && Number.isSafeInteger(item)) {
     const isNegative = item < 0
     let absItem = Math.abs(item)
     let byteLen = numByteLen(absItem)
@@ -193,6 +200,12 @@ const encode = (into: BufferBuilder, item: TupleItem) => {
     const bytes = Buffer.allocUnsafe(4)
     bytes.writeFloatBE(item.value, 0)
     writeNumber(into, bytes)
+
+  } else if (typeof item === 'object' && item.type === 'uuid') {
+    into.appendByte(Code.UUID)
+    assert(item.value.length === 16, 'Invalid UUID: Should be 16 bytes exactly')
+    into.appendBuffer(item.value)
+
   } else throw new TypeError('Packed items must be basic types or lists')
 }
 
@@ -270,27 +283,33 @@ function decode(buf: Buffer, pos: {p: number}, strictConformance: boolean): Tupl
       return result
     }
     case Code.Double: {
-      const buf = Buffer.alloc(8)
-      buf.copy(buf, 0, p, p+8)
-      buf[0] = ~buf[0]
-      if (buf[0] & 0x80) {
+      const numBuf = Buffer.alloc(8)
+      buf.copy(numBuf, 0, p, p+8)
+      numBuf[0] = ~numBuf[0]
+      if (numBuf[0] & 0x80) {
         // Flip remaining bits
-        for (let i = 1; i < buf.length; i++) buf[i] = ~buf[i]
+        for (let i = 1; i < numBuf.length; i++) numBuf[i] = ~numBuf[i]
       }
       pos.p += 8
-      return buf.readDoubleBE(0)
+      return numBuf.readDoubleBE(0)
     }
     case Code.Float: {
-      const buf = Buffer.alloc(4)
-      buf.copy(buf, 0, p, p+4)
-      buf[0] = ~buf[0]
-      if (buf[0] & 0x80) {
+      const numBuf = Buffer.alloc(4)
+      buf.copy(numBuf, 0, p, p+4)
+      numBuf[0] = ~numBuf[0]
+      if (numBuf[0] & 0x80) {
         // Flip remaining bits
-        for (let i = 1; i < buf.length; i++) buf[i] = ~buf[i]
+        for (let i = 1; i < numBuf.length; i++) numBuf[i] = ~numBuf[i]
       }
       pos.p += 4
-      const value = buf.readFloatBE(0)
+      const value = numBuf.readFloatBE(0)
       return strictConformance ? {type: 'singlefloat', value} : value
+    }
+    case Code.UUID: {
+      const value = Buffer.alloc(16)
+      buf.copy(value, 0, p, p+16)
+      pos.p += 16
+      return {type: 'uuid', value}
     }
     default: {
       const byteLen = code-20 // negative if number is negative.
