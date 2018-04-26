@@ -8,8 +8,10 @@
           'link_settings': { 'libraries': ['-lfdb_c'] },
         }],
         ['OS=="mac"', {
+          # 'xcode_settings': { 'OTHER_CFLAGS': ['-std=c++0x', '-fsanitize=address'] },
           'xcode_settings': { 'OTHER_CFLAGS': ['-std=c++0x'] },
           'include_dirs': ['/usr/local/include'],
+          # 'link_settings': { 'libraries': ['-lfdb_c', '-L/usr/local/lib', '-fsanitize=address'] },
           'link_settings': { 'libraries': ['-lfdb_c', '-L/usr/local/lib'] },
         }],
         ['OS=="win"', {

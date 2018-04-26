@@ -5,6 +5,7 @@
 
 import fdb = require('./index')
 import * as ks from './keySelector'
+import {StreamingMode} from './opts.g'
 
 process.on('unhandledRejection', err => { throw err.stack })
 
@@ -77,6 +78,16 @@ const rangeTest2 = async () => {
   ))) // 'b'
 }
 
+const rangeTest3 = async () => {
+  // await db.doTransaction(async tn => {
+  //   await tn.getRangeRaw(fdb.keySelector.from('a'), fdb.keySelector.from('b'), 0, 0, StreamingMode.Exact, 0, false)
+  // })
+  await db.getRangeAll('a', 'b', {
+    limit: 0,
+    streamingMode: StreamingMode.Exact
+  })
+}
+
 const opts = async () => {
   await db.doTransaction(async tn => {
     tn.set('xyz', 'hidsffds')
@@ -102,6 +113,6 @@ const versions = async () => {
 }
 
 // conflictWrites()
-// rangeTest2()
+rangeTest3()
 // opts()
-versions()
+// versions()
