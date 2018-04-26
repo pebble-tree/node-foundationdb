@@ -7,7 +7,7 @@ import {
   bufToNum,
 } from './util'
 
-process.on('unhandledRejection', err => { throw err.stack })
+process.on('unhandledRejection', err => { throw err })
 
 // These tests just use a single shared database instance which is reset
 // between tests. It would be cleaner if we used beforeEach to close & reopen

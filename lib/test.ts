@@ -7,7 +7,7 @@ import fdb = require('./index')
 import * as ks from './keySelector'
 import {StreamingMode} from './opts.g'
 
-process.on('unhandledRejection', err => { throw err.stack })
+process.on('unhandledRejection', err => { throw err })
 
 const db = fdb.openSync()
 

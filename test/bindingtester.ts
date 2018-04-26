@@ -18,7 +18,7 @@ import nodeUtil = require('util')
 
 import chalk from 'chalk'
 
-const verbose = false
+let verbose = false
 
 const {keySelector, tuple} = fdb
 
@@ -37,18 +37,21 @@ const toStr = (val: any): string => (
   : nodeUtil.inspect(val)
 )
 
+const colors = [chalk.blueBright, chalk.red, chalk.cyan, chalk.greenBright, chalk.grey]
 const makeMachine = (db: Database, initialName: Buffer) => {
   type StackItem = {instrId: number, data: any}
   const stack: StackItem[] = []
   let tnName = initialName
   let instrId = 0
   let lastVersion: Buffer = Buffer.alloc(8) // null / empty last version.
+  const threadColor = colors.pop()!
 
   const tnNameKey = () => tnName.toString('hex')
 
   const catchFdbErr = (e: Error) => {
     if (e instanceof fdb.FDBError) {
       // This encoding is silly.
+      // console.error('xxx', e.code, e.message, e.stack)
       return fdb.tuple.pack([Buffer.from('ERROR'), Buffer.from(e.code.toString())])
     } else throw e
   }
@@ -63,7 +66,7 @@ const makeMachine = (db: Database, initialName: Buffer) => {
   const chk = async <T>(pred: (item: any) => boolean, typeLabel: string): Promise<T> => {
     const {instrId} = stack[stack.length-1]
     let val = await popValue()
-    assert(pred(val), `Unexpected type of ${nodeUtil.inspect(val, false, undefined, true)} inserted at ${instrId} - espected ${typeLabel}`)
+    assert(pred(val), `${threadColor('Unexpected type')} of ${nodeUtil.inspect(val, false, undefined, true)} inserted at ${instrId} - espected ${typeLabel}`)
     return val as any as T // :(
   }
   const popStr = () => chk<string>(val => typeof val === 'string', 'string')
@@ -153,7 +156,7 @@ const makeMachine = (db: Database, initialName: Buffer) => {
     },
     async on_error(tn) {
       const code = await popInt()
-      pushValue((<Transaction>tn).rawOnError(code))
+      pushValue((<Transaction>tn).rawOnError(code).catch(catchFdbErr))
     },
 
     // Transaction read functions
@@ -163,7 +166,7 @@ const makeMachine = (db: Database, initialName: Buffer) => {
     // },
     async get(oper) {
       const key = await popBuffer()
-      pushValue(oper.get(key))
+      pushValue(oper.get(key).catch(catchFdbErr))
     },
     async get_key(oper) {
       const keySel = await popSelector()
@@ -218,7 +221,7 @@ const makeMachine = (db: Database, initialName: Buffer) => {
       pushValue("GOT_READ_VERSION")
     },
     async get_versionstamp(oper) {
-      pushValue((<Transaction>oper).getVersionStamp())
+      pushValue((<Transaction>oper).getVersionStamp().catch(catchFdbErr))
     },
 
     // Transaction set operations
@@ -246,26 +249,26 @@ const makeMachine = (db: Database, initialName: Buffer) => {
       maybePush(oper.atomicOp(code, await popStrBuf(), await popStrBuf()))
     },
     async read_conflict_range(oper) {
-      (<Transaction>oper).addReadConflictRange(await popStrBuf(), await popStrBuf())
+      ;(<Transaction>oper).addReadConflictRange(await popStrBuf(), await popStrBuf())
       pushValue("SET_CONFLICT_RANGE")
     },
     async write_conflict_range(oper) {
-      (<Transaction>oper).addWriteConflictRange(await popStrBuf(), await popStrBuf())
+      ;(<Transaction>oper).addWriteConflictRange(await popStrBuf(), await popStrBuf())
       pushValue("SET_CONFLICT_RANGE")
     },
     async read_conflict_key(oper) {
-      (<Transaction>oper).addReadConflictKey(await popStrBuf())
+      ;(<Transaction>oper).addReadConflictKey(await popStrBuf())
       pushValue("SET_CONFLICT_KEY")
     },
     async write_conflict_key(oper) {
-      (<Transaction>oper).addWriteConflictKey(await popStrBuf())
+      ;(<Transaction>oper).addWriteConflictKey(await popStrBuf())
       pushValue("SET_CONFLICT_KEY")
     },
     disable_write_conflict(oper) {
-      (<Transaction>oper).setOption(TransactionOption.NextWriteNoWriteConflictRange)
+      ;(<Transaction>oper).setOption(TransactionOption.NextWriteNoWriteConflictRange)
     },
 
-    commit(oper) {pushValue((<Transaction>oper).rawCommit())},
+    commit(oper) {pushValue((<Transaction>oper).rawCommit().catch(catchFdbErr))},
     reset(oper) {(<Transaction>oper).rawReset()},
     cancel(oper) {(<Transaction>oper).rawCancel()},
 
@@ -317,13 +320,15 @@ const makeMachine = (db: Database, initialName: Buffer) => {
       const val = await popValue() as {type: 'singlefloat', value: number}
       assert(typeof val === 'object' && val.type === 'singlefloat')
       const buf = Buffer.alloc(4)
-      pushValue(buf.writeFloatBE(val.value as number, 0))
+      buf.writeFloatBE(val.value as number, 0)
+      pushValue(buf)
     },
     async decode_double() {
       const val = await popValue() as number
       assert(typeof val === 'number')
       const buf = Buffer.alloc(8)
-      pushValue(buf.writeDoubleBE(val, 0))
+      buf.writeDoubleBE(val, 0)
+      pushValue(buf)
     },
 
     // Thread Operations
@@ -331,10 +336,6 @@ const makeMachine = (db: Database, initialName: Buffer) => {
       // Note we don't wait here - this is run concurrently.
       const prefix = await popBuffer()
       runFromPrefix(db, prefix)
-      .catch(e => {
-        console.error('Error running in prefix ' + prefix.toString())
-        throw e
-      })
     },
     async wait_empty() {
       const prefix = await popBuffer()
@@ -363,21 +364,22 @@ const makeMachine = (db: Database, initialName: Buffer) => {
         operand = db
       }
 
-      if (verbose) console.log(chalk.magenta(opcode as string), oper)
+      if (verbose) {
+        if (oper.length) console.log(chalk.magenta(opcode as string), threadColor(initialName.toString('ascii')), oper)
+        else console.log(chalk.magenta(opcode as string), threadColor(initialName.toString('ascii')))
+      }
 
       try {
         await operations[opcode.toLowerCase()](operand, ...oper)
       } catch (e) {
-        if (e instanceof fdb.FDBError) {
-          // This encoding is silly.
-          pushValue(fdb.tuple.pack([Buffer.from('ERROR'), Buffer.from(e.code.toString())]))
-        } else throw e
+        const err = catchFdbErr(e)
+        pushValue(err)
       }
 
       instrId++
 
       if (verbose) {
-        console.log(chalk.yellow('STATE'), instrId, tnName.toString('ascii'), lastVersion)
+        console.log(chalk.yellow('STATE'), instrId, threadColor(initialName.toString('ascii')), tnName.toString('ascii'), lastVersion)
         console.log(`stack length ${stack.length}:`)
         if (stack.length >= 1) console.log('  Stack top:', stack[stack.length-1].data)
         if (stack.length >= 2) console.log('  stack t-1:', stack[stack.length-2].data)
@@ -399,12 +401,14 @@ const makeMachine = (db: Database, initialName: Buffer) => {
 //   }
 // }
 
+const threads = new Set
+
 async function runFromPrefix(db: Database, prefix: Buffer) {
   const machine = makeMachine(db, prefix)
 
   const {begin, end} = fdb.tuple.range([prefix])
   let i = 0
-  db.doTransaction(async tn => {
+  const thread = db.doTransaction(async tn => {
     for await (const [key, value] of tn.getRange(begin, end)) {
       const instruction = fdb.tuple.unpack(value, true)
       // console.log(i++, prefix.toString(), instruction)
@@ -414,10 +418,22 @@ async function runFromPrefix(db: Database, prefix: Buffer) {
       // if (++i >= 4800) verbose = true
     }
   })
+
+  threads.add(thread)
+  await thread
+  threads.delete(thread)
 }
 
 if (require.main === module) {
-  process.on('unhandledRejection', err => { throw err.stack })
+  // require('longjohn')
+  // const lp = require('long-promise')
+  // lp.enable()
+
+  process.on('unhandledRejection', (err: any) => {
+    // console.error('err', err, err.code, err.message)
+    // console.error(lp.getLongStack(err))
+    throw err
+  })
 
   const prefixStr = process.argv[2]
   const requestedAPIVersion = +process.argv[3]
@@ -430,5 +446,9 @@ if (require.main === module) {
 
   const db = fdb.openSync(clusterFile)
 
-  runFromPrefix(db, Buffer.from(prefixStr, 'ascii'))
+  try {
+    runFromPrefix(db, Buffer.from(prefixStr, 'ascii'))
+  } catch (e) {
+    console.error('rfp', e)
+  }
 }
