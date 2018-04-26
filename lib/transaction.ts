@@ -94,22 +94,6 @@ export default class Transaction {
       iter, this.isSnapshot, reverse)
   }
 
-  getRangeAll(
-      _start: string | Buffer | KeySelector,
-      _end: string | Buffer | KeySelector | undefined, // if undefined, start is used as a prefix.
-      opts?: RangeOptions) {
-    const start = keySelector.from(_start)
-    let end = _end == null ? keySelector.firstGreaterOrEqual(strInc(start.key)) : keySelector.from(_end)
-    const mode = (opts && opts.streamingMode) || StreamingMode.WantAll
-
-    return this.getRangeRaw(start, end,
-      (opts && opts.limit) || 0,
-      (opts && opts.targetBytes) || 0,
-      mode, 0,
-      opts && opts.reverse || false
-    ).then(result => result.results)
-  }
-
   getRangeAllStartsWith(prefix: string | Buffer | KeySelector, opts?: RangeOptions) {
     return this.getRangeAll(prefix, undefined, opts)
   }
@@ -140,6 +124,23 @@ export default class Transaction {
         if (limit <= 0) break
       }
     }
+  }
+
+  async getRangeAll(
+      start: string | Buffer | KeySelector,
+      end: string | Buffer | KeySelector | undefined, // if undefined, start is used as a prefix.
+      opts: RangeOptions = {}) {
+    // const mode = (opts && opts.streamingMode) || StreamingMode.WantAll
+    const childOpts: RangeOptions = {
+      streamingMode: opts.streamingMode || StreamingMode.WantAll,
+      ...opts
+    }
+
+    const result: [Buffer, Buffer][] = []
+    for await (const batch of this.getRangeBatch(start, end, childOpts)) {
+      result.push.apply(result, batch)
+    }
+    return result
   }
 
   // TODO: getRangeBatchStartsWith
