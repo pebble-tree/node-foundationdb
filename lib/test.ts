@@ -95,9 +95,10 @@ const versions = async () => {
   tn.setVersionstampedValue('x', Buffer.from([1, 2,1,2,1,2,1,2,1,2]))
   // await tn.rawCommit()
   // console.log(await tn.getCommittedVersion())
-  console.log(await tn.getVersionStamp())
+  const vstn = tn.getVersionStamp()
   await tn.rawCommit()
-
+  console.log(await vstn)
+  // setTimeout(() => {}, 1000)
 }
 
 // conflictWrites()

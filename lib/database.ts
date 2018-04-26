@@ -8,7 +8,8 @@ import {eachOption} from './opts'
 import {DatabaseOptions,
   TransactionOptions,
   databaseOptionData,
-  StreamingMode
+  StreamingMode,
+  MutationType,
 } from './opts.g'
 
 
@@ -118,4 +119,18 @@ export default class Database {
   getRangeAllStartsWith(prefix: string | Buffer | KeySelector, opts?: RangeOptions) {
     return this.getRangeAll(prefix, undefined, opts)
   }
+
+  atomicOp(op: MutationType, key: Value, oper: Value) {
+    return this.doOneshot(tn => tn.atomicOp(op, key, oper))
+  }
+  add(key: Value, oper: Value) { this.atomicOp(MutationType.Add, key, oper) }
+  bitAnd(key: Value, oper: Value) { this.atomicOp(MutationType.BitAnd, key, oper) }
+  bitOr(key: Value, oper: Value) { this.atomicOp(MutationType.BitOr, key, oper) }
+  bitXor(key: Value, oper: Value) { this.atomicOp(MutationType.BitXor, key, oper) }
+  max(key: Value, oper: Value) { this.atomicOp(MutationType.Max, key, oper) }
+  min(key: Value, oper: Value) { this.atomicOp(MutationType.Min, key, oper) }
+  setVersionstampedKey(key: Value, oper: Value) { this.atomicOp(MutationType.SetVersionstampedKey, key, oper) }
+  setVersionstampedValue(key: Value, oper: Value) { this.atomicOp(MutationType.SetVersionstampedValue, key, oper) }
+  byteMin(key: Value, oper: Value) { this.atomicOp(MutationType.ByteMin, key, oper) }
+  byteMax(key: Value, oper: Value) { this.atomicOp(MutationType.ByteMax, key, oper) }
 }

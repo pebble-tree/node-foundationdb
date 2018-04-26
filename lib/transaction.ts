@@ -8,7 +8,7 @@ import {
 import {strInc, strNext} from './util'
 import keySelector, {KeySelector} from './keySelector'
 import {eachOption} from './opts'
-import {TransactionOptions, transactionOptionData, StreamingMode, MutationType} from './opts.g'
+import {TransactionOptions, TransactionOption, transactionOptionData, StreamingMode, MutationType} from './opts.g'
 
 const byteZero = new Buffer(1)
 byteZero.writeUInt8(0, 0)
@@ -38,6 +38,9 @@ export default class Transaction {
     this.isSnapshot = snapshot
   }
 
+  setOption(opt: TransactionOption, value?: number | string | Buffer) {
+    this._tn.setOption(opt, (value == null) ? null : value)
+  }
   // Returns a mirror transaction which does snapshot reads.
   snapshot(): Transaction {
     return new Transaction(this._tn, true)
@@ -195,14 +198,17 @@ export default class Transaction {
     return this._tn.getAddressesForKey(key)
   }
 
-  add(key: Value, oper: Value) { this._tn.atomicOp(key, oper, MutationType.Add) }
-  bitAnd(key: Value, oper: Value) { this._tn.atomicOp(key, oper, MutationType.BitAnd) }
-  bitOr(key: Value, oper: Value) { this._tn.atomicOp(key, oper, MutationType.BitOr) }
-  bitXor(key: Value, oper: Value) { this._tn.atomicOp(key, oper, MutationType.BitXor) }
-  max(key: Value, oper: Value) { this._tn.atomicOp(key, oper, MutationType.Max) }
-  min(key: Value, oper: Value) { this._tn.atomicOp(key, oper, MutationType.Min) }
-  setVersionstampedKey(key: Value, oper: Value) { this._tn.atomicOp(key, oper, MutationType.SetVersionstampedKey) }
-  setVersionstampedValue(key: Value, oper: Value) { this._tn.atomicOp(key, oper, MutationType.SetVersionstampedValue) }
-  byteMin(key: Value, oper: Value) { this._tn.atomicOp(key, oper, MutationType.ByteMin) }
-  byteMax(key: Value, oper: Value) { this._tn.atomicOp(key, oper, MutationType.ByteMax) }
+  atomicOp(opType: MutationType, key: Value, oper: Value) {this._tn.atomicOp(opType, key, oper)}
+
+  // I wish I could easily autogenerate this... Easy with JS but not sure how with TS.
+  add(key: Value, oper: Value) { this._tn.atomicOp(MutationType.Add, key, oper) }
+  bitAnd(key: Value, oper: Value) { this._tn.atomicOp(MutationType.BitAnd, key, oper) }
+  bitOr(key: Value, oper: Value) { this._tn.atomicOp(MutationType.BitOr, key, oper) }
+  bitXor(key: Value, oper: Value) { this._tn.atomicOp(MutationType.BitXor, key, oper) }
+  max(key: Value, oper: Value) { this._tn.atomicOp(MutationType.Max, key, oper) }
+  min(key: Value, oper: Value) { this._tn.atomicOp(MutationType.Min, key, oper) }
+  setVersionstampedKey(key: Value, oper: Value) { this._tn.atomicOp(MutationType.SetVersionstampedKey, key, oper) }
+  setVersionstampedValue(key: Value, oper: Value) { this._tn.atomicOp(MutationType.SetVersionstampedValue, key, oper) }
+  byteMin(key: Value, oper: Value) { this._tn.atomicOp(MutationType.ByteMin, key, oper) }
+  byteMax(key: Value, oper: Value) { this._tn.atomicOp(MutationType.ByteMax, key, oper) }
 }

@@ -1,14 +1,12 @@
 import bindings = require('bindings')
 import FDBError from './error'
+import {MutationType, StreamingMode} from './opts.g'
 
 export type Value = string | Buffer
 
 export type Callback<T> = (err: FDBError | null, results?: T) => void
 
 // type VoidCb = (err?: FDBError) => void
-
-export type AtomicOp = number
-export type StreamingMode = number
 
 export type KVList = {
   results: [Buffer, Buffer][], // [key, value] pair.
@@ -38,7 +36,7 @@ export interface NativeTransaction {
   set(key: Value, val: Value): void
   clear(key: Value): void
 
-  atomicOp(key: Value, operand: Value, atomicOp: AtomicOp): void
+  atomicOp(opType: MutationType, key: Value, operand: Value): void
 
   getRange(
     start: Value, beginOrEq: boolean, beginOffset: number,

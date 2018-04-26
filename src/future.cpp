@@ -30,7 +30,6 @@ template<class T> void resolveFutureInMainLoop(FDBFuture *f, T* ctx, void (*fn)(
     T* ctx = static_cast<T*>(async->data);
     ctx->fn(ctx->future, ctx);
 
-    printf("fdb_future_destroy\n");
     fdb_future_destroy(ctx->future);
     uv_close((uv_handle_t *)async, [](uv_handle_t *handle) {
       T* ctx = static_cast<T*>(handle->data);

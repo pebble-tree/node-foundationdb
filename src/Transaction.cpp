@@ -282,9 +282,9 @@ void Transaction::Clear(const FunctionCallbackInfo<Value>& info) {
 
 // atomicOp(key, operand key, mutationtype)
 void Transaction::AtomicOp(const FunctionCallbackInfo<Value>& info) {
-  StringParams key(info[0]);
-  StringParams operand(info[1]);
-  FDBMutationType operationType = (FDBMutationType)info[2]->Int32Value();
+  FDBMutationType operationType = (FDBMutationType)info[0]->Int32Value();
+  StringParams key(info[1]);
+  StringParams operand(info[2]);
 
   fdb_transaction_atomic_op(GetTransactionFromArgs(info), key.str, key.len, operand.str, operand.len, operationType);
 }

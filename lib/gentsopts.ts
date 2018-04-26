@@ -69,17 +69,17 @@ parseString(xml, (err, result) => {
         line()
       })
       line(`}\n`)
-    } else {
-      line(`export enum ${name} {`)
-      options.forEach(({name, code, type, description, deprecated}) => {
-        if (deprecated) line(`  ${comment} DEPRECATED`)
-        else if (description) output.write(splitLines(description).map(s => `  ${comment} ${s}\n`).join(''))
-
-        line(`  ${toUpperCamelCase(name)} = ${code},\n`)
-      })
-
-      line(`}\n`)
     }
+
+    line(`export enum ${name} {`)
+    options.forEach(({name, code, type, description, deprecated}) => {
+      if (deprecated) line(`  ${comment} DEPRECATED`)
+      else if (description) output.write(splitLines(description).map(s => `  ${comment} ${s}\n`).join(''))
+
+      line(`  ${toUpperCamelCase(name)} = ${code},\n`)
+    })
+
+    line(`}\n`)
   })
 
   result.Options.Scope.forEach((scope: any) => {
