@@ -87,6 +87,7 @@ export default class Transaction {
   getRangeRaw(start: KeySelector, end: KeySelector,
       limit: number, targetBytes: number, streamingMode: StreamingMode,
       iter: number, reverse: boolean): Promise<KVList> {
+    console.log('stream', streamingMode)
     return this._tn.getRange(
       start.key, start.orEqual, start.offset,
       end.key, end.orEqual, end.offset,
@@ -105,11 +106,12 @@ export default class Transaction {
     let start = keySelector.from(_start)
     let end = _end == null ? keySelector.firstGreaterOrEqual(strInc(start.key)) : keySelector.from(_end)
     let limit = opts.limit || 0
+    const streamingMode = opts.streamingMode == null ? StreamingMode.Iterator : opts.streamingMode
 
     let iter = 0
     while (1) {
       const {results, more} = await this.getRangeRaw(start, end,
-        limit, 0, opts.streamingMode || StreamingMode.Iterator, ++iter, opts.reverse || false)
+        limit, 0, streamingMode, ++iter, opts.reverse || false)
 
       yield results
       if (!more) break
