@@ -17,6 +17,7 @@
 // - 64 bit IDs
 // - versionstamps
 // - user type codes
+// - int values outside the safe zone of 53 bits
 //
 // Note that this library canonicalizes some values by default. All numbers
 // are encoded to / from javascript double precision numbers. If you want to
@@ -178,7 +179,7 @@ const encode = (into: BufferBuilder, item: TupleItem) => {
     }
     into.appendByte(0)
 
-  } else if (typeof item === 'number' && Number.isSafeInteger(item)) {
+  } else if (typeof item === 'number' && Number.isSafeInteger(item) && !Object.is(item, -0)) {
     const isNegative = item < 0
     let absItem = Math.abs(item)
     let byteLen = numByteLen(absItem)

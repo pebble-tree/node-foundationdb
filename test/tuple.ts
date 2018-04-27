@@ -34,14 +34,14 @@ describe('tuple', () => {
     // Do any other nan encodings exist?
   })
 
+  it('preserves encoding of exotic numbers', () => {
+    // I'm sure there's lots more I'm missing here.
+    assertRoundTripBytes(Buffer.from('217fffffffffffffff', 'hex'), true) // This is -0.
+  })
+
   it('stalls on invalid input', () => {
     tuple.unpack(tuple.unpack(Buffer.from('\x01\x01tester_output\x00\xff\x01workspace\x01\x00', 'ascii'))[0] as Buffer)
   })
-
-  // it('regression', () => {
-  //   const orig = Buffer.from('\x01\x01tester_output\x00\xff\x01workspace\x00\xff\x00', 'ascii')
-  //   assert.deepEqual(orig, tuple.pack(tuple.unpack(orig)))
-  // })
       
   describe('Conformance tests', () => {
     // These are from the examples here:

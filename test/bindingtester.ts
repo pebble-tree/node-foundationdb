@@ -61,6 +61,9 @@ const makeMachine = (db: Database, initialName: Buffer) => {
 
   const popValue = async () => {
     assert(stack.length, 'popValue when stack is empty')
+    if (verbose) {
+      console.log(chalk.green('pop value'), stack[stack.length-1].instrId, stack[stack.length-1].data)
+    }
     return stack.pop()!.data
   }
   const chk = async <T>(pred: (item: any) => boolean, typeLabel: string): Promise<T> => {
@@ -325,14 +328,14 @@ const makeMachine = (db: Database, initialName: Buffer) => {
     },
     async encode_float() {
       const val = await popBuffer()
-      pushValue({type: 'singlefloat', value: val.readFloatBE(0)})
+      pushValue({type: 'float', value: val.readFloatBE(0)})
     },
     async encode_double() {
       pushValue((await popBuffer()).readDoubleBE(0))
     },
     async decode_float() {
-      const val = await popValue() as {type: 'singlefloat', value: number}
-      assert(typeof val === 'object' && val.type === 'singlefloat')
+      const val = await popValue() as {type: 'float', value: number}
+      assert(typeof val === 'object' && val.type === 'float')
       const buf = Buffer.alloc(4)
       buf.writeFloatBE(val.value as number, 0)
       pushValue(buf)
