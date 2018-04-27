@@ -44,7 +44,9 @@ const makeMachine = (db: Database, initialName: Buffer) => {
   let tnName = initialName
   let instrId = 0
   let lastVersion: Buffer = Buffer.alloc(8) // null / empty last version.
+
   const threadColor = colors.pop()!
+  colors.unshift(threadColor)
 
   const tnNameKey = () => tnName.toString('hex')
 
@@ -177,7 +179,7 @@ const makeMachine = (db: Database, initialName: Buffer) => {
       const keySel = await popSelector()
       const prefix = await popBuffer()
 
-      const result = await wrapP(oper.getKey(keySel))
+      const result = await oper.getKey(keySel)
       // if (verbose) {
       //   console.log('get_key prefix', nodeUtil.inspect(prefix.toString('ascii')), result!.compare(prefix))
       //   console.log('get_key result', nodeUtil.inspect(result!.toString('ascii')), result!.compare(prefix))
@@ -329,26 +331,33 @@ const makeMachine = (db: Database, initialName: Buffer) => {
     async encode_float() {
       const buf = await popBuffer()
       const value = buf.readFloatBE(0)
-      pushValue(isNaN(value) ? {type: 'float', value, rawEncoding: buf} : {type: 'float', value})
+      pushValue(tuple.unpack(tuple.pack([{type: 'float', value, rawEncoding: buf}]), true)[0])
     },
     async encode_double() {
       const buf = await popBuffer()
       const value = buf.readDoubleBE(0)
-      pushValue(isNaN(value) ? {type: 'double', value, rawEncoding: buf} : value)
+      pushValue(tuple.unpack(tuple.pack([{type: 'double', value, rawEncoding: buf}]), true)[0])
     },
     async decode_float() {
-      const val = await popValue() as {type: 'float', value: number}
+      // These are both super gross. Not sure what to do about that.
+      const val = await popValue() as {type: 'float', value: number, rawEncoding?: Buffer}
       assert(typeof val === 'object' && val.type === 'float')
-      const buf = Buffer.alloc(4)
-      buf.writeFloatBE(val.value as number, 0)
-      pushValue(buf)
+      if (val.rawEncoding) pushValue(val.rawEncoding)
+      else {
+        const buf = Buffer.alloc(4)
+        buf.writeFloatBE(val.value as number, 0)
+        pushValue(buf)
+      }
     },
     async decode_double() {
-      const val = await popValue() as number
-      assert(typeof val === 'number')
-      const buf = Buffer.alloc(8)
-      buf.writeDoubleBE(val, 0)
-      pushValue(buf)
+      const val = await popValue() as number | {type: 'double', value: number, rawEncoding?: Buffer}
+      assert(typeof val === 'number' || val.type === 'double', 'val is ' + nodeUtil.inspect(val))
+      if (typeof val === 'object' && val.rawEncoding) pushValue(val.rawEncoding)
+      else {
+        const buf = Buffer.alloc(8)
+        buf.writeDoubleBE(typeof val === 'number' ? val : val.value, 0)
+        pushValue(buf)
+      }
     },
 
     // Thread Operations
@@ -385,6 +394,15 @@ const makeMachine = (db: Database, initialName: Buffer) => {
         operand = db
       }
 
+      const txnOps = [
+        'NEW_TRANSACTION',
+        'USE_TRANSACTION',
+        'ON_ERROR',
+        'COMMIT',
+        'CANCEL',
+        'RESET',
+      ]
+      // if (verbose || (instrId > 25000 && instrId < 28523 && txnOps.includes(opcode))) {
       if (verbose) {
         if (oper.length) console.log(chalk.magenta(opcode as string), instrId, threadColor(initialName.toString('ascii')), oper, instrBuf.toString('hex'))
         else console.log(chalk.magenta(opcode as string), instrId, threadColor(initialName.toString('ascii')))
@@ -428,14 +446,9 @@ async function runFromPrefix(db: Database, prefix: Buffer) {
   const machine = makeMachine(db, prefix)
 
   const {begin, end} = fdb.tuple.range([prefix])
-  let i = 0
   const thread = db.doTransaction(async tn => {
     for await (const [key, value] of tn.getRange(begin, end)) {
-      // console.log(i++, prefix.toString(), instruction)
-
       await machine.run(value)
-
-      // if (++i >= 310) return
     }
   })
 

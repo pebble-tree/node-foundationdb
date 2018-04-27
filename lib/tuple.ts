@@ -57,14 +57,14 @@ enum Code {
 export type TupleItem = null | Buffer | string | TupleArr | number | boolean | {
   type: 'uuid', value: Buffer
 } | {
-  // This is flattened into a double during decoding if strictConformance is
+  // This is flattened into a double during decoding if noCanonicalize is
   // true. NaN has multiple binary encodings and node normalizes NaN to a
   // single binary layout. To preserve the binary representation of NaNs
   // across encoding / decoding, we'll store the original NaN encoding on the
   // object. This is needed for the binding tester to pass.
   type: 'float', value: number, rawEncoding?: Buffer, // Encoding used for NaN
 } | {
-  // As above, although this is only used for strictConformance + NaN value.
+  // As above, although this is only used for noCanonicalize + NaN value.
   type: 'double', value: number, rawEncoding?: Buffer,
 }
 
@@ -265,7 +265,7 @@ function decodeNumber(buf: Buffer, offset: number, numBytes: number) {
   return num
 }
 
-function decode(buf: Buffer, pos: {p: number}, strictConformance: boolean): TupleItem {
+function decode(buf: Buffer, pos: {p: number}, noCanonicalize: boolean): TupleItem {
   const code = buf.readUInt8(pos.p++) as Code
   let p = pos.p
 
@@ -295,7 +295,7 @@ function decode(buf: Buffer, pos: {p: number}, strictConformance: boolean): Tupl
             pos.p += 2
             result.push(null)
           }
-        } else result.push(decode(buf, pos, strictConformance))
+        } else result.push(decode(buf, pos, noCanonicalize))
       }
       pos.p++ // Eat trailing 0.
       return result
@@ -306,11 +306,13 @@ function decode(buf: Buffer, pos: {p: number}, strictConformance: boolean): Tupl
       adjustFloat(numBuf, false)
       pos.p += 8
       const value = numBuf.readDoubleBE(0)
-      return (isNaN(value) && strictConformance)
-        // Javascript normalizes NaN values, so we have to manually preserve
-        // the byte representation of the number.
-        ? {type: 'double', value, rawEncoding: numBuf}
-        : value
+      return (noCanonicalize || Number.isInteger(value))
+        ? (isNaN(value)
+          // Javascript normalizes NaN values, so we have to manually preserve
+          // the byte representation of the number.
+          ? {type: 'double', value, rawEncoding: numBuf}
+          : {type: 'double', value}
+        ) : value
     }
     case Code.Float: {
       const numBuf = Buffer.alloc(4)
@@ -318,11 +320,11 @@ function decode(buf: Buffer, pos: {p: number}, strictConformance: boolean): Tupl
       adjustFloat(numBuf, false)
       pos.p += 4
       const value = numBuf.readFloatBE(0)
-      return strictConformance
+      return noCanonicalize
         ? (isNaN(value)
           ? {type: 'float', value, rawEncoding: numBuf}
-          : {type: 'float', value})
-        : value
+          : {type: 'float', value}
+        ) : value
     }
     case Code.UUID: {
       const value = Buffer.alloc(16)
@@ -343,12 +345,12 @@ function decode(buf: Buffer, pos: {p: number}, strictConformance: boolean): Tupl
   }
 }
 
-export function unpack(key: Buffer, strictConformance: boolean = false) {
+export function unpack(key: Buffer, noCanonicalize: boolean = false) {
   const pos = {p: 0}
   const arr = []
 
   while(pos.p < key.length) {
-    arr.push(decode(key, pos, strictConformance))
+    arr.push(decode(key, pos, noCanonicalize))
   }
 
   return arr

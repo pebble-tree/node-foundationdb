@@ -21,17 +21,21 @@ describe('tuple', () => {
     const data = ['hi', null, '👾', 321, 0, -100]
     assertRoundTrip(data)
 
-    assertRoundTrip(0.75, true)
+    assertRoundTrip(0.75)
     assertRoundTrip({type: 'float', value: 0.5}, true)
   })
 
-  it('preserves encoding of NaN values in strict mode', () => {
+  it('preserves encoding of values in strict mode', () => {
     // There's a few ways NaN is encoded.
     assertRoundTripBytes(Buffer.from('210007ffffffffffff', 'hex'), true) // double
     assertRoundTripBytes(Buffer.from('21fff8000000000000', 'hex'), true)
     assertRoundTripBytes(Buffer.from('20ffc00000', 'hex'), true) // TODO: 
     assertRoundTripBytes(Buffer.from('20003fffff', 'hex'), true)
     // Do any other nan encodings exist?
+    
+    // Also any regular integers should be preserved.
+    assertRoundTripBytes(Buffer.from('2080000000', 'hex'), true)
+    assertRoundTripBytes(Buffer.from('218000000000000000', 'hex'), true)
   })
 
   it('preserves encoding of exotic numbers', () => {
