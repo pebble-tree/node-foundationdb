@@ -112,7 +112,18 @@ const versions = async () => {
   // setTimeout(() => {}, 1000)
 }
 
+const versions2 = async () => {
+  const stamp = await db.doTransaction(async tn => {
+    tn.setVersionstampedValue('x', Buffer.from([1,2, 1,2,1,2,1,2,1,2]))
+    return tn.getVersionStamp()
+  })
+
+  console.log(await stamp[0])
+  
+  console.log(await db.get('x'))
+}
+
 // conflictWrites()
-rangeTest3()
+// rangeTest3()
 // opts()
-// versions()
+versions2()

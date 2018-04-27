@@ -3,6 +3,7 @@ import Transaction, {RangeOptions} from './transaction'
 import {Value} from './native'
 import {KeySelector} from './keySelector'
 import FDBError from './error'
+import {TupleItem, pack} from './tuple'
 
 import {eachOption} from './opts'
 import {DatabaseOptions,
@@ -14,11 +15,29 @@ import {DatabaseOptions,
 
 
 export default class Database {
+  _prefix: Buffer | null
   _db: fdb.NativeDatabase
 
-  constructor(db: fdb.NativeDatabase, opts?: DatabaseOptions) {
+  constructor(db: fdb.NativeDatabase, prefix?: Buffer) {
     this._db = db
-    if (opts) eachOption(databaseOptionData, opts, (code, val) => db.setOption(code, val))
+    this._prefix = prefix || null
+  }
+
+  setNativeOptions(opts: DatabaseOptions) {
+    eachOption(databaseOptionData, opts, (code, val) => this._db.setOption(code, val))
+  }
+
+  atPrefix(childPrefix: Buffer) {
+    return new Database(
+      this._db,
+      this._prefix ? Buffer.concat([this._prefix, childPrefix]) : childPrefix
+    )
+  }
+
+  // At a tuple layer prefix
+  at(childPrefix: Buffer | TupleItem[]) {
+    if (Array.isArray(childPrefix)) childPrefix = pack(childPrefix)
+    return this.atPrefix(childPrefix)
   }
 
   // This is the API you want to use for non-trivial transactions.
@@ -54,13 +73,13 @@ export default class Database {
 
   // Infrequently used. You probably want to use doTransaction instead.
   rawCreateTransaction(opts?: TransactionOptions) {
-    return new Transaction(this._db.createTransaction(), false, opts)
+    return new Transaction(this._db.createTransaction(), false, this._prefix, opts)
   }
 
   get(key: Value): Promise<Buffer | null> {
     return this.doTransaction(tn => tn.snapshot().get(key))
   }
-  getKey(selector: KeySelector): Promise<Buffer | null> {
+  getKey(selector: string | Buffer | KeySelector): Promise<Buffer | null> {
     return this.doTransaction(tn => tn.snapshot().getKey(selector))
   }
 

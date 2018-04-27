@@ -1,3 +1,4 @@
+import assert = require('assert')
 import {
   NativeTransaction,
   Callback,
@@ -31,9 +32,11 @@ if ((<any>Symbol).asyncIterator == null) (<any>Symbol).asyncIterator = Symbol.fo
 export default class Transaction {
   _tn: NativeTransaction
   isSnapshot: boolean
+  _prefix: Buffer | null
 
-  constructor(tn: NativeTransaction, snapshot: boolean, opts?: TransactionOptions) {
+  constructor(tn: NativeTransaction, snapshot: boolean, prefix: Buffer | null, opts?: TransactionOptions) {
     this._tn = tn
+    this._prefix = prefix
     if (opts) eachOption(transactionOptionData, opts, (code, val) => tn.setOption(code, val))
     this.isSnapshot = snapshot
   }
@@ -45,7 +48,19 @@ export default class Transaction {
 
   // Returns a mirror transaction which does snapshot reads.
   snapshot(): Transaction {
-    return new Transaction(this._tn, true)
+    return new Transaction(this._tn, true, this._prefix)
+  }
+
+  wrapKey(key: Buffer | string): Buffer {
+    const keyBuf = typeof key === 'string' ? Buffer.from(key) : key
+    return this._prefix
+      ? Buffer.concat([this._prefix, keyBuf])
+      : keyBuf
+  }
+
+  unwrapKey(keyPrefixed: Buffer): Buffer {
+    // Note using slice doesn't reallocate the underlying byte array.
+    return this._prefix ? keyPrefixed.slice(this._prefix.length) : keyPrefixed
   }
 
   // You probably don't want to call any of these functions directly. Instead call db.transact(async tn => {...}).
@@ -67,35 +82,39 @@ export default class Transaction {
   get(key: Value): Promise<Buffer | null>
   get(key: Value, cb: Callback<Buffer | null>): void
   get(key: Value, cb?: Callback<Buffer | null>) {
-    return cb ? this._tn.get(key, this.isSnapshot, cb) : this._tn.get(key, this.isSnapshot)
+    const keyWrapped = this.wrapKey(key)
+    return cb ? this._tn.get(keyWrapped, this.isSnapshot, cb) : this._tn.get(keyWrapped, this.isSnapshot)
   }
-  getStr(key: Value): Promise<string | null> {
-    return this.get(key).then(val => val ? val.toString() : null)
+  // TODO: Add something like this.
+  // getStr(key: Value): Promise<string | null> {
+  //   return this.get(key).then(val => val ? val.toString() : null)
+  // }
+
+  getKey(_sel: string | Buffer | KeySelector): Promise<Buffer | null> {
+    const sel = keySelector.from(_sel)
+    return this._tn.getKey(this.wrapKey(sel.key), sel.orEqual, sel.offset, this.isSnapshot)
+    .then(keyOrNull => (
+      keyOrNull != null ? this.unwrapKey(keyOrNull) : null
+    ))
   }
 
-  getKey(sel: KeySelector): Promise<Buffer | null>
-  getKey(sel: KeySelector, cb: Callback<Buffer | null>): void
-  getKey(sel: KeySelector, cb?: Callback<Buffer | null>) {
-    return cb
-      ? this._tn.getKey(sel.key, sel.orEqual, sel.offset, this.isSnapshot, cb)
-      : this._tn.getKey(sel.key, sel.orEqual, sel.offset, this.isSnapshot)
-  }
-
-  set(key: Value, val: Value) { this._tn.set(key, val) }
-  clear(key: Value) { this._tn.clear(key) }
+  set(key: Value, val: Value) { this._tn.set(this.wrapKey(key), val) }
+  clear(key: Value) { this._tn.clear(this.wrapKey(key)) }
 
   getRangeRaw(start: KeySelector, end: KeySelector,
       limit: number, targetBytes: number, streamingMode: StreamingMode,
       iter: number, reverse: boolean): Promise<KVList> {
     return this._tn.getRange(
-      start.key, start.orEqual, start.offset,
-      end.key, end.orEqual, end.offset,
+      this.wrapKey(start.key), start.orEqual, start.offset,
+      this.wrapKey(end.key), end.orEqual, end.offset,
       limit, targetBytes, streamingMode,
       iter, this.isSnapshot, reverse)
-  }
-
-  getRangeAllStartsWith(prefix: string | Buffer | KeySelector, opts?: RangeOptions) {
-    return this.getRangeAll(prefix, undefined, opts)
+    .then(result => {
+      for (let i = 0; i < result.results.length; i++) {
+        result.results[i][0] = this.unwrapKey(result.results[i][0])
+      }
+      return result
+    })
   }
 
   async *getRangeBatch(
@@ -127,6 +146,19 @@ export default class Transaction {
     }
   }
 
+  // TODO: getRangeBatchStartsWith
+
+  async *getRange(
+      start: string | Buffer | KeySelector, // Consider also supporting string / buffers for these.
+      end?: string | Buffer | KeySelector,
+      opts?: RangeOptions) {
+    for await (const batch of this.getRangeBatch(start, end, opts)) {
+      for (const pair of batch) yield pair
+    }
+  }
+
+  // TODO: getRangeStartsWtih
+
   async getRangeAll(
       start: string | Buffer | KeySelector,
       end: string | Buffer | KeySelector | undefined, // if undefined, start is used as a prefix.
@@ -141,20 +173,13 @@ export default class Transaction {
     return result
   }
 
-  // TODO: getRangeBatchStartsWith
-
-  async *getRange(
-      start: string | Buffer | KeySelector, // Consider also supporting string / buffers for these.
-      end?: string | Buffer | KeySelector,
-      opts?: RangeOptions) {
-    for await (const batch of this.getRangeBatch(start, end, opts)) {
-      for (const pair of batch) yield pair
-    }
+  getRangeAllStartsWith(prefix: string | Buffer | KeySelector, opts?: RangeOptions) {
+    return this.getRangeAll(prefix, undefined, opts)
   }
-
-  // TODO: getRangeStartsWtih
-
-  clearRange(start: Value, end: Value) { this._tn.clearRange(start, end) }
+  
+  clearRange(start: Value, end: Value) {
+    this._tn.clearRange(this.wrapKey(start), this.wrapKey(end))
+  }
   clearRangeStartsWith(prefix: Value) {
     this.clearRange(prefix, strInc(prefix))
   }
@@ -163,16 +188,20 @@ export default class Transaction {
     // This API is probably fine... I could return a Promise for the watch but
     // its weird to cancel promises in JS, and adding a .cancel() method to
     // the primise feels weird.
-    return this._tn.watch(key, listener)
+    return this._tn.watch(this.wrapKey(key), listener)
   }
 
-  addReadConflictRange(start: Value, end: Value) { this._tn.addReadConflictRange(start, end) }
+  addReadConflictRange(start: Value, end: Value) {
+    this._tn.addReadConflictRange(this.wrapKey(start), this.wrapKey(end))
+  }
   addReadConflictKey(key: Value) {
     const keyBuf = Buffer.from(key)
     this.addReadConflictRange(keyBuf, strNext(keyBuf))
   }
 
-  addWriteConflictRange(start: Value, end: Value) { this._tn.addWriteConflictRange(start, end) }
+  addWriteConflictRange(start: Value, end: Value) {
+    this._tn.addWriteConflictRange(this.wrapKey(start), this.wrapKey(end))
+  }
   addWriteConflictKey(key: Value) {
     const keyBuf = Buffer.from(key)
     this.addWriteConflictRange(keyBuf, strNext(keyBuf))
@@ -195,20 +224,34 @@ export default class Transaction {
   }
 
   getAddressesForKey(key: Value): string[] {
-    return this._tn.getAddressesForKey(key)
+    return this._tn.getAddressesForKey(this.wrapKey(key))
   }
 
-  atomicOp(opType: MutationType, key: Value, oper: Value) {this._tn.atomicOp(opType, key, oper)}
+  atomicOp(opType: MutationType, key: Value, oper: Value) {
+    if (this._prefix) {
+      key = this.wrapKey(key)
+      if (opType === MutationType.SetVersionstampedKey) {
+        // If the original key length is less than 10 bytes, atomicOp will throw
+        // an error. We should preemptively do that before reading the length
+        // field.
+        const pos = key.readUInt16LE(key.length - 2)
+        key.writeUInt16LE(pos + this._prefix.length, key.length - 2)
+      } else if (opType !== MutationType.SetVersionstampedValue) {
+        oper = this.wrapKey(oper)
+      }
+    }
+    this._tn.atomicOp(opType, key, oper)
+  }
 
-  // I wish I could easily autogenerate this... Easy with JS but not sure how with TS.
-  add(key: Value, oper: Value) { this._tn.atomicOp(MutationType.Add, key, oper) }
-  bitAnd(key: Value, oper: Value) { this._tn.atomicOp(MutationType.BitAnd, key, oper) }
-  bitOr(key: Value, oper: Value) { this._tn.atomicOp(MutationType.BitOr, key, oper) }
-  bitXor(key: Value, oper: Value) { this._tn.atomicOp(MutationType.BitXor, key, oper) }
-  max(key: Value, oper: Value) { this._tn.atomicOp(MutationType.Max, key, oper) }
-  min(key: Value, oper: Value) { this._tn.atomicOp(MutationType.Min, key, oper) }
-  setVersionstampedKey(key: Value, oper: Value) { this._tn.atomicOp(MutationType.SetVersionstampedKey, key, oper) }
-  setVersionstampedValue(key: Value, oper: Value) { this._tn.atomicOp(MutationType.SetVersionstampedValue, key, oper) }
-  byteMin(key: Value, oper: Value) { this._tn.atomicOp(MutationType.ByteMin, key, oper) }
-  byteMax(key: Value, oper: Value) { this._tn.atomicOp(MutationType.ByteMax, key, oper) }
+  // I wish I could autogenerate this... Easy with JS but not sure how with TS.
+  add(key: Value, oper: Value) { this.atomicOp(MutationType.Add, key, oper) }
+  bitAnd(key: Value, oper: Value) { this.atomicOp(MutationType.BitAnd, key, oper) }
+  bitOr(key: Value, oper: Value) { this.atomicOp(MutationType.BitOr, key, oper) }
+  bitXor(key: Value, oper: Value) { this.atomicOp(MutationType.BitXor, key, oper) }
+  max(key: Value, oper: Value) { this.atomicOp(MutationType.Max, key, oper) }
+  min(key: Value, oper: Value) { this.atomicOp(MutationType.Min, key, oper) }
+  setVersionstampedKey(key: Value, oper: Value) { this.atomicOp(MutationType.SetVersionstampedKey, key, oper) }
+  setVersionstampedValue(key: Value, oper: Value) { this.atomicOp(MutationType.SetVersionstampedValue, key, oper) }
+  byteMin(key: Value, oper: Value) { this.atomicOp(MutationType.ByteMin, key, oper) }
+  byteMax(key: Value, oper: Value) { this.atomicOp(MutationType.ByteMax, key, oper) }
 }
