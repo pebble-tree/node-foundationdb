@@ -435,9 +435,10 @@ const makeMachine = (db: Database, initialName: Buffer) => {
   }
 }
 
-const threads = new Set
+const threads = new Set<Promise<void>>()
+let instructionsRun = 0
 
-async function runFromPrefix(db: Database, prefix: Buffer, log?: fs.WriteStream) {
+const run = async (db: Database, prefix: Buffer, log?: fs.WriteStream) => {
   const machine = makeMachine(db, prefix)
 
   const {begin, end} = fdb.tuple.range([prefix])
@@ -447,15 +448,21 @@ async function runFromPrefix(db: Database, prefix: Buffer, log?: fs.WriteStream)
     await machine.run(value, log)
     // TODO: consider inserting tiny sleeps to increase concurrency.
   }
+  instructionsRun += instructions.length
+  console.log(`Thread ${prefix.toString()} complete`)
+}
 
-  // threads.add(thread)
-  // await thread
-  // threads.delete(thread)
+async function runFromPrefix(db: Database, prefix: Buffer, log?: fs.WriteStream) {
+  const thread = run(db, prefix, log)
+
+  threads.add(thread)
+  await thread
+  threads.delete(thread)
 }
 
 if (require.main === module) (async () => {
   process.on('unhandledRejection', (err: any) => {
-    // console.error('err', err, err.code, err.message)
+    console.error(chalk.redBright('✖'), 'Unhandled error in binding tester', err.message, 'code', err.code)
     throw err
   })
 
@@ -473,7 +480,14 @@ if (require.main === module) (async () => {
 
   const db = fdb.openSync(clusterFile)
 
-  await runFromPrefix(db, Buffer.from(prefixStr, 'ascii'), log)
+  runFromPrefix(db, Buffer.from(prefixStr, 'ascii'), log)
+
+  // Wait until all 'threads' are finished.
+  while (threads.size) {
+    await Promise.all(Array.from(threads))
+  }
+
+  console.log(`${chalk.greenBright('✔')} Node binding tester complete. ${instructionsRun} commands executed`)
 
   // And wait for other threads! Logging won't work for concurrent runs.
   // if (log) log.end()
