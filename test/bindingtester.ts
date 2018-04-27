@@ -18,6 +18,8 @@ import nodeUtil = require('util')
 
 import chalk from 'chalk'
 
+import fs = require('fs')
+
 let verbose = false
 
 const {keySelector, tuple} = fdb
@@ -150,6 +152,7 @@ const makeMachine = (db: Database, initialName: Buffer) => {
           }
         })
       }
+      stack.length = 0
     },
 
     // Transactions
@@ -330,14 +333,18 @@ const makeMachine = (db: Database, initialName: Buffer) => {
     },
     async encode_float() {
       const buf = await popBuffer()
+      // DataView avoids Buffer's canonicalization of NaN.
       const value = new DataView(buf.buffer).getFloat32(0, false)
 
-      pushValue(tuple.unpack(tuple.pack([{type: 'float', value}]), true)[0])
+      // Could just pushValue({type: 'float', value})
+      // pushValue(tuple.unpack(tuple.pack([{type: 'float', value}]), true)[0])
+      pushValue({type: 'float', value})
     },
     async encode_double() {
       const buf = await popBuffer()
       const value = new DataView(buf.buffer).getFloat64(0, false)
-      pushValue(tuple.unpack(tuple.pack([{type: 'double', value}]), true)[0])
+      // pushValue(tuple.unpack(tuple.pack([{type: 'double', value}]), true)[0])
+      pushValue({type: 'double', value})
     },
     async decode_float() {
       // These are both super gross. Not sure what to do about that.
@@ -377,17 +384,9 @@ const makeMachine = (db: Database, initialName: Buffer) => {
   }
 
   return {
-    async run(instrBuf: Buffer) {
+    async run(instrBuf: Buffer, log?: fs.WriteStream) {
       const instruction = fdb.tuple.unpack(instrBuf, true)
       let [opcode, ...oper] = instruction as [string, TupleItem[]]
-      let operand: Transaction | Database = transactions[tnNameKey()]
-      if (opcode.endsWith('_SNAPSHOT')) {
-        opcode = opcode.slice(0, -'_SNAPSHOT'.length)
-        operand = (operand as Transaction).snapshot()
-      } else if (opcode.endsWith('_DATABASE')) {
-        opcode = opcode.slice(0, -'_DATABASE'.length)
-        operand = db
-      }
 
       const txnOps = [
         'NEW_TRANSACTION',
@@ -402,6 +401,20 @@ const makeMachine = (db: Database, initialName: Buffer) => {
         if (oper.length) console.log(chalk.magenta(opcode as string), instrId, threadColor(initialName.toString('ascii')), oper, instrBuf.toString('hex'))
         else console.log(chalk.magenta(opcode as string), instrId, threadColor(initialName.toString('ascii')))
       }
+      if (log) log.write(`${opcode} ${instrId} ${stack.length}\n`)
+
+    
+      let operand: Transaction | Database = transactions[tnNameKey()]
+      if (opcode.endsWith('_SNAPSHOT')) {
+        opcode = opcode.slice(0, -'_SNAPSHOT'.length)
+        operand = (operand as Transaction).snapshot()
+      } else if (opcode.endsWith('_DATABASE')) {
+        opcode = opcode.slice(0, -'_DATABASE'.length)
+        operand = db
+      }
+
+      // verbose = (instrId > 45100 && instrId < 45760)
+      // verbose = (instrId > 12700 && instrId < 12710) || (instrId > 12770 && instrId < 12788)
 
       try {
         await operations[opcode.toLowerCase()](operand, ...oper)
@@ -422,50 +435,36 @@ const makeMachine = (db: Database, initialName: Buffer) => {
   }
 }
 
-// async function runFromPrefix(db: Database, prefix: Buffer) {
-//   const machine = makeMachine(db, prefix)
-
-//   const {begin, end} = fdb.tuple.range([prefix])
-//   const instructions = await db.getRangeAll(begin, end)
-//   console.log(`Executing ${instructions.length} instructions from ${prefix.toString()}`)
-//   for (const [key, value] of instructions) {
-//     const instruction = fdb.tuple.unpack(value)
-//     console.log(instruction)
-//     await machine.run(instruction)
-//   }
-// }
-
 const threads = new Set
 
-async function runFromPrefix(db: Database, prefix: Buffer) {
+async function runFromPrefix(db: Database, prefix: Buffer, log?: fs.WriteStream) {
   const machine = makeMachine(db, prefix)
 
   const {begin, end} = fdb.tuple.range([prefix])
-  const thread = db.doTransaction(async tn => {
-    for await (const [key, value] of tn.getRange(begin, end)) {
-      await machine.run(value)
-    }
-  })
+  const instructions = await db.getRangeAll(begin, end)
+  console.log(`Executing ${instructions.length} instructions from ${prefix.toString()}`)
+  for (const [key, value] of instructions) {
+    await machine.run(value, log)
+    // TODO: consider inserting tiny sleeps to increase concurrency.
+  }
 
-  threads.add(thread)
-  await thread
-  threads.delete(thread)
+  // threads.add(thread)
+  // await thread
+  // threads.delete(thread)
 }
 
-if (require.main === module) {
-  // require('longjohn')
-  // const lp = require('long-promise')
-  // lp.enable()
-
+if (require.main === module) (async () => {
   process.on('unhandledRejection', (err: any) => {
     // console.error('err', err, err.code, err.message)
-    // console.error(lp.getLongStack(err))
     throw err
   })
 
   const prefixStr = process.argv[2]
   const requestedAPIVersion = +process.argv[3]
   const clusterFile = process.argv[4]
+
+  // const log = fs.createWriteStream('nodetester.log')
+  const log = undefined
 
   // This library only works with a single fdb API version.
   assert.strictEqual(requestedAPIVersion, fdb.apiVersion,
@@ -474,9 +473,8 @@ if (require.main === module) {
 
   const db = fdb.openSync(clusterFile)
 
-  try {
-    runFromPrefix(db, Buffer.from(prefixStr, 'ascii'))
-  } catch (e) {
-    console.error('rfp', e)
-  }
-}
+  await runFromPrefix(db, Buffer.from(prefixStr, 'ascii'), log)
+
+  // And wait for other threads! Logging won't work for concurrent runs.
+  // if (log) log.end()
+})()
