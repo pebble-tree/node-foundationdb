@@ -210,14 +210,15 @@ const encode = (into: BufferBuilder, item: TupleItem) => {
   } else if (typeof item === 'object' && (item.type === 'float' || item.type === 'double')) {
     const isFloat = item.type === 'float'
     into.appendByte(isFloat ? Code.Float : Code.Double)
-    if (item.rawEncoding) into.appendBuffer(item.rawEncoding)
+    let bytes
+    if (item.rawEncoding) bytes = Buffer.from(item.rawEncoding)
     else {
-      const bytes = Buffer.allocUnsafe(isFloat ? 4 : 8)
+      bytes = Buffer.allocUnsafe(isFloat ? 4 : 8)
       if (isFloat) bytes.writeFloatBE(item.value, 0)
       else bytes.writeDoubleBE(item.value, 0)
-      adjustFloat(bytes, true)
-      into.appendBuffer(bytes)
     }
+    adjustFloat(bytes, true)
+    into.appendBuffer(bytes)
   } else if (typeof item === 'object' && item.type === 'uuid') {
     into.appendByte(Code.UUID)
     assert(item.value.length === 16, 'Invalid UUID: Should be 16 bytes exactly')
@@ -308,7 +309,7 @@ function decode(buf: Buffer, pos: {p: number}, strictConformance: boolean): Tupl
       return (isNaN(value) && strictConformance)
         // Javascript normalizes NaN values, so we have to manually preserve
         // the byte representation of the number.
-        ? {type: 'double', value, rawEncoding: adjustFloat(numBuf, true)}
+        ? {type: 'double', value, rawEncoding: numBuf}
         : value
     }
     case Code.Float: {
@@ -319,7 +320,7 @@ function decode(buf: Buffer, pos: {p: number}, strictConformance: boolean): Tupl
       const value = numBuf.readFloatBE(0)
       return strictConformance
         ? (isNaN(value)
-          ? {type: 'float', value, rawEncoding: adjustFloat(numBuf, true)}
+          ? {type: 'float', value, rawEncoding: numBuf}
           : {type: 'float', value})
         : value
     }

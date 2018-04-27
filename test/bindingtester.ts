@@ -327,11 +327,14 @@ const makeMachine = (db: Database, initialName: Buffer) => {
       for (const item of items) pushValue(tuple.pack(item))
     },
     async encode_float() {
-      const val = await popBuffer()
-      pushValue({type: 'float', value: val.readFloatBE(0)})
+      const buf = await popBuffer()
+      const value = buf.readFloatBE(0)
+      pushValue(isNaN(value) ? {type: 'float', value, rawEncoding: buf} : {type: 'float', value})
     },
     async encode_double() {
-      pushValue((await popBuffer()).readDoubleBE(0))
+      const buf = await popBuffer()
+      const value = buf.readDoubleBE(0)
+      pushValue(isNaN(value) ? {type: 'double', value, rawEncoding: buf} : value)
     },
     async decode_float() {
       const val = await popValue() as {type: 'float', value: number}
