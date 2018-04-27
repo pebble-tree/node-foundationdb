@@ -69,9 +69,12 @@ export = {
   createCluster,
   createClusterSync,
 
+  // Returns a promise to a database.
+  open(clusterFile?: string, dbOpts?: DatabaseOptions) {
+    return createCluster(clusterFile).then(c => c.openDatabase('DB', dbOpts))
+  },
+
   openSync(clusterFile?: string, dbOpts?: DatabaseOptions) {
-    // TODO: Caching disabled for now. Is this the right call? I think so.
-    // You should structure your app so it doesn't need to depend on a cache here.
     return createClusterSync(clusterFile).openDatabaseSync('DB', dbOpts)
   },
 
@@ -79,3 +82,6 @@ export = {
   // I feel like I should.. but I'm not sure when its useful. Will the network thread
   // keep the process running?
 }
+
+// TODO: Figure out a way to export the library for both node
+// require('foundationdb') and import from foundationdb.

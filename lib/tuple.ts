@@ -305,26 +305,29 @@ function decode(buf: Buffer, pos: {p: number}, noCanonicalize: boolean): TupleIt
       buf.copy(numBuf, 0, p, p+8)
       adjustFloat(numBuf, false)
       pos.p += 8
-      const value = numBuf.readDoubleBE(0)
-      return (noCanonicalize || Number.isInteger(value))
-        ? (isNaN(value)
-          // Javascript normalizes NaN values, so we have to manually preserve
-          // the byte representation of the number.
-          ? {type: 'double', value, rawEncoding: numBuf}
-          : {type: 'double', value}
-        ) : value
+
+      // There's a couple things going on here:
+      // - buffer.readDoubleBE canonicalizes all NaNs to the same NaN value.
+      // This is usually fine, but it means unpack(pack(val)) is sometimes not
+      // bit-identical. Amongst other things, this makes the binding tester fail.
+      // DataView#getFloat64 doesn't have this behaviour.
+      // 
+      // - In canonical mode we also wrap all doubles so that when you re-encode
+      // them they don't get confused with ints (or floats, or anything else).
+      return noCanonicalize
+        ? {type: 'double', value: new DataView(numBuf.buffer).getFloat64(0, false)}
+        : numBuf.readDoubleBE(0)
     }
     case Code.Float: {
       const numBuf = Buffer.alloc(4)
       buf.copy(numBuf, 0, p, p+4)
       adjustFloat(numBuf, false)
       pos.p += 4
-      const value = numBuf.readFloatBE(0)
+
+      // Surprisingly, this seems to preserve any weird NaN encoding in the float.
       return noCanonicalize
-        ? (isNaN(value)
-          ? {type: 'float', value, rawEncoding: numBuf}
-          : {type: 'float', value}
-        ) : value
+        ? {type: 'float', value: new DataView(numBuf.buffer).getFloat32(0, false)}
+        : numBuf.readFloatBE(0)
     }
     case Code.UUID: {
       const value = Buffer.alloc(16)

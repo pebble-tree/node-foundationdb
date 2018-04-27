@@ -330,34 +330,29 @@ const makeMachine = (db: Database, initialName: Buffer) => {
     },
     async encode_float() {
       const buf = await popBuffer()
-      const value = buf.readFloatBE(0)
-      pushValue(tuple.unpack(tuple.pack([{type: 'float', value, rawEncoding: buf}]), true)[0])
+      const value = new DataView(buf.buffer).getFloat32(0, false)
+
+      pushValue(tuple.unpack(tuple.pack([{type: 'float', value}]), true)[0])
     },
     async encode_double() {
       const buf = await popBuffer()
-      const value = buf.readDoubleBE(0)
-      pushValue(tuple.unpack(tuple.pack([{type: 'double', value, rawEncoding: buf}]), true)[0])
+      const value = new DataView(buf.buffer).getFloat64(0, false)
+      pushValue(tuple.unpack(tuple.pack([{type: 'double', value}]), true)[0])
     },
     async decode_float() {
       // These are both super gross. Not sure what to do about that.
-      const val = await popValue() as {type: 'float', value: number, rawEncoding?: Buffer}
+      const val = await popValue() as {type: 'float', value: number}
       assert(typeof val === 'object' && val.type === 'float')
-      if (val.rawEncoding) pushValue(val.rawEncoding)
-      else {
-        const buf = Buffer.alloc(4)
-        buf.writeFloatBE(val.value as number, 0)
-        pushValue(buf)
-      }
+      const buf = Buffer.alloc(4)
+      buf.writeFloatBE(val.value, 0)
+      pushValue(buf)
     },
     async decode_double() {
-      const val = await popValue() as number | {type: 'double', value: number, rawEncoding?: Buffer}
-      assert(typeof val === 'number' || val.type === 'double', 'val is ' + nodeUtil.inspect(val))
-      if (typeof val === 'object' && val.rawEncoding) pushValue(val.rawEncoding)
-      else {
-        const buf = Buffer.alloc(8)
-        buf.writeDoubleBE(typeof val === 'number' ? val : val.value, 0)
-        pushValue(buf)
-      }
+      const val = await popValue() as {type: 'double', value: number}
+      assert(val.type === 'double', 'val is ' + nodeUtil.inspect(val))
+      const buf = Buffer.alloc(8)
+      buf.writeDoubleBE(val.value, 0)
+      pushValue(buf)
     },
 
     // Thread Operations
