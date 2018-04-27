@@ -1,25 +1,23 @@
 /*
- * FoundationDB Node.js API
- * Copyright (c) 2012 FoundationDB, LLC
+ * directory.js
  *
- * Permission is hereby granted, free of charge, to any person obtaining a copy
- * of this software and associated documentation files (the "Software"), to deal
- * in the Software without restriction, including without limitation the rights
- * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
- * copies of the Software, and to permit persons to whom the Software is
- * furnished to do so, subject to the following conditions:
+ * This source file is part of the FoundationDB open source project
  *
- * The above copyright notice and this permission notice shall be included in
- * all copies or substantial portions of the Software.
+ * Copyright 2013-2018 Apple Inc. and the FoundationDB project authors
  *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
- * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
- * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
- * THE SOFTWARE.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
+
 
 "use strict";
 
@@ -89,41 +87,89 @@ var HighContentionAllocator = function(subspace) {
 
 HighContentionAllocator.prototype.allocate = transactional(function(tr) {
   var self = this;
-  return tr.snapshot.getRange(self.counters.range().begin, self.counters.range().end, { limit: 1, reverse: true })
-  .toArray()
-  .then(function(arr) {
-    var start = 0;
-    var count = 0;
-    if(arr.length > 0) {
-      start = self.counters.unpack(arr[0].key)[0];
-      count = arr[0].value.readUInt32LE(0);
-    }
-
-    var window = windowSize(start);
-    if((count + 1) * 2 >= window) {
-      tr.clearRange(self.counters, self.counters.subspace([start]).range().begin);
-      start += window;
-      tr.clearRange(self.recent, self.recent.pack([start]));
-      window = windowSize(start);
-    }
-
-    var increment = new Buffer(8);
-    increment.fill(0);
-    increment.writeUInt32LE(1, 0);
-    tr.add(self.counters.pack([start]), increment);
-
-    return whileLoop(function() {
-      var candidate = Math.floor(Math.random() * window) + start;
-      return tr.get(self.recent.pack([candidate]))
-      .then(function(val) {
-        if(val === null) {
-          tr.set(self.recent.pack([candidate]), buffer(''));
-          return tuple.pack([candidate]);
+  var windowStart = 0;
+  return whileLoop(function() {
+    return tr.snapshot.getRange(self.counters.range().begin, self.counters.range().end, { limit: 1, reverse: true })
+      .toArray()
+      .then(function(arr) {
+        if(arr.length > 0) {
+          windowStart = self.counters.unpack(arr[0].key)[0];
+        }
+      })
+      .then(function() { 
+        return self.chooseWindow(tr, windowStart);
+      })
+      .then(function(window) { 
+        return self.choosePrefix(tr, window); 
+      })
+      .then(function(prefix) { 
+        if(prefix !== null) {
+          prefix = tuple.pack([prefix]); // exit the loop
+          return prefix;
         }
       });
-    });
-  });
+  })
 });
+
+HighContentionAllocator.prototype.chooseWindow = function(tr, windowStart) {
+  var self = this;
+
+  var increment = new Buffer(8);
+  increment.fill(0);
+  increment.writeUInt32LE(1, 0);
+
+  var window = { start: windowStart, size: 0 };
+
+  return whileLoop(function() {
+    // Cannot yield to event loop in this block {
+    if(window.start > windowStart) {
+      tr.clearRange(self.counters, self.counters.get(window.start));
+      tr.options.setNextWriteNoWriteConflictRange();
+      tr.clearRange(self.recent, self.recent.get(window.start));
+    }
+
+    tr.add(self.counters.pack([window.start]), increment);
+    return tr.snapshot.get(self.counters.get(window.start))
+    // }
+      .then(function(newCountBuffer) {
+        var newCount = (newCountBuffer === null) ? 0 : newCountBuffer.readUInt32LE(0);
+        window.size = windowSize(window.start);
+        if(newCount * 2 < window.size) {
+          return window; // exit the loop
+        }
+
+        window.start += window.size;
+      });
+  });
+};
+
+HighContentionAllocator.prototype.choosePrefix = function(tr, window) {
+  var self = this;
+
+  return whileLoop(function() {
+    var candidate = Math.floor(Math.random() * window.size) + window.start;
+    var allocationKey = self.recent.pack([candidate]);
+
+    // Cannot yield to event loop in this block {
+    var counterRange = tr.snapshot.getRange(self.counters.range().begin, self.counters.range().end, { limit: 1, reverse: true }).toArray();
+    var allocation = tr.get(allocationKey);
+    tr.options.setNextWriteNoWriteConflictRange();
+    tr.set(allocationKey, buffer(''));
+    // }
+
+    return future.all([counterRange, allocation])
+      .then(function(vals) {
+        var currentWindowStart = vals[0].length > 0 ? self.counters.unpack(vals[0][0].key)[0] : 0;
+        if(currentWindowStart > window.start) {
+          return null; // exit the loop and force find() to retry
+        }
+        if(vals[1] === null) {
+          tr.addWriteConflictKey(allocationKey);
+          return candidate; // exit the loop
+        }
+      });
+  });
+};
 
 function windowSize(start) {
   if(start < 255)
@@ -136,7 +182,7 @@ function windowSize(start) {
 
 /******************
  * DirectoryLayer *
-******************/
+ ******************/
 
 var VERSION = [1, 0, 0];
 var SUBDIRS = 0;
@@ -165,51 +211,51 @@ var createOrOpen = transactional(function(tr, self, path, options, allowCreate, 
   allowOpen = valueOrDefault(allowOpen, true);
 
   return checkVersion(self, tr, false)
-  .then(function() {
-    if(typeof prefix !== 'undefined') {
-      if(allowCreate && allowOpen)
-        throw new Error('Cannot specify a prefix when calling create_or_open.');
-      else if(!self._allowManualPrefixes) {
-        if(self._path.length === 0)
-          throw new Error('Cannot specify a prefix unless manual prefixes are enabled.');
-        else
-          throw new Error('Cannot specify a prefix in a partition.');
-      }
-    }
-
-    path = toUnicodePath(path);
-    if(path.length === 0)
-      throw new Error('The root directory cannot be opened.');
-
-    return find(self, tr, path).then(loadMetadata(tr));
-  })
-  .then(function(existingNode) {
-    if(existingNode.exists()) {
-      if(existingNode.isInPartition(false)) {
-        var subpath = existingNode.getPartitionSubpath();
-        var directoryLayer = existingNode.getContents(self)._directoryLayer;
-        return createOrOpen(tr,
-                  existingNode.getContents(self)._directoryLayer,
-                  subpath,
-                  options,
-                  allowCreate,
-                  allowOpen);
+    .then(function() {
+      if(typeof prefix !== 'undefined') {
+        if(allowCreate && allowOpen)
+          throw new Error('Cannot specify a prefix when calling create_or_open.');
+        else if(!self._allowManualPrefixes) {
+          if(self._path.length === 0)
+            throw new Error('Cannot specify a prefix unless manual prefixes are enabled.');
+          else
+            throw new Error('Cannot specify a prefix in a partition.');
+        }
       }
 
-      return openDirectory(tr, self, path, layer, existingNode, allowOpen);
-    }
-    else
-      return createDirectory(tr, self, path, layer, prefix, allowCreate);
-  })(cb);
+      path = toUnicodePath(path);
+      if(path.length === 0)
+        throw new Error('The root directory cannot be opened.');
+
+      return find(self, tr, path).then(loadMetadata(tr));
+    })
+    .then(function(existingNode) {
+      if(existingNode.exists()) {
+        if(existingNode.isInPartition(false)) {
+          var subpath = existingNode.getPartitionSubpath();
+          var directoryLayer = existingNode.getContents(self)._directoryLayer;
+          return createOrOpen(tr, 
+            existingNode.getContents(self)._directoryLayer, 
+            subpath, 
+            options,
+            allowCreate, 
+            allowOpen);
+        }
+
+        return openDirectory(tr, self, path, layer, existingNode, allowOpen);
+      }
+      else
+        return createDirectory(tr, self, path, layer, prefix, allowCreate);
+    })(cb);
 });
 
 var openDirectory = function(tr, self, path, layer, existingNode, allowOpen) {
-    if(!allowOpen)
-      throw new Error('The directory already exists.');
+  if(!allowOpen)
+    throw new Error('The directory already exists.');
 
-    checkLayer(layer, existingNode.layer);
+  checkLayer(layer, existingNode.layer);
 
-    return existingNode.getContents(self);
+  return existingNode.getContents(self);
 };
 
 var createDirectory = function(tr, self, path, layer, prefix, allowCreate) {
@@ -218,32 +264,32 @@ var createDirectory = function(tr, self, path, layer, prefix, allowCreate) {
 
   var prefixIsAllocated = typeof(prefix) === 'undefined';
   return checkVersion(self, tr, true)
-  .then(function() {
-    return getPrefix(self, tr, prefix);
-  })
-  .then(function(prefix) {
-    return isPrefixFree(self, prefixIsAllocated ? tr.snapshot : tr, prefix)
-    .then(function(isFree) {
-      if(!isFree) {
-        if(prefixIsAllocated)
-          throw new Error('The directory layer has manually allocated prefixes that conflict with the automatic prefix allocator.');
-        else
-          throw new Error('The given prefix is already in use.');
-      }
-
-      return getParentNode(self, tr, path);
+    .then(function() {
+      return getPrefix(self, tr, prefix);
     })
-    .then(function(parentNode) {
-      if(!parentNode)
-        throw new Error('The parent directory doesn\'t exist.');
+    .then(function(prefix) {
+      return isPrefixFree(self, prefixIsAllocated ? tr.snapshot : tr, prefix)
+        .then(function(isFree) {
+          if(!isFree) {
+            if(prefixIsAllocated)
+              throw new Error('The directory layer has manually allocated prefixes that conflict with the automatic prefix allocator.');
+            else
+              throw new Error('The given prefix is already in use.');	
+          }
 
-      var node = nodeWithPrefix(self, prefix);
-      tr.set(parentNode.subspace([SUBDIRS]).pack([path[path.length-1]]), prefix);
-      tr.set(node.pack([buffer('layer')]), layer);
+          return getParentNode(self, tr, path);
+        })
+        .then(function(parentNode) {
+          if(!parentNode)
+            throw new Error('The parent directory doesn\'t exist.');
 
-      return contentsOfNode(self, node, path, layer);
+          var node = nodeWithPrefix(self, prefix);
+          tr.set(parentNode.subspace([SUBDIRS]).pack([path[path.length-1]]), prefix);
+          tr.set(node.pack([buffer('layer')]), layer);
+
+          return contentsOfNode(self, node, path, layer);
+        });
     });
-  });
 };
 
 DirectoryLayer.prototype.getLayer = function() {
@@ -275,48 +321,48 @@ DirectoryLayer.prototype.move = transactional(function(tr, oldPath, newPath, cb)
   var oldNode, newNode;
 
   return checkVersion(self, tr, true)
-  .then(function() {
-    oldPath = toUnicodePath(oldPath);
-    newPath = toUnicodePath(newPath);
-
-    if(pathsEqual(oldPath, newPath.slice(0, oldPath.length)))
-      throw new Error('The destination directory cannot be a subdirectory of the source directory.');
-
-    var oldNodeFuture = find(self, tr, oldPath).then(loadMetadata(tr));
-    var newNodeFuture = find(self, tr, newPath).then(loadMetadata(tr));
-    return future.all([oldNodeFuture, newNodeFuture]);
-  })
-  .then(function(nodes) {
-    oldNode = nodes[0];
-    newNode = nodes[1];
-
-    if(!oldNode.exists())
-      throw new Error('The source directory does not exist.');
-
-    if(oldNode.isInPartition(false) || newNode.isInPartition(false)) {
-      if(!oldNode.isInPartition(false) || !newNode.isInPartition(false) || !pathsEqual(oldNode.path, newNode.path))
-        throw new Error('Cannot move between partitions.');
-
-      return newNode.getContents(self).move(tr, oldNode.getPartitionSubpath(), newNode.getPartitionSubpath());
-    }
-
-    if(newNode.exists())
-      throw new Error('The destination directory already exists. Remove it first.');
-
-    return find(self, tr, newPath.slice(0, newPath.length-1))
-    .then(function(parentNode) {
-      if(!parentNode.exists())
-        throw new Error('The parent of the destination directory does not exist. Create it first.');
-
-      tr.set(parentNode.subspace.subspace([SUBDIRS]).pack([newPath[newPath.length-1]]),
-          self._nodeSubspace.unpack(oldNode.subspace.key())[0]);
-
-      return removeFromParent(self, tr, oldPath);
-    })
     .then(function() {
-      return contentsOfNode(self, oldNode.subspace, newPath, oldNode.layer);
-    });
-  })(cb);
+      oldPath = toUnicodePath(oldPath);
+      newPath = toUnicodePath(newPath);
+
+      if(pathsEqual(oldPath, newPath.slice(0, oldPath.length)))
+        throw new Error('The destination directory cannot be a subdirectory of the source directory.');
+
+      var oldNodeFuture = find(self, tr, oldPath).then(loadMetadata(tr));
+      var newNodeFuture = find(self, tr, newPath).then(loadMetadata(tr));
+      return future.all([oldNodeFuture, newNodeFuture]);
+    })
+    .then(function(nodes) {
+      oldNode = nodes[0];
+      newNode = nodes[1];
+
+      if(!oldNode.exists())
+        throw new Error('The source directory does not exist.');
+
+      if(oldNode.isInPartition(false) || newNode.isInPartition(false)) {
+        if(!oldNode.isInPartition(false) || !newNode.isInPartition(false) || !pathsEqual(oldNode.path, newNode.path))
+          throw new Error('Cannot move between partitions.');
+
+        return newNode.getContents(self).move(tr, oldNode.getPartitionSubpath(), newNode.getPartitionSubpath());
+      }
+
+      if(newNode.exists())
+        throw new Error('The destination directory already exists. Remove it first.');
+
+      return find(self, tr, newPath.slice(0, newPath.length-1))
+        .then(function(parentNode) {
+          if(!parentNode.exists())
+            throw new Error('The parent of the destination directory does not exist. Create it first.');
+
+          tr.set(parentNode.subspace.subspace([SUBDIRS]).pack([newPath[newPath.length-1]]), 
+            self._nodeSubspace.unpack(oldNode.subspace.key())[0]);
+
+          return removeFromParent(self, tr, oldPath);
+        })
+        .then(function() {
+          return contentsOfNode(self, oldNode.subspace, newPath, oldNode.layer);
+        });
+    })(cb);
 });
 
 DirectoryLayer.prototype.remove = transactional(function(tr, path, cb) {
@@ -329,114 +375,114 @@ DirectoryLayer.prototype.removeIfExists = transactional(function(tr, path, cb) {
 
 function removeInternal(self, tr, path, failOnNonexistent) {
   return checkVersion(self, tr, true)
-  .then(function() {
-    path = valueOrDefault(path, []);
-    if(path.length === 0)
-      return future.reject(new Error('The root directory cannot be removed.'));
-
-    path = toUnicodePath(path);
-    return find(self, tr, path).then(loadMetadata(tr));
-  })
-  .then(function(node) {
-    if(!node.exists()) {
-      if(failOnNonexistent)
-        throw new Error('The directory doesn\'t exist');
-      else
-        return false;
-    }
-
-    if(node.isInPartition(false)) {
-      return removeInternal(node.getContents(self)._directoryLayer,
-                  tr,
-                  node.getPartitionSubpath(),
-                  failOnNonexistent);
-    }
-
-    return removeRecursive(self, tr, node.subspace)
     .then(function() {
-      return removeFromParent(self, tr, path);
-    }).
-    then(function() {
-      return true;
+      path = valueOrDefault(path, []);
+      if(path.length === 0)
+        return future.reject(new Error('The root directory cannot be removed.'));
+
+      path = toUnicodePath(path);
+      return find(self, tr, path).then(loadMetadata(tr));
+    })
+    .then(function(node) {
+      if(!node.exists()) {
+        if(failOnNonexistent)
+          throw new Error('The directory doesn\'t exist');
+        else
+          return false;
+      }
+
+      if(node.isInPartition(false)) {
+        return removeInternal(node.getContents(self)._directoryLayer, 
+          tr, 
+          node.getPartitionSubpath(), 
+          failOnNonexistent);
+      }
+
+      return removeRecursive(self, tr, node.subspace)
+        .then(function() {
+          return removeFromParent(self, tr, path);
+        }).
+        then(function() {
+          return true;	
+        });
     });
-  });
 }
 
 DirectoryLayer.prototype.list = transactional(function(tr, path, cb) {
   var self = this;
   return checkVersion(self, tr, false)
-  .then(function() {
-    path = valueOrDefault(path, []);
-    path = toUnicodePath(path);
+    .then(function() {
+      path = valueOrDefault(path, []);
+      path = toUnicodePath(path);
 
-    return find(self, tr, path).then(loadMetadata(tr));
-  })
-  .then(function(node) {
-    if(!node.exists())
-      throw new Error('The given directory does not exist');
+      return find(self, tr, path).then(loadMetadata(tr));
+    })
+    .then(function(node) {
+      if(!node.exists())
+        throw new Error('The given directory does not exist');
 
-    if(node.isInPartition(true))
-      return node.getContents(self).list(tr, node.getPartitionSubpath());
+      if(node.isInPartition(true))
+        return node.getContents(self).list(tr, node.getPartitionSubpath());
 
-    var subdir = node.subspace.subspace([SUBDIRS]);
+      var subdir = node.subspace.subspace([SUBDIRS]);
 
-    return tr.getRange(subdir.range().begin, subdir.range().end).toArray()
-    .then(function(arr) {
-      return arr.map(function(kv) { return subdir.unpack(kv.key)[0].toString('utf8'); });
-    });
-  })(cb);
+      return tr.getRange(subdir.range().begin, subdir.range().end).toArray()
+        .then(function(arr) {
+          return arr.map(function(kv) { return subdir.unpack(kv.key)[0].toString('utf8'); });
+        });
+    })(cb);
 });
 
 DirectoryLayer.prototype.exists = transactional(function(tr, path, cb) {
   var self = this;
   return checkVersion(self, tr, false)
-  .then(function() {
-    path = valueOrDefault(path, []);
-    path = toUnicodePath(path);
-    return find(self, tr, path).then(loadMetadata(tr));
-  })
-  .then(function(node) {
-    if(!node.exists())
-      return false;
+    .then(function() {
+      path = valueOrDefault(path, []);
+      path = toUnicodePath(path);
+      return find(self, tr, path).then(loadMetadata(tr));
+    })
+    .then(function(node) {
+      if(!node.exists())
+        return false;
 
-    if(node.isInPartition(false))
-      return node.getContents(self).exists(tr, node.getPartitionSubpath());
+      if(node.isInPartition(false))
+        return node.getContents(self).exists(tr, node.getPartitionSubpath());
 
-    return true;
-  })(cb);
+      return true;
+    })(cb);
 });
 
 // Private functions:
 
 function checkVersion(self, tr, writeAccess) {
   return tr.get(self._rootNode.pack([buffer('version')]))
-  .then(function(versionBuf) {
-    if(!versionBuf) {
-      if(writeAccess)
-        initializeDirectory(self, tr);
+    .then(function(versionBuf) {
+      if(!versionBuf) {
+        if(writeAccess)
+          initializeDirectory(self, tr);
 
-      return;
-    }
+        return;
+      }	
 
-    var version = [];
-    for(var i = 0; i < 3; ++i)
-      version.push(versionBuf.readInt32LE(4*i));
+      var version = [];
+      for(var i = 0; i < 3; ++i)
+        version.push(versionBuf.readInt32LE(4*i));
 
-    var dirVersion = util.format('%d.%d.%d', version[0], version[1], version[2]);
-    var layerVersion = util.format('%d.%d.%d', VERSION[0], VERSION[1], VERSION[2]);
+      var dirVersion = util.format('%d.%d.%d', version[0], version[1], version[2]);
+      var layerVersion = util.format('%d.%d.%d', VERSION[0], VERSION[1], VERSION[2]);
 
-    if(version[0] > VERSION[0]) {
-      throw new Error(util.format('Cannot load directory with version %s using directory layer %s',
-                    dirVersion,
-                    layerVersion));
-    }
+      if(version[0] > VERSION[0]) {
+        throw new Error(util.format('Cannot load directory with version %s using directory layer %s', 
+          dirVersion, 
+          layerVersion));
+      }
 
-    if(version[1] > VERSION[1]) {
-      throw new Error(util.format('Directory with version %s is read-only when opened using directory layer %s',
-                    dirVersion,
-                    layerVersion));
-    }
-  });
+      if(version[1] > VERSION[1]) {
+        throw new Error(util.format('Directory with version %s is read-only when opened using directory layer %s', 
+          dirVersion, 
+          layerVersion));
+      }
+    });
 }
 
 function initializeDirectory(self, tr) {
@@ -463,16 +509,16 @@ function find(self, tr, path) {
       return future.resolve(node);
 
     return tr.get(node.subspace.subspace([SUBDIRS]).pack([path[pathIndex++]]))
-    .then(function(val) {
-      node = new Node(nodeWithPrefix(self, val), path.slice(0, pathIndex), path);
-      if(!node.exists())
-        return node;
-      return node.loadMetadata(tr)
-      .then(function() {
-        if(fdbUtil.buffersEqual(node.layer, buffer('partition')))
+      .then(function(val) {
+        node = new Node(nodeWithPrefix(self, val), path.slice(0, pathIndex), path);
+        if(!node.exists())
           return node;
+        return node.loadMetadata(tr)
+          .then(function() {
+            if(fdbUtil.buffersEqual(node.layer, buffer('partition')))
+              return node;
+          });
       });
-    });
   });
 }
 
@@ -488,17 +534,17 @@ function contentsOfNode(self, node, path, layer) {
 function getPrefix(self, tr, prefix) {
   if(typeof prefix === 'undefined') {
     return self._allocator.allocate(tr)
-    .then(function(prefix) {
-      var allocated = Buffer.concat([self._contentSubspace.key(), prefix], self._contentSubspace.key().length + prefix.length);
-      return tr.getRangeStartsWith(allocated, { limit: 1 })
-      .toArray()
-      .then(function(arr) {
-        if(arr.length > 0)
-          throw new Error('The database has keys stored at the prefix chosen by the automatic prefix allocator: ' + prefix);
+      .then(function(prefix) {
+        var allocated = Buffer.concat([self._contentSubspace.key(), prefix], self._contentSubspace.key().length + prefix.length);
+        return tr.getRangeStartsWith(allocated, { limit: 1 })
+          .toArray()
+          .then(function(arr) {
+            if(arr.length > 0)
+              throw new Error('The database has keys stored at the prefix chosen by the automatic prefix allocator: ' + prefix);
 
-        return allocated;
+            return allocated;
+          });
       });
-    });
   }
   else
     return future.resolve(buffer(prefix));
@@ -508,19 +554,19 @@ function getNodeContainingKey(self, tr, key) {
   if(self._nodeSubspace.contains(key))
     return future.resolve(self._rootNode);
 
-  return tr.getRange(self._nodeSubspace.range([]).begin,
-            self._nodeSubspace.subspace([key]).range().begin,
-            { limit: 1, reverse: true })
-  .toArray()
-  .then(function(arr) {
-    if(arr.length > 0) {
-      var prevPrefix = self._nodeSubspace.unpack(arr[0].key)[0];
-      if(startsWith(key, prevPrefix))
-        return nodeWithPrefix(self, prevPrefix);
-    }
+  return tr.getRange(self._nodeSubspace.range([]).begin, 
+    self._nodeSubspace.subspace([key]).range().begin, 
+    { limit: 1, reverse: true })
+    .toArray()
+    .then(function(arr) {
+      if(arr.length > 0) {
+        var prevPrefix = self._nodeSubspace.unpack(arr[0].key)[0];
+        if(startsWith(key, prevPrefix))
+          return nodeWithPrefix(self, prevPrefix);
+      }
 
-    return null;
-  });
+      return null;
+    });
 }
 
 function isPrefixFree(self, tr, prefix) {
@@ -528,26 +574,26 @@ function isPrefixFree(self, tr, prefix) {
     return future.resolve(false);
 
   return getNodeContainingKey(self, tr, prefix)
-  .then(function(node) {
-    if(node)
-      return false;
+    .then(function(node) {
+      if(node)
+        return false;
 
-    return tr.getRange(self._nodeSubspace.pack([prefix]),
-              self._nodeSubspace.pack([fdbUtil.strinc(prefix)]),
-              { limit: 1 })
-    .toArray()
-    .then(function(arr) {
-      return arr.length === 0;
+      return tr.getRange(self._nodeSubspace.pack([prefix]), 
+        self._nodeSubspace.pack([fdbUtil.strinc(prefix)]), 
+        { limit: 1 })
+        .toArray()
+        .then(function(arr) {
+          return arr.length === 0;
+        });
     });
-  });
 }
 
 function getParentNode(self, tr, path) {
   if(path.length > 1) {
     return self.createOrOpen(tr, path.slice(0, path.length-1))
-    .then(function(dir) {
-      return nodeWithPrefix(self, dir.key());
-    });
+      .then(function(dir) {
+        return nodeWithPrefix(self, dir.key());
+      });
   }
   else
     return future.resolve(self._rootNode);
@@ -555,21 +601,21 @@ function getParentNode(self, tr, path) {
 
 function removeFromParent(self, tr, path) {
   return find(self, tr, path.slice(0, path.length-1))
-  .then(function(parentNode) {
-    tr.clear(parentNode.subspace.subspace([SUBDIRS]).pack([path[path.length-1]]));
-  });
+    .then(function(parentNode) {
+      tr.clear(parentNode.subspace.subspace([SUBDIRS]).pack([path[path.length-1]]));
+    });
 }
 
 function removeRecursive(self, tr, node) {
   var subdir = node.subspace([SUBDIRS]);
   return tr.getRange(subdir.range().begin, subdir.range().end)
-  .forEach(function(kv, loopCb) {
-    removeRecursive(self, tr, nodeWithPrefix(self, kv.value))(loopCb);
-  })
-  .then(function() {
-    tr.clearRangeStartsWith(self._nodeSubspace.unpack(node.key())[0]);
-    tr.clearRange(node.range().begin, node.range().end);
-  });
+    .forEach(function(kv, loopCb) {
+      removeRecursive(self, tr, nodeWithPrefix(self, kv.value))(loopCb);
+    })
+    .then(function() {
+      tr.clearRangeStartsWith(self._nodeSubspace.unpack(node.key())[0]);
+      tr.clearRange(node.range().begin, node.range().end);
+    });
 }
 
 function toUnicodePath(path) {
@@ -638,10 +684,10 @@ DirectorySubspace.prototype.list = function(databaseOrTransaction, nameOrPath, c
 DirectorySubspace.prototype.move = function(databaseOrTransaction, oldNameOrPath, newNameOrPath, cb) {
   var oldPath = tuplifyPath(oldNameOrPath);
   var newPath = tuplifyPath(newNameOrPath);
-  return this._directoryLayer.move(databaseOrTransaction,
-                  partitionSubpath(this, oldPath),
-                  partitionSubpath(this, newPath),
-                  cb);
+  return this._directoryLayer.move(databaseOrTransaction, 
+    partitionSubpath(this, oldPath), 
+    partitionSubpath(this, newPath), 
+    cb);
 };
 
 DirectorySubspace.prototype.moveTo = function(databaseOrTransaction, newAbsoluteNameOrPath, cb) {
@@ -658,10 +704,10 @@ DirectorySubspace.prototype.moveTo = function(databaseOrTransaction, newAbsolute
     return future.reject(err)(cb);
   }
 
-  return directoryLayer.move(databaseOrTransaction,
-                this._path.slice(directoryLayer._path.length),
-                newAbsolutePath.slice(directoryLayer._path.length),
-                cb);
+  return directoryLayer.move(databaseOrTransaction, 
+    this._path.slice(directoryLayer._path.length),
+    newAbsolutePath.slice(directoryLayer._path.length), 
+    cb);	
 };
 
 DirectorySubspace.prototype.remove = function(databaseOrTransaction, nameOrPath, cb) {
@@ -692,9 +738,9 @@ var partitionSubpath = function(directorySubspace, path, directoryLayer) {
  **********************/
 
 var DirectoryPartition = function(path, prefix, parentDirectoryLayer) {
-  var directoryLayer = new DirectoryLayer({
-    nodeSubspace: new Subspace(undefined, Buffer.concat([prefix, buffer.fromByteLiteral('\xfe')], prefix.length+1)),
-    contentSubspace: new Subspace(undefined, prefix)
+  var directoryLayer = new DirectoryLayer({ 
+    nodeSubspace: new Subspace(undefined, Buffer.concat([prefix, buffer.fromByteLiteral('\xfe')], prefix.length+1)), 
+    contentSubspace: new Subspace(undefined, prefix) 
   });
 
   directoryLayer._path = path;
@@ -766,11 +812,11 @@ Node.prototype.loadMetadata = function(tr) {
   }
 
   return tr.get(self.subspace.pack([buffer('layer')]))
-  .then(function(layer) {
-    self.loadedMetadata = true;
-    self.layer = layer;
-    return self;
-  });
+    .then(function(layer) {
+      self.loadedMetadata = true;
+      self.layer = layer;
+      return self;
+    });
 };
 
 Node.prototype.ensureMetadataLoaded = function() {
@@ -780,7 +826,7 @@ Node.prototype.ensureMetadataLoaded = function() {
 
 Node.prototype.isInPartition = function(includeEmptySubpath) {
   this.ensureMetadataLoaded();
-  return this.exists() &&
+  return this.exists() && 
     fdbUtil.buffersEqual(this.layer, buffer('partition')) &&
     (includeEmptySubpath || this.targetPath.length > this.path.length);
 };

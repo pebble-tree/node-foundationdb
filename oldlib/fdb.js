@@ -1,99 +1,115 @@
 /*
- * FoundationDB Node.js API
- * Copyright (c) 2012 FoundationDB, LLC
+ * fdb.js
  *
- * Permission is hereby granted, free of charge, to any person obtaining a copy
- * of this software and associated documentation files (the "Software"), to deal
- * in the Software without restriction, including without limitation the rights
- * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
- * copies of the Software, and to permit persons to whom the Software is
- * furnished to do so, subject to the following conditions:
+ * This source file is part of the FoundationDB open source project
  *
- * The above copyright notice and this permission notice shall be included in
- * all copies or substantial portions of the Software.
+ * Copyright 2013-2018 Apple Inc. and the FoundationDB project authors
  *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
- * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
- * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
- * THE SOFTWARE.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
+
 
 "use strict";
 
-const KeySelector = require('./keySelector')
-const Cluster = require('./cluster')
-// const future = require('./future')
-const Transactional = require('./retryDecorator')
-const tuple = require('./tuple')
-// const buffer = require('./bufferConversion')
-const fdb = require('./fdbModule')
-const FDBError = require('./error')
-const locality = require('./locality')
-const directory = require('./directory')
-const Subspace = require('./subspace')
-const apiVersion = require('./apiVersion')
-const {eachOption} = require('./fdbUtil')
+var KeySelector = require('./keySelector');
+var Cluster = require('./cluster');
+var future = require('./future');
+var Transactional = require('./retryDecorator');
+var tuple = require('./tuple');
+var buffer = require('./bufferConversion');
+var fdb = require('./fdbModule');
+var FDBError = require('./error');
+var locality = require('./locality');
+var directory = require('./directory');
+var Subspace = require('./subspace');
+var selectedApiVersion = require('./apiVersion');
 
-const fdbModule = {}
-
-// The API version is static to the module, so we'll hold it here.
-fdb.apiVersion(apiVersion)
-
-let initCalled = false
-const init = () => {
-  if (initCalled) return
-  initCalled = true
-
-  fdb.startNetwork()
-
-  process.on('exit', function() {
-    //Clearing out the caches makes memory debugging a little easier
-    // dbCache = null
-    // clusterCache = null
-
-    fdb.stopNetwork()
-  })
-}
-
-const createCluster = (clusterFile) => {
-  init()
-
-  return new Cluster(fdb.createCluster(clusterFile))
-}
+var fdbModule = {};
 
 module.exports = {
-  FDBError,
-  KeySelector,
-  // skipping future
-  transactional: Transactional,
-  tuple,
-  // buffer,
-  locality,
-  directory,
-  DirectoryLayer,
-  Subspace,
-  streamingMode,
+  FDBError: FDBError,
+  apiVersion: function(version) {
+    if(selectedApiVersion.value && version !== selectedApiVersion.value)
+      throw new Error('Cannot select multiple different FDB API versions');
+    if(version < 500)
+      throw new RangeError('FDB API versions before 500 are not supported');
+    if(version > 510)
+      throw new RangeError('Latest known FDB API version is 510');
 
-  // This must be called before
-  configNetwork(netOpts) {
-    if (initCalled) throw Error('configNetwork must be called before any FDB connections are opened')
-    fdbUtil.eachOption('NetworkOption', opts, (code, val) => fdb.setNetworkOption(code, val))
-  },
+    if(!selectedApiVersion.value) {
+      fdb.apiVersion(version);
 
-  // Note if you need to you must configure your network before creating a cluster.
-  createCluster,
+      fdbModule.FDBError = this.FDBError;
+      fdbModule.KeySelector = KeySelector;
+      fdbModule.future = future;
+      fdbModule.transactional = Transactional;
+      fdbModule.tuple = tuple;
+      fdbModule.buffer = buffer;
+      fdbModule.locality = locality;
+      fdbModule.directory = directory.directory;
+      fdbModule.DirectoryLayer = directory.DirectoryLayer;
+      fdbModule.Subspace = Subspace;
 
-  open(clusterFile, dbOpts) {
-    // TODO: Caching disabled for now. Is this the right call? I think so.
-    // You should structure your app so it doesn't need to depend on a cache here.
-    const cluster = createCluster(clusterFile)
-    return cluster.openDatabase(dbOpts)
-  },
+      fdbModule.options = fdb.options;
+      fdbModule.streamingMode = fdb.streamingMode;
 
-  // TODO: Should I expose a method here for stopping the network for clean shutdown?
-  // I feel like I should.. but I'm not sure when its useful. Will the network thread
-  // keep the process running?
-}
+      var dbCache = {};
+
+      var doInit = function() {
+        fdb.startNetwork();
+
+        process.on('exit', function() {
+          //Clearing out the caches makes memory debugging a little easier
+          dbCache = null;
+
+          fdb.stopNetwork();
+        });
+
+        //Subsequent calls do nothing
+        doInit = function() { };
+      };
+
+      fdbModule.init = function() {
+        doInit();
+      };
+
+      fdbModule.createCluster = function(clusterFile, cb) {
+        if(!clusterFile)
+          clusterFile = '';
+
+        return new Cluster(fdb.createCluster(clusterFile));
+      };
+
+      fdbModule.open = function(clusterFile, cb) {
+        if(clusterFile)
+          fdb.options.setClusterFile(clusterFile);
+
+        this.init();
+
+        var database = dbCache[clusterFile];
+        if(!database) {
+          var cluster = fdbModule.createCluster(clusterFile);
+          database = cluster.openDatabase();
+          dbCache[clusterFile] = database;
+        }
+
+        return database;
+      };
+    }
+
+    selectedApiVersion.value = version;
+    return fdbModule;
+  }
+};
+
+fdb.FDBError = module.exports.FDBError;

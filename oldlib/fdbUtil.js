@@ -1,64 +1,31 @@
 /*
- * FoundationDB Node.js API
- * Copyright (c) 2012 FoundationDB, LLC
+ * fdbUtil.js
  *
- * Permission is hereby granted, free of charge, to any person obtaining a copy
- * of this software and associated documentation files (the "Software"), to deal
- * in the Software without restriction, including without limitation the rights
- * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
- * copies of the Software, and to permit persons to whom the Software is
- * furnished to do so, subject to the following conditions:
+ * This source file is part of the FoundationDB open source project
  *
- * The above copyright notice and this permission notice shall be included in
- * all copies or substantial portions of the Software.
+ * Copyright 2013-2018 Apple Inc. and the FoundationDB project authors
  *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
- * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
- * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
- * THE SOFTWARE.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
+
 
 "use strict";
 
-const buffer = require('./bufferConversion')
-const future = require('./future')
-const dbOptions = require('./options.g.json')
-
-const eachOption = (optType, opts, iterfn) => {
-  const validOptions = dbOptions[optType]
-
-  for (const k in opts) {
-    const details = validOptions[k]
-    if (details == null) {
-      console.warn('Warning: Ignoring unknown option', k)
-      continue
-    }
-
-    const {code, type} = details
-    const userVal = opts[k]
-
-    switch (type) {
-      case 'none':
-        if (userVal !== 'true' && userVal !== 1) console.warn('Ignoring value for key', k)
-        iterfn(details.code, null)
-        break
-      case 'string': case 'bytes':
-        iterfn(details.code, Buffer.from(userVal))
-        break
-      case 'int':
-        if (typeof userVal !== 'number') console.warn('unexpected value for key', k, 'expected int')
-        iterfn(details.code, userVal|0)
-        break
-    }
-  }
-
-}
+var buffer = require('./bufferConversion');
+var future = require('./future');
 
 var strinc = function(str) {
-  var buf = Buffer.from(str);
+  var buf = buffer(str);
 
   var lastNonFFByte;
   for(lastNonFFByte = buf.length-1; lastNonFFByte >= 0; --lastNonFFByte)
@@ -76,51 +43,62 @@ var strinc = function(str) {
 };
 
 var whileLoop = function(func, cb) {
-  var calledCallback = true;
-  function outer(err, res) {
-    if(err || typeof(res) !== 'undefined') {
-      cb(err, res);
-    }
-    else if(!calledCallback) {
-      calledCallback = true;
-    }
-    else {
-      while(calledCallback) {
-        calledCallback = false;
-        func(outer);
+  return future.create(function(futureCb) {
+    var calledCallback = true;
+    function outer(err, res) {
+      if(err || typeof(res) !== 'undefined') {
+        futureCb(err, res);
       }
+      else if(!calledCallback) {
+        calledCallback = true;
+      }
+      else {
+        while(calledCallback) {
+          calledCallback = false;
+          func(outer);
+        }
 
-      calledCallback = true;
+        calledCallback = true;
+      }
     }
-  }
 
-  outer();
+    outer();
+  }, cb);
 };
 
 var keyToBuffer = function(key) {
   if(typeof(key.asFoundationDBKey) == 'function')
-    return Buffer.from(key.asFoundationDBKey());
+    return buffer(key.asFoundationDBKey());
 
-  return Buffer.from(key);
+  return buffer(key);
 };
 
 var valueToBuffer = function(val) {
   if(typeof(val.asFoundationDBValue) == 'function')
-    return Buffer.from(val.asFoundationDBValue());
+    return buffer(val.asFoundationDBValue());
 
-  return Buffer.from(val);
+  return buffer(val);
 };
 
 var buffersEqual = function(buf1, buf2) {
-  return buf1.compare(buf2) === 0
+  if(!buf1 || !buf2)
+    return buf1 === buf2;
+
+  if(buf1.length !== buf2.length)
+    return false;
+
+  for(var i = 0; i < buf1.length; ++i)
+    if(buf1[i] !== buf2[i])
+      return false;
+
+  return true;
 };
 
 module.exports = {
-  eachOption,
-  strinc,
-  whileLoop,
-  keyToBuffer,
-  valueToBuffer,
-  buffersEqual,
+  strinc: strinc,
+  whileLoop: whileLoop,
+  keyToBuffer: keyToBuffer,
+  valueToBuffer: valueToBuffer,
+  buffersEqual: buffersEqual
 };
 

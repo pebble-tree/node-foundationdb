@@ -1,37 +1,32 @@
 /*
- * FoundationDB Node.js API
- * Copyright (c) 2012 FoundationDB, LLC
+ * database.js
  *
- * Permission is hereby granted, free of charge, to any person obtaining a copy
- * of this software and associated documentation files (the "Software"), to deal
- * in the Software without restriction, including without limitation the rights
- * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
- * copies of the Software, and to permit persons to whom the Software is
- * furnished to do so, subject to the following conditions:
+ * This source file is part of the FoundationDB open source project
  *
- * The above copyright notice and this permission notice shall be included in
- * all copies or substantial portions of the Software.
+ * Copyright 2013-2018 Apple Inc. and the FoundationDB project authors
  *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
- * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
- * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
- * THE SOFTWARE.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
+
 
 "use strict";
 
-const Transaction = require('./transaction')
-// const future = require('./future')
-const fdb = require('./fdbModule')
-const fdbUtil = require('./fdbUtil')
-// const apiVersion = require('./apiVersion')
+var Transaction = require('./transaction');
+var future = require('./future');
+var fdb = require('./fdbModule');
+var fdbUtil = require('./fdbUtil');
 
-
-// Not using promises internally here because its the hot path.
-function onError(tr, err, func, cb) {
+var onError = function(tr, err, func, cb) {
   tr.onError(err, function(retryErr, retryRes) {
     if(retryErr)
       cb(retryErr, retryRes);
@@ -40,56 +35,50 @@ function onError(tr, err, func, cb) {
   });
 };
 
-function retryLoop(tr, func, cb) {
+var retryLoop = function(tr, func, cb) {
   func(tr, function(err, res) {
-    if(err) onError(tr, err, func, cb);
+    if(err) {
+      onError(tr, err, func, cb);
+    }
     else {
       tr.commit(function(commitErr, commitRes) {
         if(commitErr)
           onError(tr, commitErr, func, cb);
         else
-          cb(null, res);
+          cb(commitErr, res);
       });
     }
   });
 };
 
-// const atomic = function(db, op) {
-//   return function(key, value, cb) {
-//     return db.doTransaction(function(tr, innerCb) {
-//       fdb.atomic[op].call(tr.tr, fdbUtil.keyToBuffer(key), fdbUtil.valueToBuffer(value));
-//       innerCb();
-//     }, cb);
-//   };
-// };
+var atomic = function(db, op) {
+  return function(key, value, cb) {
+    return db.doTransaction(function(tr, innerCb) {
+      fdb.atomic[op].call(tr.tr, fdbUtil.keyToBuffer(key), fdbUtil.valueToBuffer(value));
+      innerCb();
+    }, cb);
+  };
+};
 
-module.exports = class Database {
-  constructor(_db, opts) {
-    this._db = _db
-    fdbUtil.eachOption('DatabaseOption', opts, (code, val) => _db.setOption(code, val))
+var Database = function(_db) {
+  this._db = _db;
+  this.options = _db.options;
 
-    // for(var op in fdb.atomic) {
-    //   this[op] = atomic(this, op);
-    // }
-  }
+  for(var op in fdb.atomic)
+    this[op] = atomic(this, op);
+};
 
-  createTransaction() {
-    return new Transaction(this, this._db.createTransaction())
-  }
+Database.prototype.createTransaction = function() {
+  return new Transaction(this, this._db.createTransaction());
+};
 
-  doTransaction(func) {
-    var tr = this.createTransaction()
+Database.prototype.doTransaction = function(func, cb) {
+  var tr = this.createTransaction();
 
-    return new Promise((resolve, reject) => {
-      retryLoop(tr, func, (err, result) => {
-        if (err) reject(err)
-        else resolve(result)
-      })
-    })
-  }
-}
-
-
+  return future.create(function(futureCb) {
+    retryLoop(tr, func, futureCb);
+  }, cb);
+};
 
 Database.prototype.get = function(key, cb) {
   return this.doTransaction(function(tr, innerCb) {
@@ -135,10 +124,7 @@ Database.prototype.setAndWatch = function(key, value, cb) {
   return this.doTransaction(function(tr, innerCb) {
     tr.set(key, value);
     var watchObj = tr.watch(key);
-    if(apiVersion.value >= 200)
-      innerCb(undefined, { watch: watchObj });
-    else
-      innerCb(undefined, watchObj);
+    innerCb(undefined, { watch: watchObj });
   }, cb);
 };
 
@@ -146,10 +132,7 @@ Database.prototype.clearAndWatch = function(key, cb) {
   return this.doTransaction(function(tr, innerCb) {
     tr.clear(key);
     var watchObj = tr.watch(key);
-    if(apiVersion.value >= 200)
-      innerCb(undefined, { watch: watchObj });
-    else
-      innerCb(undefined, watchObj);
+    innerCb(undefined, { watch: watchObj });
   }, cb);
 };
 
