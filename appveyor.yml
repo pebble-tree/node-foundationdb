@@ -20,7 +20,7 @@ install:
   - set PATH=C:\Program Files (x86)\Microsoft Visual Studio 14.0\VC\bin;%PATH%
   - ps: Install-Product node $env:nodejs_version $env:platform
   - echo %FOUNDATIONDB_INSTALL_PATH%
-  - dir %FOUNDATIONDB_INSTALL_PATH%
+  - dir "%FOUNDATIONDB_INSTALL_PATH%"
   - node --version
   - npm --version
   - npm install
