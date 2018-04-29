@@ -102,7 +102,10 @@ export interface NativeModule {
 
 // Will load a compiled build if present or a prebuild.
 // If no build if found it will throw an exception
-const mod = bindings(`${__dirname}/../..`) // We're built into dist/lib/.
+const rootDir = __dirname.endsWith('dist/lib') // gross.
+  ? `${__dirname}/../..`
+  : `${__dirname}/..`
+const mod = bindings(rootDir)
 mod.FDBError = FDBError
 
 export default mod as NativeModule
