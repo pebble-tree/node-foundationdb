@@ -110,6 +110,49 @@ await db.doTransaction(async tn => {
 
 ```
 
+
+## Getting and setting values
+
+To read and write key/value pairs your application should call:
+
+```javascript
+const valueBytes = await tn.get(mykey)
+```
+
+If you don't need a transaction, you can call `get` on the database object directly:
+
+```javascript
+const valueBytes = await db.get(mykey)
+```
+
+`get(key: string | Buffer) => Promise<Buffer>` fetches the named key and returns the bytes via a Promise. If the key is specified via a string it will be encoded to bytes in UTF8.
+
+To store data, use `Transaction#set(key: string | Buffer, value: string | Buffer)` or `Database#set(key: string | Buffer, value: string | Buffer) => Promise`, eg:
+
+```javascript
+tn.set(mykey, value)
+```
+
+or
+
+```javascript
+await db.set(mykey, value)
+```
+
+The transaction version is syncronous. All set operations are immediately visible to subsequent get operations inside the transaction, and visible to external users after the transaction has been committed.
+
+If you want your key to embed numbers, UUIDs, or multiple fields we recommend using the [tuple layer](https://apple.github.io/foundationdb/data-modeling.html#tuples):
+
+```javascript
+const {tuple} = require('fdb')
+
+// ...
+await db.get(tuple.pack(['booksByAuthorPageCount', 'Pinker', 576.3]))
+```
+
+Unlike encoding fields using `JSON.stringify`, tuples maintain strict ordering constraints. This is useful for sorting data to make it easy to use range queries.
+
+
 ## Range reads
 
 There are several ways to read a range of values. Note that [large transactions are an antipattern in foundationdb](https://apple.github.io/foundationdb/known-limitations.html#large-transactions). If you need to read more than 1MB of data or need to spend 5+ seconds iterating, you should [rethink your design](https://apple.github.io/foundationdb/known-limitations.html#long-transactions).
