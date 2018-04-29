@@ -5,21 +5,13 @@ import {
   prefix,
   numToBuf,
   bufToNum,
+  withEachDb,
 } from './util'
+import {MutationType} from '../lib/opts.g'
 
 process.on('unhandledRejection', err => { throw err })
 
-// These tests just use a single shared database instance which is reset
-// between tests. It would be cleaner if we used beforeEach to close & reopen
-// the database but its probably fine like this.
-const db = fdb.openSync()
-
-// We need to do this both before and after tests run to clean up any mess
-// that a previously aborted test left behind.
-beforeEach(() => db.clearRangeStartsWith(prefix))
-afterEach(() => db.clearRangeStartsWith(prefix))
-
-describe('key value functionality', () => {
+withEachDb(db => describe('key value functionality', () => {
   it('reads its writes inside a txn', async () => {
     await db.doTransaction(async tn => {
       const key = prefix + 'xxx'
@@ -104,4 +96,19 @@ describe('key value functionality', () => {
     // serially and this test is doing nothing.
     assert(txnAttempts > concurrentWrites)
   })
-})
+
+  it('handles setVersionstampedKey correctly', async () => {
+    // TODO: I need a helper for this.
+    const keyPrefix = Buffer.from(prefix + 'hi there')
+    const keyArg = Buffer.concat([keyPrefix, Buffer.alloc(12)])
+    keyArg.writeInt16LE(keyPrefix.length, keyArg.length-2)
+
+    await db.setVersionstampedKey(keyArg, Buffer.from('hi there'))
+    const result = await db.getRangeAllStartsWith(keyPrefix)
+    assert.strictEqual(result.length, 1)
+    const [keyResult, valResult] = result[0]
+    assert.strictEqual(keyResult.slice(0, keyPrefix.length).toString(), prefix + 'hi there')
+    assert.strictEqual(keyResult.length, keyPrefix.length + 10)
+    assert.strictEqual(valResult.toString(), 'hi there')
+  })
+}))

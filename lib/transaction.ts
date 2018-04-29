@@ -67,7 +67,9 @@ export default class Transaction {
   rawCommit(): Promise<void>
   rawCommit(cb: Callback<void>): void
   rawCommit(cb?: Callback<void>) {
-    return cb ? this._tn.commit(cb) : this._tn.commit()
+    return cb
+      ? this._tn.commit(cb)
+      : this._tn.commit()
   }
 
   rawReset() { this._tn.reset() }
@@ -76,14 +78,18 @@ export default class Transaction {
   rawOnError(code: number, cb: Callback<void>): void
   rawOnError(code: number): Promise<void>
   rawOnError(code: number, cb?: Callback<void>) {
-    return cb ? this._tn.onError(code, cb) : this._tn.onError(code)
+    return cb
+      ? this._tn.onError(code, cb)
+      : this._tn.onError(code)
   }
 
   get(key: Value): Promise<Buffer | null>
   get(key: Value, cb: Callback<Buffer | null>): void
   get(key: Value, cb?: Callback<Buffer | null>) {
     const keyWrapped = this.wrapKey(key)
-    return cb ? this._tn.get(keyWrapped, this.isSnapshot, cb) : this._tn.get(keyWrapped, this.isSnapshot)
+    return cb
+      ? this._tn.get(keyWrapped, this.isSnapshot, cb)
+      : this._tn.get(keyWrapped, this.isSnapshot)
   }
   // TODO: Add something like this.
   // getStr(key: Value): Promise<string | null> {
@@ -236,7 +242,10 @@ export default class Transaction {
         // field.
         const pos = key.readUInt16LE(key.length - 2)
         key.writeUInt16LE(pos + this._prefix.length, key.length - 2)
-      } else if (opType !== MutationType.SetVersionstampedValue) {
+      } else if (opType === MutationType.SetVersionstampedValue) {
+        // No transformation of oper.
+      } else {
+        // For all other atomic operations oper is another key.
         oper = this.wrapKey(oper)
       }
     }

@@ -1,3 +1,7 @@
+import 'mocha'
+import fdb = require('../lib')
+import Database from '../lib/database'
+
 // We'll tuck everything behind this prefix and delete it all when the tests finish running.
 export const prefix = '__test_data__/'
 export const prefixBuf = (key: Buffer) => Buffer.concat([Buffer.from(prefix), key])
@@ -20,3 +24,22 @@ export const prefixKey = (key: Buffer | number | string) => (
 
 export const unprefix = (k: string) => k.slice(prefix.length)
 export const unwrapKey = (k: Buffer) => unprefix(k.toString())
+
+export const withEachDb = (fn: (db: Database) => void) => {
+
+  // These tests just use a single shared database instance which is reset
+  // between tests. It would be cleaner if we used beforeEach to close & reopen
+  // the database but its probably fine like this.
+  const db = fdb.openSync()
+
+  // We need to do this both before and after tests run to clean up any mess
+  // that a previously aborted test left behind.
+  beforeEach(() => db.clearRangeStartsWith(prefix))
+  afterEach(() => db.clearRangeStartsWith(prefix))
+
+  describe('raw database', () => fn(db))
+
+  const subspace = db.at('__subspace__')
+  describe('inside subspace', () => fn(db))
+  // TODO: It would be nice to check that nothing was written outside of the prefix.
+}

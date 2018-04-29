@@ -8,15 +8,10 @@ import {
   unprefix,
   prefixKey,
   prefixKeyToNum,
+  withEachDb,
 } from './util'
 
-
-const db = fdb.openSync()
-
-beforeEach(() => db.clearRangeStartsWith(prefix))
-afterEach(() => db.clearRangeStartsWith(prefix))
-
-describe('ranges', () => {
+withEachDb(db => describe('key value functionality', () => {
   const batchToStrUnprefix = (batch: [Buffer, Buffer][]) => (
     batch.map(([k,v]) => [unprefix(k.toString()), v.toString()])
   )
@@ -95,4 +90,4 @@ describe('ranges', () => {
       assert.deepEqual(result, data.slice(1)) // 'b', 'c'.
     })
   })
-})
+}))
