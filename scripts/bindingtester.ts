@@ -5,24 +5,25 @@
 // 
 // https://github.com/apple/foundationdb/blob/master/bindings/bindingtester/spec/bindingApiTester.md
 
-import fdb = require('../lib')
+import * as fdb from '../lib'
+import {
+  Transaction, Database,
+  tuple, TupleItem,
+  keySelector,
+  StreamingMode, MutationType,
+  util,
+} from '../lib'
+
+// This isn't globally exported because I don't expect people will want to use it directly.
+// File a github issue if this is not accurate.
+import {TransactionOptionCode} from '../lib/opts.g'
+
 import assert = require('assert')
-
-import Database from '../lib/database'
-import Transaction from '../lib/transaction'
-
-import {TupleItem} from '../lib/tuple'
-import * as util from '../lib/util'
-import {StreamingMode, TransactionOption, MutationType} from '../lib/opts.g'
 import nodeUtil = require('util')
-
 import chalk from 'chalk'
-
 import fs = require('fs')
 
 let verbose = false
-
-const {keySelector, tuple} = fdb
 
 // The string keys are all buffers, encoded as hex.
 // This is shared between all threads.
@@ -286,7 +287,7 @@ const makeMachine = (db: Database, initialName: Buffer) => {
       pushLiteral("SET_CONFLICT_KEY")
     },
     disable_write_conflict(oper) {
-      ;(<Transaction>oper).setOption(TransactionOption.NextWriteNoWriteConflictRange)
+      ;(<Transaction>oper).setOption(TransactionOptionCode.NextWriteNoWriteConflictRange)
     },
 
     commit(oper) {pushValue(wrapP((<Transaction>oper).rawCommit()))},
@@ -473,11 +474,7 @@ if (require.main === module) (async () => {
   // const log = fs.createWriteStream('nodetester.log')
   const log = undefined
 
-  // This library only works with a single fdb API version.
-  assert.strictEqual(requestedAPIVersion, fdb.apiVersion,
-    `Only API version ${fdb.apiVersion} supported. Run with --api-version ${fdb.apiVersion}`
-  )
-
+  fdb.setAPIVersion(requestedAPIVersion)
   const db = fdb.openSync(clusterFile)
 
   runFromPrefix(db, Buffer.from(prefixStr, 'ascii'), log)

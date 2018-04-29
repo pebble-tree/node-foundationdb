@@ -1,6 +1,5 @@
 import 'mocha'
-import fdb = require('../lib')
-import Database from '../lib/database'
+import * as fdb from '../lib'
 
 // We'll tuck everything behind this prefix and delete it all when the tests finish running.
 export const prefix = '__test_data__/'
@@ -25,8 +24,12 @@ export const prefixKey = (key: Buffer | number | string) => (
 export const unprefix = (k: string) => k.slice(prefix.length)
 export const unwrapKey = (k: Buffer) => unprefix(k.toString())
 
-export const withEachDb = (fn: (db: Database) => void) => {
+// Only testing with one API version for now.
+export const testApiVersion = 510
 
+export const withEachDb = (fn: (db: fdb.Database) => void) => {
+  fdb.setAPIVersion(testApiVersion)
+  
   // These tests just use a single shared database instance which is reset
   // between tests. It would be cleaner if we used beforeEach to close & reopen
   // the database but its probably fine like this.

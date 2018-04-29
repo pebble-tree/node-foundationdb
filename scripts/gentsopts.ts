@@ -1,3 +1,5 @@
+#!/usr/bin/env node -r ts-node/register
+
 // This is not used as part of the project!
 // 
 // This is a script to generate opts.g.ts from the vexillographer fdb options file.
@@ -59,6 +61,9 @@ parseString(xml, (err, result) => {
   result.Options.Scope.forEach((scope: any) => {
     const name: string = scope.$.name
     const options = readOptions(scope.Option)
+
+    let enumName = name
+
     // console.log(name)
     if (name.endsWith('Option')) {
       line(`export type ${name}s = {`)
@@ -69,9 +74,11 @@ parseString(xml, (err, result) => {
         line()
       })
       line(`}\n`)
+
+      enumName = name + 'Code'
     }
 
-    line(`export enum ${name} {`)
+    line(`export enum ${enumName} {`)
     options.forEach(({name, code, type, description, deprecated}) => {
       if (deprecated) line(`  ${comment} DEPRECATED`)
       else if (description) output.write(splitLines(description).map(s => `  ${comment} ${s}\n`).join(''))

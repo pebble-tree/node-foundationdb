@@ -1,8 +1,9 @@
 # FoundationDB NodeJS bindings
 
-These bindings are currently in the process of being revived and renewed from some very old code.
+Node bindings for [FoundationDB](https://foundationdb.org)!
 
-This is not yet entirely API-stable. The APIs will drift slightly over the next few weeks before 1.0 lands. But the bindings are correct (the foundationdb fuzzer runs clean).
+These bindings are currently in the process of being revived and renewed from some very old code. This library will not be entirely API-stable pre 1.0. Expect some slight API drift over the next few weeks before 1.0 lands.
+
 
 ## Usage
 
@@ -23,6 +24,7 @@ npm install --save foundationdb
 ```javascript
 const fdb = require('foundationdb')
 
+fdb.setAPIVersion(510)
 const db = fdb.openSync('fdb.cluster') // or just openSync() if the database is local.
 
 db.doTransaction(async tn => {
@@ -30,6 +32,8 @@ db.doTransaction(async tn => {
   tn.set('hi', 'yo')
 })
 ```
+
+> Note: You must set the FDB API version before using this library. If in doubt, set to the version of FoundationDB you have installed.
 
 # API
 
@@ -193,11 +197,44 @@ tn.getRange(
 
 (Note you need to specify `keySelector.firstGreaterThan` and not simply `keySelector.lastLessOrEqual` because getRange is exclusive of the endpoint).
 
+## Notes on API versions
+
+Since the very first release, FoundationDB has kept full backwards compatibility for clients behind an explicit call to `setAPIVersion`. In effect, client applications select the API semantics they expect to use and then the operations team should be able to deploy any version of the database software, so long as its not older than the specified version.
+
+From the point of view of a nodejs fdb client application, there are effectively two APIs you consume:
+
+- The operation semantics of FoundationDB proper
+- The API exposed by these javascript bindings
+
+In this library we could tie both sets of versions together behind the semver version number of this library. Then with every new release of FoundationDB we would increment the major version number in npm. Unfortunately, new API versions depend on new versions of the database itself. Tying the latest version of `node-foundationdb` to the latest version of the FDB API would require users to either:
+
+- Always deploy the latest version of FDB, or
+- Stick to an older version of this library, which may be missing useful features and bug fixes.
+
+Both of these options would be annoying.
+
+So to deal with this, you need to manage both API versions:
+
+- This package is versioned normally via package.json.
+- The API version of foundationdb is managed via a call at startup to `fdb.setAPIVersion`.
+
+You should be free to upgrade this library and your foundationdb database independantly. However, this library will only maintain support for FDB versions within a recent range. This is simply a constraint of development time & testing.
+
+---
+
+While all of your code should continue to work with new versions of the foundationdb database, to connect you will need a copy of the `fdb_c.s` / `fdb_c.dylib` / `fdb_c.dll` dynamic library file which matches version of the database that you are connecting to. Doing zero-downtime deployments of new versions of the foundationdb database is possible, but a little subtle. You need to:
+
+1. Deploy your client application with both old and new copies of the `fdb_c` dynamic library file. You can use the `external_client_directory` network option to point to a local directory containing copies of all versions of `fdb_c`. When the client connects to your database it will try all versions of the fdb library found in this directory.
+2. Upgrade your foundationdb database instance. The client should reconnect using the new library version.
+3. Periodically remove old, unused copies of the `fdb_c` client library from your frontend machines as they may degrade performance.
+
+Please consult [the foundationdb forum](https://forums.foundationdb.org/c/using-foundationdb) for help and more information.
+
 ## Caveats
 
-The bindings currently support standard KV operations.
+The bindings do not currently support the `Directory` layer. We have code, it just hasn't been ported to the new typescript API. If someone wants to take a stab at it, raise an issue so we don't repeat work.
 
-The bindings do not currently support the `Directory` and `Tuple` layers. We have code, it just hasn't been ported to typescript. If someone wants to take a stab at it, raise an issue so we don't repeat work.
+The API also entirely depends on node Promises. The C part of the bindings supports doing everything via callbacks but a callback-oriented API hasn't been written. If this is important to you for some reason, please raise an issue and we can discuss approaches.
 
 ## Revival progress
 
@@ -216,13 +253,15 @@ The bindings do not currently support the `Directory` and `Tuple` layers. We hav
 - [x] Add testing harness
 - [x] Port basic tests
 - [x] Testing integrated with the harness for the other bindings
+- [x] Subspace support
+- [ ] Move to NAPI
+- [ ] Configure prebuilds so users don't need a local development environment to `npm install` this library
 - [ ] API documentation for options (and TS types for them)
 - [ ] API documentation for all transaction methods (get, set, getKey, etc)
-- [ ] Figure out a decent way to bundle the native `libfdb_c` code so users don't need to download their own copy
-- [ ] Directory support
-- [ ] Subspace support
-- [ ] Add leveldown compatibilty (?)
+- [ ] Directory layer support
 - [ ] Cut 1.0
+- [ ] Figure out a decent way to bundle the native `libfdb_c` code so users don't need to download their own copy
+- [ ] Add leveldown compatibilty (?)
 
 
 ## History

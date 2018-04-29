@@ -9,7 +9,13 @@ import {
 import {strInc, strNext} from './util'
 import keySelector, {KeySelector} from './keySelector'
 import {eachOption} from './opts'
-import {TransactionOptions, TransactionOption, transactionOptionData, StreamingMode, MutationType} from './opts.g'
+import {
+  TransactionOptions,
+  TransactionOptionCode,
+  transactionOptionData,
+  StreamingMode,
+  MutationType
+} from './opts.g'
 
 const byteZero = new Buffer(1)
 byteZero.writeUInt8(0, 0)
@@ -41,7 +47,9 @@ export default class Transaction {
     this.isSnapshot = snapshot
   }
 
-  setOption(opt: TransactionOption, value?: number | string | Buffer) {
+  // This is needed for the binding tester, but users should usually pass
+  // options when the transaction is constructed.
+  setOption(opt: TransactionOptionCode, value?: number | string | Buffer) {
     // TODO: Check type of passed option is valid.
     this._tn.setOption(opt, (value == null) ? null : value)
   }

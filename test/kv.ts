@@ -1,5 +1,4 @@
 import 'mocha'
-import fdb = require('../lib')
 import assert = require('assert')
 import {
   prefix,
@@ -7,7 +6,7 @@ import {
   bufToNum,
   withEachDb,
 } from './util'
-import {MutationType} from '../lib/opts.g'
+import {MutationType} from '../lib'
 
 process.on('unhandledRejection', err => { throw err })
 

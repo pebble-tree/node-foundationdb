@@ -31,7 +31,7 @@ export type NetworkOptions = {
   external_client_transport_id?: number  // Transport ID for the child connection
 }
 
-export enum NetworkOption {
+export enum NetworkOptionCode {
   // DEPRECATED
   LocalAddress = 10,
 
@@ -104,7 +104,7 @@ export enum NetworkOption {
   // performance when connected using an external client, but may not be
   // safe to use in all environments. Must be set before setting up the
   // network. WARNING: This feature is considered experimental at this
-  // time. 
+  // time.
   CallbacksOnExternalThreads = 61,
 
   // Adds an external client library for use by the multi-version client
@@ -151,7 +151,7 @@ export type DatabaseOptions = {
   datacenter_id?: string  // Hexadecimal ID
 }
 
-export enum DatabaseOption {
+export enum DatabaseOptionCode {
   // Set the size of the client location cache. Raising this value can
   // boost performance in very large databases where clients access data in
   // a near-random pattern. Defaults to 100000.
@@ -205,7 +205,7 @@ export type TransactionOptions = {
   read_lock_aware?: true
 }
 
-export enum TransactionOption {
+export enum TransactionOptionCode {
   // The transaction, if not self-conflicting, may be committed a second
   // time after commit succeeds, in the event of a fault
   CausalWriteRisky = 10,
@@ -631,7 +631,7 @@ export const networkOptionData: OptionData = {
 
   callbacks_on_external_threads: {
     code: 61,
-    description: "If set, callbacks from external client libraries can be called from threads created by the FoundationDB client library. Otherwise, callbacks will be called from either the thread used to add the callback or the network thread. Setting this option can improve performance when connected using an external client, but may not be safe to use in all environments. Must be set before setting up the network. WARNING: This feature is considered experimental at this time. ",
+    description: "If set, callbacks from external client libraries can be called from threads created by the FoundationDB client library. Otherwise, callbacks will be called from either the thread used to add the callback or the network thread. Setting this option can improve performance when connected using an external client, but may not be safe to use in all environments. Must be set before setting up the network. WARNING: This feature is considered experimental at this time.",
     type: 'none',
   },
 

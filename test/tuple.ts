@@ -1,9 +1,7 @@
 import 'mocha'
-import fdb = require('../lib')
 import assert = require('assert')
-import {TupleItem} from '../lib/tuple'
+import {tuple, TupleItem} from '../lib'
 
-const {tuple} = fdb
 describe('tuple', () => {
   const assertRoundTrip = (val: TupleItem, strict: boolean = false) => {
     const packed = tuple.pack([val])

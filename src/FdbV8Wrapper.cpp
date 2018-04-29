@@ -44,7 +44,7 @@ static uv_thread_t fdbThread;
 static bool networkStarted = false;
 
 
-void ApiVersion(const FunctionCallbackInfo<Value>& info) {
+void SetAPIVersion(const FunctionCallbackInfo<Value>& info) {
   int apiVersion = info[0]->Int32Value();
   fdb_error_t errorCode = fdb_select_api_version(apiVersion);
 
@@ -156,7 +156,7 @@ void Init(Local<Object> exports, Local<Object> module) {
   initWatch();
 
 // #define FN(name, fn) Nan::Set(exports, Nan::New<v8::String>(name).ToLocalChecked(), Nan::New<v8::FunctionTemplate>(fn)->GetFunction())
-  NODE_SET_METHOD(exports, "apiVersion", ApiVersion);
+  NODE_SET_METHOD(exports, "setAPIVersion", SetAPIVersion);
 
   NODE_SET_METHOD(exports, "startNetwork", StartNetwork);
   NODE_SET_METHOD(exports, "stopNetwork", StopNetwork);
