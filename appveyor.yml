@@ -5,9 +5,6 @@ skip_branch_with_pr: true
 environment:
   matrix:
     - nodejs_version: "Current"
-    - nodejs_version: "9"
-    - nodejs_version: "8"
-    - nodejs_version: "10"
 
 configuration: Release
 platform:
@@ -15,7 +12,7 @@ platform:
 
 install:
   - ps: (new-object net.webclient).DownloadFile('https://www.foundationdb.org/downloads/5.1.7/windows/installers/foundationdb-5.1.7-x64.msi', 'foundationdb.msi')
-  - ps: msiexec /a foundationdb.msi /quiet /qn /norestart /log "c:\install.log"
+  - ps: msiexec /a foundationdb.msi /passive /qn /norestart /log install.log
   - dir
   - dir "C:\Program Files"
   - dir "C:\Program Files (x86)"
