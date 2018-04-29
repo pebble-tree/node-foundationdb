@@ -1,6 +1,6 @@
-import bindings = require('bindings')
 import FDBError from './error'
 import {MutationType, StreamingMode} from './opts.g'
+import bindings = require('node-gyp-build')
 
 export type Value = string | Buffer
 
@@ -100,7 +100,9 @@ export interface NativeModule {
   errorPredicate(test: ErrorPredicate, code: number): boolean
 }
 
-const mod = bindings('fdblib.node')
+// Will load a compiled build if present or a prebuild.
+// If no build if found it will throw an exception
+const mod = bindings(`${__dirname}/../..`) // We're built into dist/lib/.
 mod.FDBError = FDBError
+
 export default mod as NativeModule
-// export nativeMod

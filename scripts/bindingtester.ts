@@ -444,13 +444,13 @@ const run = async (db: Database, prefix: Buffer, log?: fs.WriteStream) => {
 
   const {begin, end} = fdb.tuple.range([prefix])
   const instructions = await db.getRangeAll(begin, end)
-  console.log(`Executing ${instructions.length} instructions from ${prefix.toString()}`)
+  // console.log(`Executing ${instructions.length} instructions from ${prefix.toString()}`)
   for (const [key, value] of instructions) {
     await machine.run(value, log)
     // TODO: consider inserting tiny sleeps to increase concurrency.
   }
   instructionsRun += instructions.length
-  console.log(`Thread ${prefix.toString()} complete`)
+  // console.log(`Thread ${prefix.toString()} complete`)
 }
 
 async function runFromPrefix(db: Database, prefix: Buffer, log?: fs.WriteStream) {

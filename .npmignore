@@ -1,4 +1,5 @@
 !dist
+!prebuilds
 oldlib
 oldtests
 src
