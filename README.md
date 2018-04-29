@@ -82,9 +82,7 @@ You almost always want to create transactions via `db.doTransaction(async tn => 
 
 The transaction will automatically be committed when the function's promise resolves. If the transaction had conflicts, it will be retried with exponential backoff.
 
-> **Note:** This function may be called multiple times in the case of conflicts.
-
-db.doTransaction will return whatever your promise returned when the transaction succeeded.
+`db.doTransaction` will pass your function's return value back to the caller.
 
 Example:
 
@@ -100,12 +98,14 @@ const val = await db.doTransaction(async tn => {
 doWork(val) // val is whatever your function returned above.
 ```
 
-*Danger:* **DO NOT DO THIS**:
+> **Note:** This function may be called multiple times in the case of conflicts.
+
+*Danger 💣:* **DO NOT DO THIS!**:
 
 ```javascript
 await db.doTransaction(async tn => {
   const val = await tn.get('key1')
-  doWork(val) // ! DANGER ! - doWork may be called multiple times
+  doWork(val) // doWork may be called multiple times!
 })
 
 ```
@@ -224,7 +224,7 @@ You should be free to upgrade this library and your foundationdb database indepe
 
 While all of your code should continue to work with new versions of the foundationdb database, to connect you will need a copy of the `fdb_c.s` / `fdb_c.dylib` / `fdb_c.dll` dynamic library file which matches version of the database that you are connecting to. Doing zero-downtime deployments of new versions of the foundationdb database is possible, but a little subtle. You need to:
 
-1. Deploy your client application with both old and new copies of the `fdb_c` dynamic library file. You can use the `external_client_directory` network option to point to a local directory containing copies of all versions of `fdb_c`. When the client connects to your database it will try all versions of the fdb library found in this directory.
+1. Deploy your client application with both old and new copies of the `fdb_c` dynamic library file. You can point your application a directory containing copies of all versions of `fdb_c` that you want it to support connecting with via the `EXTERNAL_CLIENT_DIRECTORY` environment variable or the `external_client_directory` network option. When the client connects to your database it will try all versions of the fdb library found in this directory. [Read more here](https://apple.github.io/foundationdb/api-general.html#multi-version-client)
 2. Upgrade your foundationdb database instance. The client should reconnect using the new library version.
 3. Periodically remove old, unused copies of the `fdb_c` client library from your frontend machines as they may degrade performance.
 
