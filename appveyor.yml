@@ -14,11 +14,11 @@ platform:
   - x64
 
 install:
+  - ps: (new-object net.webclient).DownloadFile('https://www.foundationdb.org/downloads/5.1.7/windows/installers/foundationdb-5.1.7-x64.msi', 'foundationdb.msi')
+  - ps: msiexec /i foundationdb.msi /quiet /qn /norestart /log install.log
   - SET PATH=C:\Program Files (x86)\Microsoft Visual Studio 14.0\VC\bin;%PATH%
   - ps: Install-Product node $env:nodejs_version $env:platform
   - npm install
-  - ps: (new-object net.webclient).DownloadFile('https://www.foundationdb.org/downloads/5.1.7/windows/installers/foundationdb-5.1.7-x64.msi', 'foundationdb.msi')
-  - ps: msiexec /i foundationdb.msi /quiet /qn /norestart /log install.log
 
 test_script:
   - node --version
