@@ -55,7 +55,9 @@ describe('tuple', () => {
         assert.deepStrictEqual(encoded, Buffer.isBuffer(bytes) ? bytes : Buffer.from(bytes, 'ascii'))
 
         const decoded = tuple.unpack(encoded)
-        assert.deepStrictEqual(decoded, [value])
+        // Node 8
+        if (isNaN(value)) assert(isNaN(decoded[0] as number))
+        else assert.deepStrictEqual(decoded, [value])
       })
     }
 
