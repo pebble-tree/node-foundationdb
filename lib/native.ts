@@ -1,6 +1,5 @@
 import FDBError from './error'
 import {MutationType, StreamingMode} from './opts.g'
-import bindings = require('node-gyp-build')
 
 export type Value = string | Buffer
 
@@ -105,7 +104,8 @@ export interface NativeModule {
 const rootDir = __dirname.endsWith('dist/lib') // gross.
   ? `${__dirname}/../..`
   : `${__dirname}/..`
-const mod = bindings(rootDir)
+
+const mod = require('node-gyp-build')(rootDir)
 mod.FDBError = FDBError
 
 export default mod as NativeModule
