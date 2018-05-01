@@ -1,3 +1,5 @@
+import path = require('path')
+
 import FDBError from './error'
 import {MutationType, StreamingMode} from './opts.g'
 
@@ -101,7 +103,7 @@ export interface NativeModule {
 
 // Will load a compiled build if present or a prebuild.
 // If no build if found it will throw an exception
-const rootDir = __dirname.endsWith('dist/lib') // gross.
+const rootDir = __dirname.endsWith(`dist${path.sep}lib`) // gross.
   ? `${__dirname}/../..`
   : `${__dirname}/..`
 
