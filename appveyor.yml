@@ -20,14 +20,13 @@ install:
   - ps: type install.log
   - ps: Install-Product node $env:nodejs_version $env:platform
   - set FOUNDATIONDB_INSTALL_PATH=C:\Program Files\foundationdb\
-  - set PATH=C:\Program Files (x86)\Microsoft Visual Studio 14.0\VC\bin;%PATH%
+  - set PATH=C:\Program Files (x86)\Microsoft Visual Studio 14.0\VC\bin;%FOUNDATIONDB_INSTALL_PATH%bin;%PATH%
   - npm install
 
 test_script:
   - timeout 1
   - node --version
   - npm --version
-  - dir build\Release
   - npx mocha dist\test\*.js
 
 after_test:
