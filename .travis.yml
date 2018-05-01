@@ -12,7 +12,7 @@ before_install:
       sudo dpkg -i foundationdb-server_5.1.7-1_amd64.deb
     else
       wget "https://www.foundationdb.org/downloads/5.1.7/macOS/installers/FoundationDB-5.1.7.pkg"
-      sudo installer -pkg foundationdb-server_5.1.7-1_amd64.deb -target /
+      sudo installer -pkg FoundationDB-5.1.7.pkg -target /
     fi
 node_js:
   - node
