@@ -20,6 +20,7 @@ install:
   - set FOUNDATIONDB_INSTALL_PATH=C:\Program Files\foundationdb\
   - set PATH=C:\Program Files (x86)\Microsoft Visual Studio 14.0\VC\bin;%PATH%
   - npm install
+  - dir build\Release
 
 test_script:
   - node --version
