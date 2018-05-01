@@ -3,7 +3,7 @@ addons:
   apt:
     packages:
       - build-essential
-before_install: |
+before_install:
   - |
     if [ $TRAVIS_OS_NAME = linux ]; then
       wget "https://www.foundationdb.org/downloads/5.1.7/ubuntu/installers/foundationdb-clients_5.1.7-1_amd64.deb"
