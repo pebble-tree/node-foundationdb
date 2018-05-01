@@ -12,11 +12,12 @@ platform:
 
 install:
   - ps: (new-object net.webclient).DownloadFile('https://www.foundationdb.org/downloads/5.1.7/windows/installers/foundationdb-5.1.7-x64.msi', 'foundationdb.msi')
+  - ps: dir fdb.msi
   - ps: msiexec /i foundationdb.msi /quiet /passive /norestart /log install.log
-  - timeout 5
+  - ps: timeout 5
+  - ps: type install.log
   - dir
   - dir "C:\Program Files"
-  - type install.log
   - set FOUNDATIONDB_INSTALL_PATH=C:\Program Files\foundationdb\
   - set PATH=C:\Program Files (x86)\Microsoft Visual Studio 14.0\VC\bin;%PATH%
   - ps: Install-Product node $env:nodejs_version $env:platform
