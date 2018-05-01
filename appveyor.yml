@@ -13,8 +13,7 @@ platform:
 install:
   - ps: (new-object net.webclient).DownloadFile('https://www.foundationdb.org/downloads/5.1.7/windows/installers/foundationdb-5.1.7-x64.msi', 'c:\foundationdb.msi')
   - ps: dir c:\foundationdb.msi
-  - ps: msiexec /i c:\foundationdb.msi /quiet /passive /norestart /log install.log
-  - ps: timeout 5
+  - ps: msiexec /i c:\foundationdb.msi /quiet /passive /norestart /log install.log | Out-Null
   - ps: type install.log
   - ps: Install-Product node $env:nodejs_version $env:platform
   - set FOUNDATIONDB_INSTALL_PATH=C:\Program Files\foundationdb\
@@ -23,6 +22,7 @@ install:
   - dir build\Release
 
 test_script:
+  - timeout 1
   - node --version
   - npm --version
   - npm test
