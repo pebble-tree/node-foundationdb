@@ -104,8 +104,8 @@ export interface NativeModule {
 // Will load a compiled build if present or a prebuild.
 // If no build if found it will throw an exception
 const rootDir = __dirname.endsWith(`dist${path.sep}lib`) // gross.
-  ? `${__dirname}/../..`
-  : `${__dirname}/..`
+  ? path.resolve(`${__dirname}/../..`)
+  : path.resolve(`${__dirname}/..`)
 
 const mod = require('node-gyp-build')(rootDir)
 mod.FDBError = FDBError
