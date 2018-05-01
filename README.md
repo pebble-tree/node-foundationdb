@@ -7,11 +7,11 @@ These bindings are currently in the process of being revived and renewed from so
 
 ## Usage
 
-**You need to have the FDB client library on your machine before you can use this node module**. This is also true on any machines you deploy to. I'm sorry about that. We've been [discussing it](https://github.com/apple/foundationdb/issues/129).
+**You need to [download the FDB client library](https://www.foundationdb.org/download/) on your machine before you can use this node module**. This is also true on any machines you deploy to. I'm sorry about that. We've been [discussing it](https://forums.foundationdb.org/t/how-do-bindings-get-an-appropriate-copy-of-fdb-c/311/1).
 
 #### Step 1
 
-[Install foundationdb](https://www.foundationdb.org/download/). At a minimum you need the client library + C bindings.
+[Install foundationdb](https://www.foundationdb.org/download/). If you have a choice, you only need the client library.
 
 #### Step 2
 
@@ -35,36 +35,44 @@ db.doTransaction(async tn => {
 
 > Note: You must set the FDB API version before using this library. If in doubt, set to the version of FoundationDB you have installed.
 
+
 # API
 
 ## Connecting to your cluster
 
 FoundationDB servers and clients use a [cluster file](https://apple.github.io/foundationdb/api-general.html#cluster-file) (typically named `fdb.cluster`) to connect to a cluster.
 
-The easiest way to connect to your foundationdb cluster is:
+The best way to connect to your foundationdb cluster is to just use:
 
 ```javascript
 const fdb = require('foundationdb')
 const db = fdb.openSync()
 ```
 
-This will look for a cluster file in the location specified by the `FDB_CLUSTER_FILE` environment variable, then the current working directory, then the [default file](https://apple.github.io/foundationdb/administration.html#default-cluster-file). For local development this should *just work*.
+This will look for a cluster file in:
 
-You can also manually specify a cluster file location:
+- The location specified by the `FDB_CLUSTER_FILE` environment variable
+- The current working directory
+- The [default file](https://apple.github.io/foundationdb/administration.html#default-cluster-file) location, which should *just work* for local development.
+
+Alternately, manually specify a cluster file location:
 
 ```javascript
 const fdb = require('foundationdb')
 const db = fdb.openSync('fdb.cluster')
 ```
 
-Alternately, you can use the async API:
+If you want you can instead use the async API:
 
 ```javascript
 const fdb = require('foundationdb')
 
-(async () => {
-  const cluster = await fdb.createCluster()
-  const db = await cluster.openDatabase('DB') // Database name must be 'DB'.
+;(async () => {
+  const db = await fdb.open()
+
+  // ... Which is a shorthand for:
+  //const cluster = await fdb.createCluster()
+  //const db = await cluster.openDatabase('DB') // Database name must be 'DB'.
 })()
 ```
 
