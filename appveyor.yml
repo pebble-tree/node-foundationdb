@@ -22,13 +22,13 @@ install:
   - set FOUNDATIONDB_INSTALL_PATH=C:\Program Files\foundationdb\
   - set PATH=C:\Program Files (x86)\Microsoft Visual Studio 14.0\VC\bin;%PATH%
   - npm install
-  - dir build\Release
 
 test_script:
   - timeout 1
   - node --version
   - npm --version
-  - npm test
+  - dir build\Release
+  - npx mocha dist\test\*.js
 
 after_test:
   - ps: If ($env:nodejs_version -eq "Current") { npm run prebuild }
