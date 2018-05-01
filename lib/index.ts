@@ -15,16 +15,20 @@ import {NetworkOptions, networkOptionData, DatabaseOptions} from './opts.g'
 let apiVersion: number | null = null
 let initCalled = false
 
-const minAPIVersion = 500
-
 // Eg 510.
 export function setAPIVersion(version: number) {
+  if (typeof version !== 'number') throw TypeError('version must be a number')
+
   if (apiVersion != null) {
     if (apiVersion !== version) {
       throw Error('foundationdb already initialized with API version ' + apiVersion)
     }
   } else {
-    if (version < minAPIVersion) throw Error('Node bindings only support API versions >= ' + minAPIVersion)
+    // Old versions probably work fine, but there are no tests to check.
+    if (version < 500) throw Error('FDB Node bindings only support API versions >= 500')
+    // We can't support newer versions of fdb without regenerating options & atomics.
+    if (version > 510) throw Error('The installed version of the FDB Node bindings only support FDB API versions <= 510. Check for updates or file a ticket')
+
     nativeMod.setAPIVersion(version)
     apiVersion = version
   }
