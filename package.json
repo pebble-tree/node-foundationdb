@@ -19,6 +19,7 @@
     "install": "node-gyp-build",
     "test": "mocha -r ts-node/register test/*.ts",
     "prepare": "tsc -p .",
+    "prepublishOnly": "rm -rf prebuilds && prebuildify-ci download",
     "prebuild": "prebuildify -t 8.0.0 -t 9.0.0 -t 10.0.0 -t electron@1.8.0 --strip"
   },
   "dependencies": {
@@ -33,6 +34,7 @@
     "chalk": "^2.4.1",
     "mocha": "^5.1.1",
     "prebuildify": "^2.6.0",
+    "prebuildify-ci": "^1.0.1",
     "ts-node": "^6.0.0",
     "typescript": "^2.8.3",
     "xml2js": "^0.4.19"
