@@ -53,8 +53,6 @@ void SetAPIVersion(const FunctionCallbackInfo<Value>& info) {
       return Nan::ThrowError(FdbError::NewInstance(errorCode, "API version not supported by the installed FoundationDB C library"));
     return Nan::ThrowError(FdbError::NewInstance(errorCode));
   }
-
-  info.GetReturnValue().SetNull();
 }
 
 
