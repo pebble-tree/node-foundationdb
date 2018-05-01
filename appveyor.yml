@@ -17,14 +17,13 @@ install:
   - ps: (new-object net.webclient).DownloadFile('https://www.foundationdb.org/downloads/5.1.7/windows/installers/foundationdb-5.1.7-x64.msi', 'c:\foundationdb.msi')
   - ps: dir c:\foundationdb.msi
   - ps: msiexec /i c:\foundationdb.msi /quiet /passive /norestart /log install.log | Out-Null
-  - ps: type install.log
   - ps: Install-Product node $env:nodejs_version $env:platform
   - set FOUNDATIONDB_INSTALL_PATH=C:\Program Files\foundationdb\
   - set PATH=C:\Program Files (x86)\Microsoft Visual Studio 14.0\VC\bin;%FOUNDATIONDB_INSTALL_PATH%bin;%PATH%
   - npm install
 
 test_script:
-  - timeout 1
+  - echo %PATH%
   - node --version
   - npm --version
   - npx mocha dist\test\*.js
