@@ -12,7 +12,7 @@ platform:
 
 install:
   - ps: (new-object net.webclient).DownloadFile('https://www.foundationdb.org/downloads/5.1.7/windows/installers/foundationdb-5.1.7-x64.msi', 'foundationdb.msi')
-  - ps: msiexec /i foundationdb.msi /passive /qn /norestart /log install.log
+  - ps: msiexec /i foundationdb.msi /quiet /passive /norestart /log install.log
   - timeout 5
   - dir
   - dir "C:\Program Files"
