@@ -107,7 +107,14 @@ const rootDir = __dirname.endsWith(`dist${path.sep}lib`) // gross.
   ? path.resolve(`${__dirname}/../..`)
   : path.resolve(`${__dirname}/..`)
 
-const mod = require('node-gyp-build')(rootDir)
-mod.FDBError = FDBError
+let mod
+try {
+  mod = require('node-gyp-build')(rootDir)
+} catch (e) {
+  console.error('Could not load native module. Make sure the foundationdb client is installed and')
+  console.error('(on windows) in your PATH. https://www.foundationdb.org/download/')
+  throw e
+}
 
+mod.FDBError = FDBError
 export default mod as NativeModule
