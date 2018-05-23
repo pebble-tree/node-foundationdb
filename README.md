@@ -125,7 +125,7 @@ To **read** key/value pairs in a transaction, call `get`:
 
 ```javascript
 const valueBytes = await db.doTransaction(async tn => {
-	return await tn.get(mykey)
+  return await tn.get(mykey)
 })
 ```
 
@@ -141,8 +141,8 @@ To **store**, use `Transaction#set(key, value)` or `Database#set(key, value) => 
 
 ```javascript
 await db.doTransaction(async tn => {
-	tn.set(mykey, value)
-	// ...
+  tn.set(mykey, value)
+  // ...
 })
 ```
 
@@ -306,7 +306,7 @@ Snapshot reads are done using the same set of read functions, but executed again
 
 ```javascript
 const val = await db.doTransaction(async tn => {
-	return await tn.snapshot().get(someKey)
+  return await tn.snapshot().get(someKey)
 })
 ```
 
@@ -314,8 +314,8 @@ or
 
 ```javascript
 const val = await db.doTransaction(async tn => {
-	const tns = tn.snapshot()
-	return await tns.get(someKey)
+  const tns = tn.snapshot()
+  return await tns.get(someKey)
 })
 ```
 
