@@ -71,9 +71,9 @@ export type TupleItem = null | Buffer | string | TupleArr | number | boolean | {
 export interface TupleArr extends Array<TupleItem> {}
 
 
-const nullByte = new Buffer('00', 'hex')
-const falseByte = new Buffer('26', 'hex')
-const trueByte = new Buffer('27', 'hex')
+const nullByte = Buffer.from('00', 'hex')
+const falseByte = Buffer.from('26', 'hex')
+const trueByte = Buffer.from('27', 'hex')
 
 const findNullBytes = (buf: Buffer, pos: number, searchForTerminators: boolean = false) => {
   var nullBytes = [];
@@ -157,7 +157,7 @@ const encode = (into: BufferBuilder, item: TupleItem) => {
     let itemBuf: Buffer
 
     if (typeof item === 'string') {
-      itemBuf = new Buffer(item, 'utf8');
+      itemBuf = Buffer.from(item, 'utf8')
       into.appendByte(Code.String)
     } else {
       itemBuf = item
@@ -363,6 +363,6 @@ export function range(arr: TupleItem[]) {
   var packed = pack(arr)
   return {
     begin: Buffer.concat([packed, nullByte]),
-    end: Buffer.concat([packed, new Buffer('ff', 'hex')])
+    end: Buffer.concat([packed, Buffer.from('ff', 'hex')])
   }
 }

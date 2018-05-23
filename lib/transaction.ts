@@ -17,7 +17,7 @@ import {
   MutationType
 } from './opts.g'
 
-const byteZero = new Buffer(1)
+const byteZero = Buffer.alloc(1)
 byteZero.writeUInt8(0, 0)
 
 export interface RangeOptionsBatch {

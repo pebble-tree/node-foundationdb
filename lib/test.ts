@@ -13,7 +13,7 @@ const db = fdb.openSync()
 
 const fromBuf = (b: Buffer | null) => b ? b.readInt32LE(0) : 0
 const toBuf = (n: number) => {
-  const b = new Buffer(4)
+  const b = Buffer.alloc(4)
   b.writeInt32LE(n, 0)
   return b
 }

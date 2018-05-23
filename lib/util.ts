@@ -11,14 +11,14 @@ export const strInc = (val: string | Buffer): Buffer => {
     throw new Error(`invalid argument '${val}': prefix must have at least one byte not equal to 0xFF`)
   }
 
-  const result = new Buffer(lastNonFFByte + 1)
+  const result = Buffer.alloc(lastNonFFByte + 1)
   buf.copy(result, 0, 0, result.length)
   ++result[lastNonFFByte]
 
   return result;
 }
 
-const byteZero = new Buffer(1)
+const byteZero = Buffer.alloc(1)
 byteZero.writeUInt8(0, 0)
 
 // This appends \x00 to a key to get the next key.

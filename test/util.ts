@@ -8,7 +8,7 @@ export const prefixBuf = (key: Buffer) => Buffer.concat([Buffer.from(prefix), ke
 // Using big endian numbers because they're lexographically sorted correctly.
 export const bufToNum = (b: Buffer | null, def: number = 0) => b ? b.readInt32BE(0) : def
 export const numToBuf = (n: number) => {
-  const b = new Buffer(4)
+  const b = Buffer.alloc(4)
   b.writeInt32BE(n, 0)
   return b
 }
