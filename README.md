@@ -30,7 +30,7 @@ const db = fdb.openSync('fdb.cluster') // or just openSync() if the database is 
 db.doTransaction(async tn => {
   console.log('key hi has value', await tn.getStr('hi'))
   tn.set('hi', 'yo')
-})
+}) // returns a promise.
 ```
 
 > Note: You must set the FDB API version before using this library. If in doubt, set to the version of FoundationDB you have installed.
@@ -121,13 +121,15 @@ await db.doTransaction(async tn => {
 
 ## Getting and setting values
 
-To read and write key/value pairs your application should call:
+To **read** key/value pairs in a transaction, call `get`:
 
 ```javascript
-const valueBytes = await tn.get(mykey)
+const valueBytes = await db.doTransaction(async tn => {
+	return await tn.get(mykey)
+})
 ```
 
-If you don't need a transaction, you can call `get` on the database object directly:
+If you don't need a transaction you can call `get` on the database object directly:
 
 ```javascript
 const valueBytes = await db.get(mykey)
@@ -135,10 +137,13 @@ const valueBytes = await db.get(mykey)
 
 `get(key: string | Buffer) => Promise<Buffer>` fetches the named key and returns the bytes via a Promise. If the key is specified via a string it will be encoded to bytes in UTF8.
 
-To store data, use `Transaction#set(key: string | Buffer, value: string | Buffer)` or `Database#set(key: string | Buffer, value: string | Buffer) => Promise`, eg:
+To **store**, use `Transaction#set(key, value)` or `Database#set(key, value) => Promise`, eg:
 
 ```javascript
-tn.set(mykey, value)
+await db.doTransaction(async tn => {
+	tn.set(mykey, value)
+	// ...
+})
 ```
 
 or
@@ -147,9 +152,11 @@ or
 await db.set(mykey, value)
 ```
 
-The transaction version is syncronous. All set operations are immediately visible to subsequent get operations inside the transaction, and visible to external users after the transaction has been committed.
+The key and value must be either node Buffer objects or strings.
 
-If you want your key to embed numbers, UUIDs, or multiple fields we recommend using the [tuple layer](https://apple.github.io/foundationdb/data-modeling.html#tuples):
+The transaction version is synchronous. All set operations are immediately visible to subsequent get operations inside the transaction, and visible to external users after the transaction has been committed.
+
+If you want to embed numbers, UUIDs, or multiple fields we recommend using the [tuple layer](https://apple.github.io/foundationdb/data-modeling.html#tuples):
 
 ```javascript
 const {tuple} = require('fdb')
@@ -158,17 +165,18 @@ const {tuple} = require('fdb')
 await db.get(tuple.pack(['booksByAuthorPageCount', 'Pinker', 576.3]))
 ```
 
-Unlike encoding fields using `JSON.stringify`, tuples maintain strict ordering constraints. This is useful for sorting data to make it easy to use range queries.
+Unlike encoding fields using `JSON.stringify`, tuples maintain strict ordering constraints between keys. This is useful for sorting data to make it easy to use range queries.
 
 
 ## Range reads
 
-There are several ways to read a range of values. Note that [large transactions are an antipattern in foundationdb](https://apple.github.io/foundationdb/known-limitations.html#large-transactions). If you need to read more than 1MB of data or need to spend 5+ seconds iterating, you should [rethink your design](https://apple.github.io/foundationdb/known-limitations.html#long-transactions).
+There are several ways to read a range of values. Note that large transactions give poor performance in foundationdb, and are considered [an antipattern](https://apple.github.io/foundationdb/known-limitations.html#large-transactions). If your transaction reads more than 1MB of data or is held open for 5+ seconds, consider rethinking your design.
 
+All range read functions also support key selectors and range options. These features are described below.
 
 ### Async iteration
 
-In node 10+ or when compiling with Typescript or Babel, the best way to iterate through a range is using an [async iterator](https://github.com/tc39/proposal-async-iteration):
+When using NodeJS 10+, Typescript or Babel, the best way to iterate through a range is using an [async iterator](https://github.com/tc39/proposal-async-iteration):
 
 ```javascript
 db.doTransaction(async tn => {
@@ -178,7 +186,9 @@ db.doTransaction(async tn => {
 })
 ```
 
-Async iterators are natively available in node 8 and 9 via the `node --harmony-async-iteration` flag.
+Used in this way `getRange` will fetch the data itself in batches, with a gradually increasing size. But note that the [transaction size limit still applies](https://apple.github.io/foundationdb/known-limitations.html#large-transactions).
+
+Async iterators are also natively available in node 8 and 9, but you need the `node --harmony-async-iteration` flag to use them.
 
 
 ### Manual async iteration
@@ -198,10 +208,11 @@ db.doTransaction(async tn => {
 })
 ```
 
+The data is still fetched over the network in batches.
 
 ### Batch iteration
 
-If you want to process the results in batches, you can bulk iterate through the range. This has slightly better performance because it doesn't need to generate an iterator callback and promise for each key/value pair:
+If you want to *process* the results in batches, you can bulk iterate through the range as above. This has better nodejs performance because it doesn't create as many temporary objects, and it doesn't need to thrash the event loop so much.
 
 ```javascript
 db.doTransaction(async tn => {
@@ -232,21 +243,58 @@ db.doTransaction(async tn => {
 }
 ```
 
-This will load the entire range in a single network request, and its a simpler API to work with if you need to do bulk operations.
+This will load the entire range in a single network request.
 
 
-### Key selectors
+### Range Options
 
-All range read functions support ranges to be specified using [selectors](https://apple.github.io/foundationdb/developer-guide.html#key-selectors) instead of simple keys. For example, to get a range not including the start but including the end:
+All range read functions take an optional `options` argument with the following properties:
+
+- **limit** (*number*): If specified and non-zero, indicates the maximum number of key-value pairs to return. If you call `getRangeRaw` with a specified limit, and this limit was reached before the end of the specified range, `getRangeRaw` will specify `{more: true}` in the result. In other range read modes, the returned range (or range iterator) will stop after the specified limit.
+- **reverse** (*boolean*): If specified, key-value pairs will be returned in reverse lexicographical order beginning at the end of the range.
+- **targetBytes** (*number*): If specified and non-zero, this indicates a (soft) cap on the combined number of bytes of keys and values to return. If you call `getRangeRaw` with a specified limit, and this limit was reached before the end of the specified range, `getRangeRaw` will specify `{more: true}` in the result. Specifying targetBytes is currently not supported by other range read functions. Please file a ticket if support for this feature is important to you.
+- **streamingMode**: This defines the policy for fetching data over the network. Options are:
+	- `fdb.StreamingMode.`**WantAll**: Client intends to consume the entire range and would like it all transferred as early as possible.
+	- `fdb.StreamingMode.`**Iterator**: The default. The client doesn't know how much of the range it is likely to used and wants different performance concerns to be balanced. Only a small portion of data is transferred to the client initially (in order to minimize costs if the client doesn't read the entire range), and as the caller iterates over more items in the range larger batches will be transferred in order to minimize latency.
+	- `fdb.StreamingMode.`**Exact**: Infrequently used. The client has passed a specific row limit and wants that many rows delivered in a single batch. Consider `WantAll` StreamingMode instead. A row limit must be specified if this mode is used.
+	- `fdb.StreamingMode.`**Small**: Infrequently used. Transfer data in batches small enough to not be much more expensive than reading individual rows, to minimize cost if iteration stops early.
+	- `fdb.StreamingMode.`**Medium**: Infrequently used. Transfer data in batches sized in between small and large.
+	- `fdb.StreamingMode.`**Large**: Infrequently used. Transfer data in batches large enough to be, in a high-concurrency environment, nearly as efficient as possible. If the client stops iteration early, some disk and network bandwidth may be wasted. The batch size may still be too small to allow a single client to get high throughput from the database, so if that is what you need consider the SERIAL StreamingMode.
+	- `fdb.StreamingMode.`**Serial**: Transfer data in batches large enough that an individual client can get reasonable read bandwidth from the database. If the client stops iteration early, considerable disk and network bandwidth may be wasted.
+
+## Key selectors
+
+All range read functions and `getKey` let you specify keys using [key selectors](https://apple.github.io/foundationdb/developer-guide.html#key-selectors). Key selectors are created using methods in `fdb.keySelector`:
+
+- `fdb.keySelector.`**lastLessThan(key)**
+- `fdb.keySelector.`**lastLessOrEqual(key)**
+- `fdb.keySelector.`**firstGreaterThan(key)**
+- `fdb.keySelector.`**firstGreaterOrEqual(key)**
+
+For example, to get a range not including the start but including the end:
 
 ```javascript
+const ks = require('foundationdb').keySelector
+
+// ...
 tn.getRange(
-  fdb.keySelector.firstGreater(start),
-  fdb.keySelector.firstGreaterThan(end)
+  ks.firstGreaterThan(start),
+  ks.firstGreaterThan(end)
 )
 ```
 
-(Note you need to specify `keySelector.firstGreaterThan` and not simply `keySelector.lastLessOrEqual` because getRange is exclusive of the endpoint).
+> The naming is weird at the end of the range. Remember range queries are always non-inclusive of the end of their range. In the above example FDB will find the next key greater than `end`, then *not include this key in the results*.
+
+You can add or subtract an offset from a key selector using `fdb.keySelector.add(sel, offset)`. This counts *in keys*. For example, to find the key thats exactly 10 keys from key `'a'`:
+
+```javascript
+const ks = require('foundationdb').keySelector
+
+await db.getKey(ks.add(ks.firstGreaterOrEqual('a'), 10))
+```
+
+You can also specify raw key selectors using `fdb.keySelector(key: string | Buffer, orEqual: boolean, offset: number)`. See [FDB documentation](https://apple.github.io/foundationdb/developer-guide.html#key-selectors) on how these are interpreted.
+
 
 ## Notes on API versions
 
