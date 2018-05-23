@@ -296,6 +296,32 @@ await db.getKey(ks.add(ks.firstGreaterOrEqual('a'), 10))
 You can also specify raw key selectors using `fdb.keySelector(key: string | Buffer, orEqual: boolean, offset: number)`. See [FDB documentation](https://apple.github.io/foundationdb/developer-guide.html#key-selectors) on how these are interpreted.
 
 
+### Snapshot Reads
+
+By default, FoundationDB transactions guarantee [serializable isolation](https://apple.github.io/foundationdb/developer-guide.html#acid), resulting in a state that is *as if* transactions were executed one at a time, even if they were executed concurrently. Serializability has little performance cost when there are few conflicts but can be expensive when there are many. FoundationDB therefore also permits individual reads within a transaction to be done as *snapshot reads*.
+
+Snapshot reads differ from ordinary (serializable) reads by permitting the values they read to be modified by concurrent transactions, whereas serializable reads cause conflicts in that case. Like serializable reads, snapshot reads see the effects of prior writes in the same transaction. For more information on the use of snapshot reads, see [Snapshot reads](https://apple.github.io/foundationdb/developer-guide.html#snapshot-isolation) in the foundationdb documentation.
+
+Snapshot reads are done using the same set of read functions, but executed against a *snapshot transaction* instead of a normal transaction object:
+
+```javascript
+const val = await db.doTransaction(async tn => {
+	return await tn.snapshot().get(someKey)
+})
+```
+
+or
+
+```javascript
+const val = await db.doTransaction(async tn => {
+	const tns = tn.snapshot()
+	return await tns.get(someKey)
+})
+```
+
+Internally snapshot transaction objects are just shallow clones of the original transaction object, but with a flag set. They share the underlying FDB transaction with their originator. Inside a `doTransaction` block you can use the original transaction and snapshot transaction objects interchangeably as desired.
+
+
 ## Notes on API versions
 
 Since the very first release, FoundationDB has kept full backwards compatibility for clients behind an explicit call to `setAPIVersion`. In effect, client applications select the API semantics they expect to use and then the operations team should be able to deploy any version of the database software, so long as its not older than the specified version.
