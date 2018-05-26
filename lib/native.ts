@@ -15,7 +15,7 @@ export type KVList = {
 }
 
 export type Watch = {
-  clear(): void
+  cancel(): void
 }
 
 export type Version = Buffer
