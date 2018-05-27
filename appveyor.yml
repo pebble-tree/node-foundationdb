@@ -29,7 +29,8 @@ test_script:
   - npm test
 
 after_test:
-  - ps: If ($env:nodejs_version -eq "Current") { npm run prebuild }
+  # NO_WARNINGS is needed to workaround an issue in node 10.1.0
+  - ps: If ($env:nodejs_version -eq "Current") { $Env:NODE_NO_WARNINGS = 1; npm run prebuild }
 
 artifacts:
   - path: prebuilds
