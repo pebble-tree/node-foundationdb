@@ -1,16 +1,14 @@
 // Stuff that hasn't been ported over:
 
 // const Transactional = require('./retryDecorator')
-// const tuple = require('./tuple')
-// const buffer = require('./bufferConversion')
 // const locality = require('./locality')
 // const directory = require('./directory')
-// const Subspace = require('./subspace')
 
 import nativeMod, * as fdb from './native'
 import Database, {createDatabase} from './database'
 import {eachOption} from './opts'
 import {NetworkOptions, networkOptionData, DatabaseOptions} from './opts.g'
+import {Transformer} from './transaction'
 
 let apiVersion: number | null = null
 let initCalled = false
@@ -70,9 +68,42 @@ export {
 import {strInc} from './util'
 export const util = {strInc}
 
+// TODO: Remove tuple from the root API. Tuples should be in a separate module.
 import {pack, unpack, range} from './tuple'
-export {TupleItem} from './tuple'
+import {TupleItem} from './tuple'
 export const tuple = {pack, unpack, range}
+
+const id = (x: any) => x
+export const encoders = {
+  int32BE: {
+    pack(num) {
+      const b = Buffer.alloc(4)
+      b.writeInt32BE(num, 0)
+      return b
+    },
+    unpack(buf) { return buf.readInt32BE(0) }
+  } as Transformer<number>,
+
+  json: {
+    pack(obj) { return JSON.stringify(obj) },
+    unpack(buf) { return JSON.parse(buf.toString('utf8')) }
+  } as Transformer<any>,
+
+  string: {
+    pack(str) { return Buffer.from(str, 'utf8') },
+    unpack(buf) { return buf.toString('utf8') }
+  } as Transformer<string>,
+
+  buf: {
+    pack: id,
+    unpack: id
+  } as Transformer<Buffer>,
+
+  tuple: { // TODO: Move this into a separate library
+    pack,
+    unpack,
+  } as Transformer<TupleItem[]>
+}
 
 const wrapCluster = (cluster: fdb.NativeCluster) => ({
   async openDatabase(dbName: 'DB', opts?: DatabaseOptions) {

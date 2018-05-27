@@ -262,6 +262,7 @@ All range read functions take an optional `options` argument with the following 
 	- `fdb.StreamingMode.`**Large**: Infrequently used. Transfer data in batches large enough to be, in a high-concurrency environment, nearly as efficient as possible. If the client stops iteration early, some disk and network bandwidth may be wasted. The batch size may still be too small to allow a single client to get high throughput from the database, so if that is what you need consider the SERIAL StreamingMode.
 	- `fdb.StreamingMode.`**Serial**: Transfer data in batches large enough that an individual client can get reasonable read bandwidth from the database. If the client stops iteration early, considerable disk and network bandwidth may be wasted.
 
+
 ## Key selectors
 
 All range read functions and `getKey` let you specify keys using [key selectors](https://apple.github.io/foundationdb/developer-guide.html#key-selectors). Key selectors are created using methods in `fdb.keySelector`:
@@ -296,7 +297,133 @@ await db.getKey(ks.add(ks.firstGreaterOrEqual('a'), 10))
 You can also specify raw key selectors using `fdb.keySelector(key: string | Buffer, orEqual: boolean, offset: number)`. See [FDB documentation](https://apple.github.io/foundationdb/developer-guide.html#key-selectors) on how these are interpreted.
 
 
-### Snapshot Reads
+## Scoping & Key / Value transformations
+
+All database and transaction objects have a scope, which is configured by:
+
+- A *prefix*, prepended to the start of all keys
+- A *key transformer*, which is a `pack` & `unpack` function pair for interacting with keys
+- A *value transformer*, which is a `pack` & `unpack` function pair for interacting with values
+
+The idea is that some areas of your database will contain different data, which may be encoded using different schemes. To facilitate this you can create a bunch of database objects with different configuration. The scope is transparent to the application once the database has been configured - it is automatically prepended to all keys supplied to the API, and automatically removed from all keys returned via the API.
+
+Prefixes are called [subspaces](https://apple.github.io/foundationdb/developer-guide.html#subspaces) in other parts of the documentation & through other frontends.
+
+### Prefixes
+
+To add an application-specific prefix.
+
+```javascript
+// Prepend 'myapp' to all keys
+const db = fdb.openSync('fdb.cluster').at('myapp.')
+
+// ... Then use the database as normal
+await db.set('hello', 'there') // Actually sets 'myapp.hello' to 'there'
+await db.get('hello') // returns 'there', encoded as a buffer
+```
+
+They can be nested arbitrarily:
+
+```javascript
+const root = fdb.openSync('fdb.cluster')
+const app = db.at('myapp.')
+const books = app.at('books.') // Equivalent to root.at('myapp.books.')
+```
+
+But beware of long prefixes. The byte size of prefixes is paid in every API call, so you should keep prefixes short. If you want complex subdivisions, consider using [directories](https://apple.github.io/foundationdb/developer-guide.html#directories) instead. (Note: Directories are not yet implemented in this layer).
+
+
+### Key and Value transformation
+
+By default, the Node FoundationDB library accepts key and value input as either strings or Buffer objects, and always returns Buffers. But this is usually not what you actually want in your application.
+
+You can configure a database to always automatically transform keys and values via an encoder. The following encoders are built into the library:
+
+- `fdb.encoders.`**int32BE**: Integer encoding using big-endian 32 bit ints
+- `fdb.encoders.`**string**: UTF-8 string encoding
+- `fdb.encoders.`**buffer**: Buffer encoding. This doesn't actually do anything, but it can be handy to suppress typescript warnings when you're dealing with binary data.
+- `fdb.encoders.`**json**: JSON encoding using the built-in JSON.stringify. This is not suitable for key encoding.
+- `fdb.encoders.`**tuple**: Encode values using FDB [tuple encoding](https://apple.github.io/foundationdb/data-modeling.html#tuples). [Spec here](https://github.com/apple/foundationdb/blob/master/design/tuple.md).
+
+**Beware** JSON encoding is generally unsuitable as a key encoding method for many reasons:
+
+- JSON objects have no guaranteed encoding order. Eg `{a:4, b:3}` could be encoded as `{"a":4,"b":3}` or `{"b":3,"a":4}`. When fetching a key, FDB does an equality check on the encoded value, so you might find your data is gone when you go to fetch it again later.
+- When performing range queries, the lexographical ordering is undefined in innumerable ways. For example, `2` is lexographically after `10`.
+
+These problems are fixed by using [FDB tuple encoding](https://apple.github.io/foundationdb/data-modeling.html#tuples). Tuple encoding is supported by all FDB frontends, it formally (and carefully) defines ordering for all objects and it supports transparent concatenation (tuple.pack(`['a']`) + tuple.pack(`['b']`) === tuple.pack(`['a', 'b']`)).
+
+
+For example:
+
+#### Using a key encoding:
+
+```javascript
+const db = fdb.openSync('fdb.cluster').withKeyEncoding(fdb.encoders.int32BE)
+
+await db.set(123, 'hi')
+await db.get(123) // returns 'hi' as a buffer
+```
+
+
+#### Or a value encoding:
+
+```javascript
+const db = fdb.openSync('fdb.cluster').withValueEncoding(fdb.encoders.json)
+
+await db.set('hi', [1,2,3])
+await db.get('hi') // returns [1,2,3]
+```
+
+#### Custom encodings
+
+You can define your own custom encoding by supplying your own `pack` & `unpack` function pair:
+
+```javascript
+const msgpack = require('msgpack-lite')
+
+const db = fdb.openSync('fdb.cluster').withValueEncoding({
+  pack: msgpack.encode,
+  unpack: msgpack.decode,
+})
+
+await db.set('hi', ['x', 1.2, Buffer.from([1,2,3])])
+await db.get('hi') // returns ['x', 1.2, Buffer.from([1,2,3])]
+```
+
+
+#### Chained prefixes
+
+If you prefix a database which has a key encoding set, the prefix will be transformed by the encoding. This allows you to use the API like this:
+
+```javascript
+const rootDb = fdb.openSync('fdb.cluster').withKeyEncoding(fdb.encoders.tuple).at(['myapp'])
+const books = rootDb.at(['data', 'books']) // Equivalent to .at(['myapp', 'data', 'books'])
+```
+
+
+#### Transactions in multiple scopes
+
+If you need to update objects across multiple scopes within the same transaction you can use `tn.scopedTo` to create an alias of the transaction in a different scope:
+
+```javascript
+const root = fdb.openSync('fdb.cluster').withKeyEncoding(fdb.encoders.tuple).at(['myapp'])
+const data = root.at(['schools'])
+const index = root.at(['index'])
+
+data.doTransaction(async tn => {
+  // Update the data object itself
+  tn.set('UNSW', 'some data ...')
+
+  // Update the index. This will use the prefix, key and value encoding of index defined above.
+  tn.scopedTo(index)
+  .set(['bycountry', 'australia', 'UNSW'], '... cached index data')
+})
+```
+
+Aliased transactions inherit their `isSnapshot` property from the object they were created from, and the prefix and encoders from the database for which they are an alias. They support all methods from the normal transaction API, including ranges, watches and so on.
+
+
+## Snapshot Reads
 
 By default, FoundationDB transactions guarantee [serializable isolation](https://apple.github.io/foundationdb/developer-guide.html#acid), resulting in a state that is *as if* transactions were executed one at a time, even if they were executed concurrently. Serializability has little performance cost when there are few conflicts but can be expensive when there are many. FoundationDB therefore also permits individual reads within a transaction to be done as *snapshot reads*.
 

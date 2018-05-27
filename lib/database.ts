@@ -41,15 +41,17 @@ const prefixTransformer = <V>(prefix: string | Buffer, inner: Transformer<V>): T
   }
 }
 
-const concatPrefix = (p1: Buffer | null, p2: string | Buffer | null) => (
+const concatPrefix = (p1: Buffer, p2: string | Buffer | null) => (
   p2 == null ? p1
-    : p1 == null ? asBuf(p2)
+    : p1.length === 0 ? asBuf(p2)
     : concat2(p1, asBuf(p2))
 )
 
+const emptyBuf = Buffer.alloc(0)
+
 export default class Database<Key = NativeValue, Value = NativeValue> {
   _db: fdb.NativeDatabase
-  _prefix: Buffer | null // This is baked into _bakedKeyXf but we hold it so we can call .at / .atPrefix.
+  _prefix: Buffer // This is baked into _bakedKeyXf but we hold it so we can call .at / .atPrefix.
   _keyXf: Transformer<Key>
   _valueXf: Transformer<Value>
 
@@ -57,7 +59,7 @@ export default class Database<Key = NativeValue, Value = NativeValue> {
 
   constructor(db: fdb.NativeDatabase, prefix: Buffer | null, keyXf: Transformer<Key>, valueXf: Transformer<Value>) {
     this._db = db
-    this._prefix = prefix
+    this._prefix = prefix || emptyBuf
     this._keyXf = keyXf
     this._valueXf = valueXf
 
@@ -68,25 +70,28 @@ export default class Database<Key = NativeValue, Value = NativeValue> {
     eachOption(databaseOptionData, opts, (code, val) => this._db.setOption(code, val))
   }
 
-  at(prefix: string | Buffer | null): Database<Key, Value>;
-  at<ChildKey>(prefix: string | Buffer | null, keyXf: Transformer<ChildKey>): Database<ChildKey, Value>;
-  at<ChildKey, ChildVal>(prefix: string | Buffer | null, keyXf: Transformer<ChildKey>, valueXf: Transformer<ChildVal>): Database<ChildKey, ChildVal>;
-  at<ChildKey, ChildVal>(prefix: string | Buffer | null, keyXf: Transformer<any> = this._keyXf, valueXf: Transformer<any> = this._valueXf) {
-    return new Database(this._db, concatPrefix(this._prefix, prefix), keyXf, valueXf)
+  // **** Scoping functions
+  
+  getRoot(): Database {
+    return new Database(this._db, null, defaultTransformer, defaultTransformer)
+  }
+  at(prefix: Key | null): Database<Key, Value>;
+  at<ChildKey>(prefix: Key | null, keyXf: Transformer<ChildKey>): Database<ChildKey, Value>;
+  at<ChildKey, ChildVal>(prefix: Key | null, keyXf: Transformer<ChildKey>, valueXf: Transformer<ChildVal>): Database<ChildKey, ChildVal>;
+  at<ChildKey, ChildVal>(prefix: Key | null, keyXf: Transformer<any> = this._keyXf, valueXf: Transformer<any> = this._valueXf) {
+    const _prefix = prefix == null ? null : this._keyXf.pack(prefix)
+    return new Database(this._db, concatPrefix(this._prefix, _prefix), keyXf, valueXf)
   }
 
-  withValueXF<ChildVal>(valXf: Transformer<ChildVal>): Database<Key, ChildVal> {
+  withKeyEncoding<ChildKey>(keyXf: Transformer<ChildKey>): Database<ChildKey, Value> {
+    return new Database(this._db, this._prefix, keyXf, this._valueXf)
+  }
+  withValueEncoding<ChildVal>(valXf: Transformer<ChildVal>): Database<Key, ChildVal> {
     return new Database(this._db, this._prefix, this._keyXf, valXf)
   }
 
-  // // At a tuple layer prefix
-  // at(childPrefix: TupleItem | TupleItem[]) {
-  //   childPrefix = pack(Array.isArray(childPrefix) ? childPrefix : [childPrefix])
-  //   return this.atPrefix(childPrefix)
-  // }
-
   // This is the API you want to use for non-trivial transactions.
-  async doTransaction<T>(body: (tn: Transaction<Key, Value>) => Promise<T>, opts?: TransactionOptions): Promise<T> {
+  async doTn<T>(body: (tn: Transaction<Key, Value>) => Promise<T>, opts?: TransactionOptions): Promise<T> {
     const tn = this.rawCreateTransaction(opts)
 
     // Logic described here:
@@ -104,6 +109,10 @@ export default class Database<Key = NativeValue, Value = NativeValue> {
         } else throw err
       }
     } while (true)
+  }
+  // Alias for db.doTn.
+  async doTransaction<T>(body: (tn: Transaction<Key, Value>) => Promise<T>, opts?: TransactionOptions): Promise<T> {
+    return this.doTn(body, opts)
   }
 
   doOneshot(body: (tn: Transaction<Key, Value>) => void, opts?: TransactionOptions): Promise<void> {

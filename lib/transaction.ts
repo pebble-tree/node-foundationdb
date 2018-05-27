@@ -15,6 +15,7 @@ import {
   StreamingMode,
   MutationType
 } from './opts.g'
+import Database from './database'
 
 const byteZero = Buffer.alloc(1)
 byteZero.writeUInt8(0, 0)
@@ -70,6 +71,11 @@ export default class Transaction<Key = NativeValue, Value = NativeValue> {
   // Returns a mirror transaction which does snapshot reads.
   snapshot(): Transaction<Key, Value> {
     return new Transaction(this._tn, true, this._keyEncoding, this._valueEncoding)
+  }
+
+  // Creates a shallow copy of the database in a different scope
+  scopedTo<ChildKey, ChildVal>(db: Database<ChildKey, ChildVal>): Transaction<ChildKey, ChildVal> {
+    return new Transaction(this._tn, this.isSnapshot, db._bakedKeyXf, db._valueXf)
   }
 
   // You probably don't want to call any of these functions directly. Instead call db.transact(async tn => {...}).

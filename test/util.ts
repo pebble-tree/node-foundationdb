@@ -23,17 +23,6 @@ export const strXF = {
   unpack(b: Buffer) {return b.toString('utf8')}
 }
 
-// export const prefixKeyToNum = (key: Buffer) => key.readInt32BE(prefix.length)
-
-// export const prefixKey = (key: Buffer | number | string) => (
-//   typeof key === 'string' ? prefix + key
-//   : typeof key === 'number' ? prefixBuf(numToBuf(key))
-//   : prefixBuf(key)
-// )
-
-// export const unprefix = (k: string) => k.slice(prefix.length)
-// export const unwrapKey = (k: Buffer) => unprefix(k.toString())
-
 // Only testing with one API version for now.
 export const testApiVersion = 510
 
@@ -43,15 +32,14 @@ export const withEachDb = (fn: (db: fdb.Database) => void) => {
   // These tests just use a single shared database instance which is reset
   // between tests. It would be cleaner if we used beforeEach to close & reopen
   // the database but its probably fine like this.
-  const db = fdb.openSync()
+  const db = fdb.openSync().at(prefix)
 
   // We need to do this both before and after tests run to clean up any mess
   // that a previously aborted test left behind.
-  beforeEach(() => db.clearRangeStartsWith(prefix))
-  afterEach(() => db.clearRangeStartsWith(prefix))
+  beforeEach(() => db.clearRangeStartsWith(''))
+  afterEach(() => db.clearRangeStartsWith(''))
 
-  const prefixedDb = db.at(prefix)
-  describe('fdb', () => fn(prefixedDb))
+  describe('fdb', () => fn(db))
 
   // TODO: It would be nice to check that nothing was written outside of the prefix.
 }
