@@ -71,6 +71,7 @@ export const util = {strInc}
 // TODO: Remove tuple from the root API. Tuples should be in a separate module.
 import {pack, unpack, range} from './tuple'
 import {TupleItem} from './tuple'
+export {TupleItem}
 export const tuple = {pack, unpack, range}
 
 const id = (x: any) => x
