@@ -104,7 +104,7 @@ withEachDb(db => describe('key value functionality', () => {
   })
 
   it('handles setVersionstampedValue', async () => {
-    const db_ = db.withValueXF(strXF)
+    const db_ = db.withValueEncoding(strXF)
     await db_.setPackedVersionstampedValue('hi there', 'yooo')
     
     const result = await db_.getPackedVersionstampedValue('hi there')

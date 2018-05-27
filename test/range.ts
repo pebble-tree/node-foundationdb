@@ -8,10 +8,6 @@ import {
 
 
 withEachDb(db => describe('key value functionality', () => {
-  // const db = _db.withValueXF({
-  //   pack(v: string) { return Buffer.from(v) },
-  //   unpack(v: Buffer) { return v.toString('utf8') }
-  // })
   const batchToStrUnprefix = (batch: [Buffer, Buffer][]) => (
     batch.map(([k,v]) => [k.toString(), v.toString()])
   )
