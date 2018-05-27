@@ -359,7 +359,7 @@ Please consult [the foundationdb forum](https://forums.foundationdb.org/c/using-
 
 The bindings do not currently support the `Directory` layer. We have code, it just hasn't been ported to the new typescript API. If someone wants to take a stab at it, raise an issue so we don't repeat work.
 
-The API also entirely depends on node Promises. The C part of the bindings supports doing everything via callbacks but a callback-oriented API hasn't been written. If this is important to you for some reason, please raise an issue and we can discuss approaches.
+The API also entirely depends on node Promises. The C part of the bindings supports doing everything via callbacks but a callback-oriented API hasn't been written. If this is important to you for some reason, I think the best architecture would be to split out the native C backend into a `foundationdb-native` library and have an alternate callback-oriented frontend. Raise an issue if this is important to you.
 
 ## Revival progress
 
@@ -379,14 +379,13 @@ The API also entirely depends on node Promises. The C part of the bindings suppo
 - [x] Port basic tests
 - [x] Testing integrated with the harness for the other bindings
 - [x] Subspace support
+- [x] Configure prebuilds so users don't need a local development environment to `npm install` this library
 - [ ] Move to NAPI
-- [ ] Configure prebuilds so users don't need a local development environment to `npm install` this library
 - [ ] API documentation for options (and TS types for them)
 - [ ] API documentation for all transaction methods (get, set, getKey, etc)
 - [ ] Directory layer support
 - [ ] Cut 1.0
 - [ ] Figure out a decent way to bundle the native `libfdb_c` code so users don't need to download their own copy
-- [ ] Add leveldown compatibilty (?)
 
 
 ## History
