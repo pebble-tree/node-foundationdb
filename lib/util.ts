@@ -26,3 +26,19 @@ export const strNext = (val: string | Buffer): Buffer => {
   const buf = Buffer.from(val)
   return Buffer.concat([buf, byteZero], buf.length + 1)
 }
+
+export const packVersionstampedValue = (vs: Buffer | null, val: Buffer) => {
+  const result = Buffer.alloc(val.length + 10)
+  if (vs) vs.copy(result, 0)
+  val.copy(result, 10)
+  return result
+}
+
+export const unpackVersionstampedValue = (rawVal: Buffer) => ({
+  stamp: rawVal.slice(0, 10),
+  val: rawVal.slice(10)
+})
+
+export const asBuf = (val: Buffer | string): Buffer => (
+  typeof val === 'string' ? Buffer.from(val, 'utf8') : val
+)

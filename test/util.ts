@@ -3,7 +3,7 @@ import * as fdb from '../lib'
 
 // We'll tuck everything behind this prefix and delete it all when the tests finish running.
 export const prefix = '__test_data__/'
-export const prefixBuf = (key: Buffer) => Buffer.concat([Buffer.from(prefix), key])
+// export const prefixBuf = (key: Buffer) => Buffer.concat([Buffer.from(prefix), key])
 
 // Using big endian numbers because they're lexographically sorted correctly.
 export const bufToNum = (b: Buffer | null, def: number = 0) => b ? b.readInt32BE(0) : def
@@ -13,16 +13,26 @@ export const numToBuf = (n: number) => {
   return b
 }
 
-export const prefixKeyToNum = (key: Buffer) => key.readInt32BE(prefix.length)
+export const numXF = {
+  pack: numToBuf,
+  unpack: bufToNum
+}
 
-export const prefixKey = (key: Buffer | number | string) => (
-  typeof key === 'string' ? prefix + key
-  : typeof key === 'number' ? prefixBuf(numToBuf(key))
-  : prefixBuf(key)
-)
+export const strXF = {
+  pack(s: string) {return s},
+  unpack(b: Buffer) {return b.toString('utf8')}
+}
 
-export const unprefix = (k: string) => k.slice(prefix.length)
-export const unwrapKey = (k: Buffer) => unprefix(k.toString())
+// export const prefixKeyToNum = (key: Buffer) => key.readInt32BE(prefix.length)
+
+// export const prefixKey = (key: Buffer | number | string) => (
+//   typeof key === 'string' ? prefix + key
+//   : typeof key === 'number' ? prefixBuf(numToBuf(key))
+//   : prefixBuf(key)
+// )
+
+// export const unprefix = (k: string) => k.slice(prefix.length)
+// export const unwrapKey = (k: Buffer) => unprefix(k.toString())
 
 // Only testing with one API version for now.
 export const testApiVersion = 510
@@ -40,9 +50,8 @@ export const withEachDb = (fn: (db: fdb.Database) => void) => {
   beforeEach(() => db.clearRangeStartsWith(prefix))
   afterEach(() => db.clearRangeStartsWith(prefix))
 
-  describe('raw database', () => fn(db))
+  const prefixedDb = db.at(prefix)
+  describe('fdb', () => fn(prefixedDb))
 
-  const subspace = db.at('__subspace__')
-  describe('inside subspace', () => fn(db))
   // TODO: It would be nice to check that nothing was written outside of the prefix.
 }

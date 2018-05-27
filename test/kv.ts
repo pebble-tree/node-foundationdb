@@ -1,7 +1,7 @@
 import 'mocha'
 import assert = require('assert')
 import {
-  prefix,
+  strXF,
   numToBuf,
   bufToNum,
   withEachDb,
@@ -13,35 +13,31 @@ process.on('unhandledRejection', err => { throw err })
 withEachDb(db => describe('key value functionality', () => {
   it('reads its writes inside a txn', async () => {
     await db.doTransaction(async tn => {
-      const key = prefix + 'xxx'
       const val = Buffer.from('hi there')
+      tn.set('xxx', val)
 
-      tn.set(key, val)
-
-      const result = await tn.get(key)
+      const result = await tn.get('xxx')
       assert.deepStrictEqual(result, val)
     })
   })
 
   it('reads its writes in separate transactions', async () => {
-    const key = prefix + 'xxx'
     const val = Buffer.from('hi there')
 
     await db.doTransaction(async tn => {
-      tn.set(key, val)
+      tn.set('xxx', val)
     })
 
     await db.doTransaction(async tn => {
-      const result = await tn.get(key)
+      const result = await tn.get('xxx')
       assert.deepStrictEqual(result, val)
     })
   })
 
   it('lets you read and write via the database directly', async () => {
-    const key = prefix + 'xxx'
     const val = Buffer.from('hi there')
-    await db.set(key, val)
-    const result = await db.get(key)
+    await db.set('xxx', val)
+    const result = await db.get('xxx')
     assert.deepStrictEqual(result, val)
   })
 
@@ -62,9 +58,8 @@ withEachDb(db => describe('key value functionality', () => {
   it('obeys transaction options', async function() {
     // We can't test all the options, but we can test at least one.
     await db.doTransaction(async tn => {
-      const key = prefix + 'x'
-      tn.set(key, 'hi there')
-      assert.equal(await tn.get(key), null)
+      tn.set('x', 'hi there')
+      assert.equal(await tn.get('x'), null)
     }, {read_your_writes_disable: true})
   })
 
@@ -74,20 +69,20 @@ withEachDb(db => describe('key value functionality', () => {
     // with concurrency.
     this.slow(3000)
     const concurrentWrites = 30
-    const key = prefix + 'num'
+    const key = 'num'
 
     await db.set(key, numToBuf(0))
 
     let txnAttempts = 0
     await Promise.all(new Array(concurrentWrites).fill(0).map((_, i) => (
       db.doTransaction(async tn => {
-        const val = bufToNum(await tn.get(key))
+        const val = bufToNum((await tn.get(key)) as Buffer)
         tn.set(key, numToBuf(val + 1))
         txnAttempts++
       })
     )))
 
-    const result = bufToNum(await db.get(key))
+    const result = bufToNum((await db.get(key)) as Buffer)
     assert.strictEqual(result, concurrentWrites)
 
     // This doesn't necessarily mean there's an error, but if there weren't
@@ -97,17 +92,26 @@ withEachDb(db => describe('key value functionality', () => {
   })
 
   it('handles setVersionstampedKey correctly', async () => {
-    // TODO: I need a helper for this.
-    const keyPrefix = Buffer.from(prefix + 'hi there')
-    const keyArg = Buffer.concat([keyPrefix, Buffer.alloc(12)])
-    keyArg.writeInt16LE(keyPrefix.length, keyArg.length-2)
+    const keyPrefix = Buffer.from('hi there')
 
-    await db.setVersionstampedKey(keyArg, Buffer.from('hi there'))
+    await db.setVersionstampedKeyPrefix(keyPrefix, Buffer.from('yo yo'))
     const result = await db.getRangeAllStartsWith(keyPrefix)
     assert.strictEqual(result.length, 1)
     const [keyResult, valResult] = result[0]
-    assert.strictEqual(keyResult.slice(0, keyPrefix.length).toString(), prefix + 'hi there')
+    assert.strictEqual(keyResult.slice(0, keyPrefix.length).toString(), 'hi there')
     assert.strictEqual(keyResult.length, keyPrefix.length + 10)
-    assert.strictEqual(valResult.toString(), 'hi there')
+    assert.strictEqual(valResult.toString(), 'yo yo')
+  })
+
+  it('handles setVersionstampedValue', async () => {
+    const db_ = db.withValueXF(strXF)
+    await db_.setPackedVersionstampedValue('hi there', 'yooo')
+    
+    const result = await db_.getPackedVersionstampedValue('hi there')
+    assert(result != null)
+
+    const {stamp, val} = result!
+    assert.strictEqual(stamp.length, 10) // Opaque.
+    assert.strictEqual(val, 'yooo')
   })
 }))

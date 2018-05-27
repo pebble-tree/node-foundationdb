@@ -11,7 +11,10 @@ process.on('unhandledRejection', err => { throw err })
 
 const db = fdb.openSync()
 
-const fromBuf = (b: Buffer | null) => b ? b.readInt32LE(0) : 0
+const asBuf = (val: Buffer | string): Buffer => (
+  typeof val === 'string' ? Buffer.from(val, 'utf8') : val
+)
+const fromBuf = (b: string | Buffer | null) => b == null ? 0 : asBuf(b).readInt32LE(0)
 const toBuf = (n: number) => {
   const b = Buffer.alloc(4)
   b.writeInt32LE(n, 0)

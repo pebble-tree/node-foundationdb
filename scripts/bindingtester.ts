@@ -183,7 +183,7 @@ const makeMachine = (db: Database, initialName: Buffer) => {
       const keySel = await popSelector()
       const prefix = await popBuffer()
 
-      const result = await oper.getKey(keySel)
+      const result = (await oper.getKey(keySel)) as Buffer
       // if (verbose) {
       //   console.log('get_key prefix', nodeUtil.inspect(prefix.toString('ascii')), result!.compare(prefix))
       //   console.log('get_key result', nodeUtil.inspect(result!.toString('ascii')), result!.compare(prefix))
@@ -201,7 +201,7 @@ const makeMachine = (db: Database, initialName: Buffer) => {
       const limit = await popInt()
       const reverse = await popBool()
       const streamingMode = await popInt() as StreamingMode
-      // console.log('get range', beginKey, endKey, limit, reverse, streamingMode)
+      // console.log('get range', instrId, beginKey, endKey, limit, reverse, streamingMode, oper)
       const results = await oper.getRangeAll(
         keySelector.from(beginKey), keySelector.from(endKey),
         {streamingMode, limit, reverse}
@@ -287,7 +287,7 @@ const makeMachine = (db: Database, initialName: Buffer) => {
       pushLiteral("SET_CONFLICT_KEY")
     },
     disable_write_conflict(oper) {
-      ;(<Transaction>oper).setOption(TransactionOptionCode.NextWriteNoWriteConflictRange)
+      ;(<Transaction>oper).rawSetOption(TransactionOptionCode.NextWriteNoWriteConflictRange)
     },
 
     commit(oper) {pushValue(wrapP((<Transaction>oper).rawCommit()))},
@@ -372,7 +372,7 @@ const makeMachine = (db: Database, initialName: Buffer) => {
     async wait_empty() {
       const prefix = await popBuffer()
       await db.doTransaction(async tn => {
-        const nextKey = await tn.getKey(keySelector.firstGreaterOrEqual(prefix))
+        const nextKey = (await tn.getKey(keySelector.firstGreaterOrEqual(prefix))) as Buffer
         if (nextKey && bufBeginsWith(nextKey, prefix)) {
           throw new fdb.FDBError('wait_empty', 1020)
         }

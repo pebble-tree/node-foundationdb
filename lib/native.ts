@@ -3,7 +3,7 @@ import path = require('path')
 import FDBError from './error'
 import {MutationType, StreamingMode} from './opts.g'
 
-export type Value = string | Buffer
+export type NativeValue = string | Buffer
 
 export type Callback<T> = (err: FDBError | null, results?: T) => void
 
@@ -30,35 +30,35 @@ export interface NativeTransaction {
   onError(code: number, cb: Callback<void>): void
   onError(code: number): Promise<void>
 
-  get(key: Value, isSnapshot: boolean): Promise<Buffer | null>
-  get(key: Value, isSnapshot: boolean, cb: Callback<Buffer | null>): void
-  getKey(key: Value, orEqual: boolean, offset: number, isSnapshot: boolean): Promise<Buffer | null>
-  getKey(key: Value, orEqual: boolean, offset: number, isSnapshot: boolean, cb: Callback<Buffer | null>): void
-  set(key: Value, val: Value): void
-  clear(key: Value): void
+  get(key: NativeValue, isSnapshot: boolean): Promise<Buffer | null>
+  get(key: NativeValue, isSnapshot: boolean, cb: Callback<Buffer | null>): void
+  getKey(key: NativeValue, orEqual: boolean, offset: number, isSnapshot: boolean): Promise<Buffer | null>
+  getKey(key: NativeValue, orEqual: boolean, offset: number, isSnapshot: boolean, cb: Callback<Buffer | null>): void
+  set(key: NativeValue, val: NativeValue): void
+  clear(key: NativeValue): void
 
-  atomicOp(opType: MutationType, key: Value, operand: Value): void
+  atomicOp(opType: MutationType, key: NativeValue, operand: NativeValue): void
 
   getRange(
-    start: Value, beginOrEq: boolean, beginOffset: number,
-    end: Value, endOrEq: boolean, endOffset: number,
+    start: NativeValue, beginOrEq: boolean, beginOffset: number,
+    end: NativeValue, endOrEq: boolean, endOffset: number,
     limit: number, target_bytes: number,
     mode: StreamingMode, iter: number, isSnapshot: boolean, reverse: boolean
   ): Promise<KVList>
 
   getRange(
-    start: Value, beginOrEq: boolean, beginOffset: number,
-    end: Value, endOrEq: boolean, endOffset: number,
+    start: NativeValue, beginOrEq: boolean, beginOffset: number,
+    end: NativeValue, endOrEq: boolean, endOffset: number,
     limit: number, target_bytes: number,
     mode: StreamingMode, iter: number, isSnapshot: boolean, reverse: boolean, cb: Callback<KVList>
   ): void
 
-  clearRange(start: Value, end: Value): void
+  clearRange(start: NativeValue, end: NativeValue): void
 
-  watch(key: Value, listener: Callback<void>): Watch
+  watch(key: NativeValue, listener: Callback<void>): Watch
 
-  addReadConflictRange(start: Value, end: Value): void
-  addWriteConflictRange(start: Value, end: Value): void
+  addReadConflictRange(start: NativeValue, end: NativeValue): void
+  addWriteConflictRange(start: NativeValue, end: NativeValue): void
 
   setReadVersion(v: Version): void
   getReadVersion(): Promise<Version>
@@ -68,7 +68,7 @@ export interface NativeTransaction {
   getVersionStamp(): Promise<Buffer>
   getVersionStamp(cb: Callback<Buffer>): void
 
-  getAddressesForKey(key: Value): string[]
+  getAddressesForKey(key: NativeValue): string[]
 }
 
 export interface NativeDatabase {

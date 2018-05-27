@@ -8,7 +8,7 @@
 // const Subspace = require('./subspace')
 
 import nativeMod, * as fdb from './native'
-import Database from './database'
+import Database, {createDatabase} from './database'
 import {eachOption} from './opts'
 import {NetworkOptions, networkOptionData, DatabaseOptions} from './opts.g'
 
@@ -76,12 +76,12 @@ export const tuple = {pack, unpack, range}
 
 const wrapCluster = (cluster: fdb.NativeCluster) => ({
   async openDatabase(dbName: 'DB', opts?: DatabaseOptions) {
-    const db = new Database(await cluster.openDatabase(dbName))
+    const db = createDatabase(await cluster.openDatabase(dbName))
     if (opts) db.setNativeOptions(opts)
     return db
   },
   openDatabaseSync(dbName: 'DB', opts?: DatabaseOptions) {
-    const db = new Database(cluster.openDatabaseSync(dbName))
+    const db = createDatabase(cluster.openDatabaseSync(dbName))
     if (opts) db.setNativeOptions(opts)
     return db
   },
