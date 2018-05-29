@@ -269,6 +269,83 @@ Example:
 await db.getRange('a', 'z', {reverse: true, limit: 10})
 ```
 
+
+## Watches
+
+Foundationdb lets you watch a key and get notified when the key changes. A watch will only fire once - if you want to find out every time a key is changed, you will need to re-issue the watch once it has fired.
+
+You can read more about working with watches in the [FDB developer guide](https://apple.github.io/foundationdb/developer-guide.html#watches).
+
+```javascript
+const watch = await db.doTn(async tn => {
+  tn.set('foo', 'bar')
+  return tn.watch('foo')
+})
+
+watch.promise.then(changed => {
+  if (changed) console.log('foo changed')
+  else console.log('Watch was cancelled')
+})
+
+setTimeout(() => {
+  watch.cancel()
+}, 1000)
+```
+
+Watch objects have two properties:
+
+- **promise**: A promise which will resolve when the watch fires, errors, or is cancelled. If the watch fires the promise will resolve with a value of *true*. If the watch is cancelled by the user, or if the containing transaction is aborted or conflicts, the watch will resolve to *false*.
+- **cancel()**: Function to cancel the watch. When you cancel a watch it will immediately resolve the watch, passing a value of *false* to your function.
+
+*Warning:* a watch won't work until the transaction which created it has been committed. This will deadlock your program:
+
+```javascript
+db.doTn(async tn => {
+  await tn.watch('foo') // DO NOT DO THIS - This will deadlock
+})
+```
+
+And if you do this, your resolver may fire multiple times due to the transaction retry loop. The promise will resolve to `false` when the transaction fails.
+
+```javascript
+db.doTn(async tn => {
+  tn.watch('foo').then(changed => {
+    // DO NOT DO THIS! Function may be called multiple times
+  })
+})
+```
+
+Instead you should return the watch from the transaction, and wait for it there:
+
+```javascript
+const watch = await db.doTn(async tn => {
+  return tn.watch('foo')
+})
+
+await watch.promise
+```
+
+If you want to watch multiple values, return them all:
+
+```javascript
+const [watchFoo, watchBar] = await db.doTn(async tn => {
+  return [
+    tn.watch('foo'),
+    tn.watch('bar'),
+  ]
+})
+```
+
+### Watch helpers
+
+There are a few helper functions on the database object for working with watches:
+
+- `db.`**getAndWatch(key)**: Get a value and watch it for changes. Because `get` is called in the same transaction which created the watch, this is safe from race conditions. Returns a watch with a `value` property containing the key's value.
+- `db.`**setAndWatch(key, value)**: Set a value and watch it for changes within the same transaction.
+- `db.`**clearAndWatch(key)**: Clear a value and watch it for changes within the same transaction.
+
+
+
 ## Key selectors
 
 All range read functions and `getKey` let you specify keys using [key selectors](https://apple.github.io/foundationdb/developer-guide.html#key-selectors). Key selectors are created using methods in `fdb.keySelector`:

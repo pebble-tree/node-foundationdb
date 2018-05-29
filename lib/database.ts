@@ -163,10 +163,10 @@ export default class Database<Key = NativeValue, Value = NativeValue> {
     return this.doOneshot(tn => tn.clearRangeStartsWith(prefix))
   }
 
-  getAndWatch(key: Key, opts?: WatchOptions): Promise<WatchWithValue<Value>> {
+  getAndWatch(key: Key): Promise<WatchWithValue<Value>> {
     return this.doTransaction(async tn => {
       const value = await tn.get(key)
-      const watch = tn.watch(key, opts) as WatchWithValue<Value>
+      const watch = tn.watch(key) as WatchWithValue<Value>
       watch.value = value
       return watch
     })
