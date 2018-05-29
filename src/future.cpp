@@ -75,7 +75,9 @@ Local<Promise> fdbFutureToJSPromise(FDBFuture *f, ExtractValueFn *extractFn) {
     // It'd probably be better to assert that the Reject / Resolve applied.
     if (err != 0) (void)resolver->Reject(context, FdbError::NewInstance(err));
     else (void)resolver->Resolve(context, value);
-    v8::Isolate::GetCurrent()->RunMicrotasks();
+
+    // Needed to work around a bug where the promise doesn't actually resolve.
+    isolate->RunMicrotasks();
 
     ctx->persistent.Reset();
   });
@@ -127,13 +129,25 @@ Local<Value> futureToJS(FDBFuture *f, Local<Value> cbOrNull, ExtractValueFn *ext
   return v8::Undefined(Isolate::GetCurrent());
 }
 
+
+// *** Watch
+
+// This seems overcomplicated, and I'd love to be able to use the functions
+// above to do all this work. The problem is that fdb_future_cancel causes an
+// abort() if the future has already resolved. So the JS object needs to
+// somehow know that the promise has resolved. So I really want to hold a
+// reference to the JS object. And its hard to strongarm the functions above
+// into doing that. Doing it the way I am here is fine, but it means the API
+// we expose to javascript either works with promises or callbacks but not
+// both. I might end up redesigning some of this once I've benchmarked how
+// promises perform in JS & C.
+static Nan::Persistent<v8::Function> watchConstructor;
+
 static void Cancel(const Nan::FunctionCallbackInfo<v8::Value>& info) {
   Local<Object> t = info.This();
   FDBFuture *future = (FDBFuture *)(t->GetAlignedPointerFromInternalField(0));
   if (future) fdb_future_cancel(future);
 }
-
-static Nan::Persistent<v8::Function> watchConstructor;
 
 void initWatch() {
   Local<FunctionTemplate> tpl = Nan::New<FunctionTemplate>();
@@ -146,20 +160,22 @@ void initWatch() {
   watchConstructor.Reset(tpl->GetFunction());
 }
 
-Local<Object> watchFuture(FDBFuture *f, Local<Function> listener) {
+Local<Object> watchFuture(FDBFuture *f, bool ignoreStandardErrors, Local<Function> callback) {
   struct Ctx: CtxBase<Ctx> {
-    Nan::Persistent<Function> listener;
+    Nan::Persistent<Function> callback;
     Nan::Persistent<Object> jsWatch;
+    bool ignoreStandardErrors;
   };
   Ctx *ctx = new Ctx;
 
-  ctx->listener.Reset(listener);
+  ctx->callback.Reset(callback);
 
   v8::Isolate *isolate = v8::Isolate::GetCurrent();
   Local<Function> localCon = Local<Function>::New(isolate, watchConstructor);
   Local<Object> jsWatch = Nan::NewInstance(localCon).ToLocalChecked();
   jsWatch->SetAlignedPointerInInternalField(0, f);
   ctx->jsWatch.Reset(jsWatch);
+  ctx->ignoreStandardErrors = ignoreStandardErrors;
 
   resolveFutureInMainLoop<Ctx>(f, ctx, [](FDBFuture *f, Ctx *ctx) {
     Nan::HandleScope scope;
@@ -167,30 +183,41 @@ Local<Object> watchFuture(FDBFuture *f, Local<Function> listener) {
     v8::Isolate *isolate = v8::Isolate::GetCurrent();
 
     fdb_error_t errorCode = fdb_future_get_error(ctx->future);
+    bool success = true;
 
     // You can no longer cancel the watcher. Remove the reference to the
     // future, which is about to be destroyed.
     Local<Object> jsWatch = Local<Object>::New(isolate, ctx->jsWatch);
     jsWatch->SetAlignedPointerInInternalField(0, NULL);
 
-    // If the operation was cancelled (err 1101), we won't call the listener.
-    if (errorCode != 1101) {
-
-      Local<v8::Value> jsNull = v8::Null(isolate);
-      Local<Value> jsError = (errorCode == 0)
-        ? jsNull : FdbError::NewInstance(errorCode, fdb_get_error(errorCode));
-
-      Local<Value> args[] = { jsError };
-      Local<Function> callback = Local<Function>::New(isolate, ctx->listener);
-
-      // If this throws it'll bubble up to the node uncaught exception handler, which is what we want.
-      callback->Call(isolate->GetCurrentContext()->Global(), 1, args);
+    // There's a bunch of standard errors which we want to suppress by default
+    // here. The suppression is happening in C because making JS error objects is
+    // expensive. But watch out - the callback will always be called!
+    if (errorCode && ctx->ignoreStandardErrors && (
+        errorCode == 1101 // operation_cancelled
+        || errorCode != 1025 // transaction_cancelled
+        || errorCode != 1020)) { // not_committed (tn conflict)
+      // Suppress the error
+      success = false;
+      errorCode = 0;
     }
 
-    ctx->listener.Reset();
+    Local<v8::Value> jsNull = v8::Null(isolate);
+    Local<Value> jsError = (errorCode == 0)
+      ? jsNull : FdbError::NewInstance(errorCode, fdb_get_error(errorCode));
+
+    Local<Value> args[] = { jsError, Boolean::New(isolate, success) };
+
+    // If this throws it'll bubble up to the node uncaught exception handler, which is what we want.
+    Local<Function> callback = Local<Function>::New(isolate, ctx->callback);
+    callback->Call(isolate->GetCurrentContext()->Global(), 2, args);
+
+    // Needed to kick promises resolved in the callback.
+    isolate->RunMicrotasks();
+
+    ctx->callback.Reset();
     ctx->jsWatch.Reset();
   });
 
   return jsWatch;
 }
-

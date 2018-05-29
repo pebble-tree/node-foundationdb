@@ -114,4 +114,41 @@ withEachDb(db => describe('key value functionality', () => {
     assert.strictEqual(stamp.length, 10) // Opaque.
     assert.strictEqual(val, 'yooo')
   })
+
+  describe('watch', () => {
+    it('getAndWatch returns null for empty keys', async () => {
+      const watch = await db.getAndWatch('hi')
+      assert.equal(watch.value, null)
+      await db.set('hi', 'yo')
+      assert.strictEqual(true, await watch.watch)
+    })
+
+    it('getAndWatch returns a value when there is one', async () => {
+      await db.set('foo', 'bar')
+      const watch = await db.getAndWatch('foo')
+      assert.deepStrictEqual(watch.value, Buffer.from('bar'))
+      watch.cancel()
+      assert.strictEqual(false, await watch.watch)
+      // await new Promise(resolve => setTimeout(resolve, 200))
+    })
+
+    it('watch resolves false if the transaction conflicts', async () => {
+      // Artificially creating a conflict to see what happens.
+      const tn1 = db.rawCreateTransaction()
+      tn1.addReadConflictKey('conflict')
+      tn1.addWriteConflictKey('conflict')
+      const watch = tn1.watch('x')
+
+      const tn2 = db.rawCreateTransaction()
+      tn2.addWriteConflictKey('conflict')
+      await tn2.rawCommit()
+
+      await tn1.rawCommit().catch(e => {})
+
+      watch.cancel()
+
+      // Should resolve with false.
+      assert.strictEqual(false, await watch.watch)
+    })
+  })
 }))

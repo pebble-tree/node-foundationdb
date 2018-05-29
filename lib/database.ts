@@ -1,5 +1,10 @@
 import * as fdb from './native'
-import Transaction, {Transformer, RangeOptions} from './transaction'
+import Transaction, {
+  Transformer,
+  RangeOptions,
+  Watch,
+  WatchOptions,
+} from './transaction'
 import {NativeValue} from './native'
 import {KeySelector} from './keySelector'
 import FDBError from './error'
@@ -48,6 +53,8 @@ const concatPrefix = (p1: Buffer, p2: string | Buffer | null) => (
 )
 
 const emptyBuf = Buffer.alloc(0)
+
+export type WatchWithValue<Value> = Watch & { value: Value | null }
 
 export default class Database<Key = NativeValue, Value = NativeValue> {
   _db: fdb.NativeDatabase
@@ -156,27 +163,30 @@ export default class Database<Key = NativeValue, Value = NativeValue> {
     return this.doOneshot(tn => tn.clearRangeStartsWith(prefix))
   }
 
-  getAndWatch(key: Key, listener: fdb.Callback<void>): Promise<fdb.Watch & {value: Value | null}> {
+  getAndWatch(key: Key, opts?: WatchOptions): Promise<WatchWithValue<Value>> {
     return this.doTransaction(async tn => {
       const value = await tn.get(key)
-      const watch = tn.watch(key, listener) as any
+      const watch = tn.watch(key, opts) as WatchWithValue<Value>
       watch.value = value
       return watch
     })
   }
 
-  // TODO: What happens if this set conflicts? Does the watch promise fire to be aborted?
-  setAndWatch(key: Key, value: Value, listener: fdb.Callback<void>): Promise<fdb.Watch> {
+  // Not passing options through to the promise. The only option we support so
+  // far is to pass through errors, but if we do that and the transaction
+  // somehow conflicted, it would be impossible to avoid an uncaught promise
+  // exception.
+  setAndWatch(key: Key, value: Value): Promise<Watch> {
     return this.doTransaction(async tn => {
       tn.set(key, value)
-      return tn.watch(key, listener)
+      return tn.watch(key)
     })
   }
 
-  clearAndWatch(key: Key, listener: fdb.Callback<void>): Promise<fdb.Watch> {
+  clearAndWatch(key: Key): Promise<Watch> {
     return this.doTransaction(async tn => {
       tn.clear(key)
-      return tn.watch(key, listener)
+      return tn.watch(key)
     })
   }
 

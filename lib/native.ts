@@ -14,7 +14,7 @@ export type KVList = {
   more: boolean,
 }
 
-export type Watch = {
+export type BareWatch = {
   cancel(): void
 }
 
@@ -55,7 +55,8 @@ export interface NativeTransaction {
 
   clearRange(start: NativeValue, end: NativeValue): void
 
-  watch(key: NativeValue, listener: Callback<void>): Watch
+  // watch(key: NativeValue): NativeWatchPromise
+  watch(key: NativeValue, ignoreStandardErrs: boolean, listener: Callback<boolean>): BareWatch
 
   addReadConflictRange(start: NativeValue, end: NativeValue): void
   addWriteConflictRange(start: NativeValue, end: NativeValue): void

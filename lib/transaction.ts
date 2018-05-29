@@ -1,5 +1,6 @@
 import assert = require('assert')
 import {
+  BareWatch,
   NativeTransaction,
   Callback,
   NativeValue,
@@ -20,6 +21,11 @@ import Database from './database'
 const byteZero = Buffer.alloc(1)
 byteZero.writeUInt8(0, 0)
 
+export type Transformer<T> = {
+  pack(k: T): Buffer | string,
+  unpack(k: Buffer): T,
+}
+
 export interface RangeOptionsBatch {
   // defaults to Iterator for batch mode, WantAll for getRangeAll.
   streamingMode?: StreamingMode,
@@ -31,14 +37,30 @@ export interface RangeOptions extends RangeOptionsBatch {
   targetBytes?: number,
 }
 
-export type Transformer<T> = {
-  pack(k: T): Buffer | string,
-  unpack(k: Buffer): T,
-}
-
 export type KVList<Key, Value> = {
   results: [Key, Value][], // [key, value] pair.
   more: boolean,
+}
+
+export type Watch = {
+  // The weird thing here is that lots of errors should be ignored in slightly
+  // different, annoying ways. For example:
+  // - What should we do if cancel() is called?
+  // - What should happen if the watch is created in a conflicting transaction?
+  // etc.
+  // 
+  // Right now by default we're eating these errors and passing false to the
+  // listener promise.
+  cancel(): void
+
+  // The actual promise. Resolves to true if the value has changed, or false
+  // if the promise watch has aborted or been cancelled, or the watch was
+  // cancelled.
+  watch: Promise<boolean>
+}
+
+export type WatchOptions = {
+  throwAllErrors?: boolean
 }
 
 // Polyfill for node < 10.0 to make asyncIterators work (getRange / getRangeBatch).
@@ -238,11 +260,24 @@ export default class Transaction<Key = NativeValue, Value = NativeValue> {
     return this.clearRange(prefix)
   }
 
-  watch(key: Key, listener: Callback<void>) {
-    // This API is probably fine... I could return a Promise for the watch but
-    // its weird to cancel promises in JS, and adding a .cancel() method to
-    // the primise feels weird.
-    return this._tn.watch(this._keyEncoding.pack(key), listener)
+  watch(key: Key, opts?: WatchOptions): Watch {
+    const throwAll = opts && opts.throwAllErrors
+
+    let nativeWatch: BareWatch
+    const promise = new Promise<boolean>((resolve, reject) => {
+      nativeWatch = this._tn.watch(this._keyEncoding.pack(key), !throwAll, (err, changed) => {
+        if (err) return reject(err)
+        else resolve(!!changed)
+      })
+    })
+
+    // I'd just return a promise with a cancel method, but the watch promise
+    // needs to be able to escape the transaction body, and node's promise
+    // semantics are stupid.
+    return {
+      cancel() {nativeWatch.cancel()},
+      watch: promise,
+    }
   }
 
   addReadConflictRange(start: Key, end: Key) {

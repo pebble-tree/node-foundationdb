@@ -323,8 +323,6 @@ void Transaction::GetRange(const FunctionCallbackInfo<Value>& info) {
   info.GetReturnValue().Set(futureToJS(f, info[12], getKeyValueList));
 }
 
-
-
 // clearRange(start, end). Clears range [start, end).
 void Transaction::ClearRange(const FunctionCallbackInfo<Value>& info) {
   StringParams begin(info[0]);
@@ -332,28 +330,24 @@ void Transaction::ClearRange(const FunctionCallbackInfo<Value>& info) {
   fdb_transaction_clear_range(GetTransactionFromArgs(info), begin.str, begin.len, end.str, end.len);
 }
 
-
-
-// watch("somekey", listener) -> {cancel()}. This does not return a promise.
-// Due to race conditions the listener may be called even after cancel has been called.
-//
-// TODO: Move this over to the new infrastructure.
+// watch("somekey", ignoreStandardErrors, callback) -> {cancel()}. This does
+// not return a promise. Due to race conditions the callback may be called
+// even after cancel has been called. The callback callback is *always* called
+// even if the owning txn is cancelled, conflicts, or is discarded.
 void Transaction::Watch(const FunctionCallbackInfo<Value>& info) {
-  StringParams key(info[0]);
-
   Isolate *isolate = Isolate::GetCurrent();
-  FDBTransaction *tr = GetTransactionFromArgs(info);
 
-  Local<Function> listener = Local<Function>::New(isolate, Local<Function>::Cast(info[1]));
+  StringParams key(info[0]);
+  bool ignoreStandardErrors = info[1]->BooleanValue();
+  Local<Function> callback = Local<Function>::New(isolate, Local<Function>::Cast(info[2]));
+
+  FDBTransaction *tr = GetTransactionFromArgs(info);
 
   FDBFuture *f = fdb_transaction_watch(tr, key.str, key.len);
 
-  Local<Value> watch = watchFuture(f, listener);
+  Local<Value> watch = watchFuture(f, ignoreStandardErrors, callback);
   info.GetReturnValue().Set(watch);
 }
-
-
-
 
 // addConflictRange(start, end)
 void Transaction::AddReadConflictRange(const FunctionCallbackInfo<Value>& info) {
@@ -411,11 +405,6 @@ void Transaction::GetAddressesForKey(const FunctionCallbackInfo<Value>& info) {
   info.GetReturnValue().Set(futureToJS(f, info[1], getStringArray));
 }
 
-
-
-
-
-
 // Not exposed to JS. Simple wrapper. Call AddReadConflictRange / AddWriteConflictRange.
 void Transaction::AddConflictRange(const FunctionCallbackInfo<Value>& info, FDBConflictRangeType type) {
   StringParams start(info[0]);
@@ -425,12 +414,6 @@ void Transaction::AddConflictRange(const FunctionCallbackInfo<Value>& info, FDBC
 
   if(errorCode) Nan::ThrowError(FdbError::NewInstance(errorCode));
 }
-
-
-
-
-
-
 
 
 

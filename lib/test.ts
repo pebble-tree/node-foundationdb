@@ -3,12 +3,14 @@
 // 
 // This file should be removed for 1.0
 
-import fdb = require('./index')
+import * as fdb from './index'
+// import fdb = require('./index')
 import * as ks from './keySelector'
 import {StreamingMode} from './opts.g'
 
 process.on('unhandledRejection', err => { throw err })
 
+fdb.setAPIVersion(500)
 const db = fdb.openSync()
 
 const asBuf = (val: Buffer | string): Buffer => (
@@ -126,7 +128,44 @@ const versions2 = async () => {
   console.log(await db.get('x'))
 }
 
+const crash = async () => {
+  const tn1 = db.rawCreateTransaction()
+  tn1.addReadConflictKey('conflict')
+  tn1.addWriteConflictKey('conflict')
+
+  const watch = tn1.watch('x')
+  watch.watch.then(
+    v => console.log('listener called', v), 
+    err => console.error('listener err', err)
+  )
+
+  const tn2 = db.rawCreateTransaction()
+  tn2.addWriteConflictKey('conflict')
+  await tn2.rawCommit()
+
+  await tn1.rawCommit().catch(e => {})
+
+  watch.cancel()
+}
+
+// const c2 = async () => {
+//   const tn1 = db.rawCreateTransaction()
+//   tn1.addReadConflictKey('conflict')
+//   tn1.addWriteConflictKey('conflict')
+
+//   const watch = tn1.watch('x')
+//   watch.listener.then(
+//     v => console.log('listener called', v), 
+//     err => console.error('listener err', err)
+//   )
+//   await tn1.rawCommit().catch(e => {})
+//   watch.cancel()
+//   watch.cancel()
+// }
+
 // conflictWrites()
 // rangeTest3()
 // opts()
-versions2()
+// versions2()
+crash()
+// c2()
