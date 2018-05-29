@@ -1,6 +1,6 @@
 {
   "name": "foundationdb",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Node.js bindings for the FoundationDB database",
   "keywords": [
     "foundationdb",
