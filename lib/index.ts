@@ -57,8 +57,11 @@ export {default as Transaction} from './transaction'
 
 export {
   NetworkOptions,
+  NetworkOptionCode,
   DatabaseOptions,
+  DatabaseOptionCode,
   TransactionOptions,
+  TransactionOptionCode,
   StreamingMode,
   MutationType,
   ConflictRangeType,
@@ -69,8 +72,8 @@ import {strInc} from './util'
 export const util = {strInc}
 
 // TODO: Remove tuple from the root API. Tuples should be in a separate module.
-import {pack, unpack, range} from './tuple'
-import {TupleItem} from './tuple'
+import {pack, unpack, range, TupleItem} from './tuple'
+
 export {TupleItem}
 export const tuple = {pack, unpack, range}
 
