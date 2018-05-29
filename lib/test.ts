@@ -134,7 +134,7 @@ const crash = async () => {
   tn1.addWriteConflictKey('conflict')
 
   const watch = tn1.watch('x')
-  watch.watch.then(
+  watch.promise.then(
     v => console.log('listener called', v), 
     err => console.error('listener err', err)
   )
