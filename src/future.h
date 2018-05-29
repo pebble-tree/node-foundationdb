@@ -15,6 +15,6 @@ void fdbFutureToCallback(FDBFuture *f, v8::Local<v8::Function> cbFunc, ExtractVa
 v8::Local<v8::Value> futureToJS(FDBFuture *f, v8::Local<v8::Value> cbOrNull, ExtractValueFn *extractFn);
 
 void initWatch();
-v8::Local<v8::Object> watchFuture(FDBFuture *f, bool ignoreStandardErrors, v8::Local<v8::Function> listener);
+v8::Local<v8::Object> watchFuture(FDBFuture *f, bool ignoreStandardErrors);
 
 #endif

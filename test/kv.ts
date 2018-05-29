@@ -120,7 +120,7 @@ withEachDb(db => describe('key value functionality', () => {
       const watch = await db.getAndWatch('hi')
       assert.equal(watch.value, null)
       await db.set('hi', 'yo')
-      assert.strictEqual(true, await watch.watch)
+      assert.strictEqual(true, await watch.promise)
     })
 
     it('getAndWatch returns a value when there is one', async () => {
@@ -128,7 +128,7 @@ withEachDb(db => describe('key value functionality', () => {
       const watch = await db.getAndWatch('foo')
       assert.deepStrictEqual(watch.value, Buffer.from('bar'))
       watch.cancel()
-      assert.strictEqual(false, await watch.watch)
+      assert.strictEqual(false, await watch.promise)
       // await new Promise(resolve => setTimeout(resolve, 200))
     })
 
@@ -148,7 +148,7 @@ withEachDb(db => describe('key value functionality', () => {
       watch.cancel()
 
       // Should resolve with false.
-      assert.strictEqual(false, await watch.watch)
+      assert.strictEqual(false, await watch.promise)
     })
   })
 }))

@@ -14,8 +14,10 @@ export type KVList = {
   more: boolean,
 }
 
-export type BareWatch = {
+export type Watch = {
   cancel(): void
+  // Resolves to true if the watch resolved normally. false if the watch it was aborted.
+  promise: Promise<boolean>
 }
 
 export type Version = Buffer
@@ -56,7 +58,7 @@ export interface NativeTransaction {
   clearRange(start: NativeValue, end: NativeValue): void
 
   // watch(key: NativeValue): NativeWatchPromise
-  watch(key: NativeValue, ignoreStandardErrs: boolean, listener: Callback<boolean>): BareWatch
+  watch(key: NativeValue, ignoreStandardErrs: boolean): Watch
 
   addReadConflictRange(start: NativeValue, end: NativeValue): void
   addWriteConflictRange(start: NativeValue, end: NativeValue): void

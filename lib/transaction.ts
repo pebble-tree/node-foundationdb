@@ -1,6 +1,6 @@
 import assert = require('assert')
 import {
-  BareWatch,
+  Watch,
   NativeTransaction,
   Callback,
   NativeValue,
@@ -42,22 +42,7 @@ export type KVList<Key, Value> = {
   more: boolean,
 }
 
-export type Watch = {
-  // The weird thing here is that lots of errors should be ignored in slightly
-  // different, annoying ways. For example:
-  // - What should we do if cancel() is called?
-  // - What should happen if the watch is created in a conflicting transaction?
-  // etc.
-  // 
-  // Right now by default we're eating these errors and passing false to the
-  // listener promise.
-  cancel(): void
-
-  // The actual promise. Resolves to true if the value has changed, or false
-  // if the promise watch has aborted or been cancelled, or the watch was
-  // cancelled.
-  watch: Promise<boolean>
-}
+export {Watch}
 
 export type WatchOptions = {
   throwAllErrors?: boolean
@@ -262,22 +247,7 @@ export default class Transaction<Key = NativeValue, Value = NativeValue> {
 
   watch(key: Key, opts?: WatchOptions): Watch {
     const throwAll = opts && opts.throwAllErrors
-
-    let nativeWatch: BareWatch
-    const promise = new Promise<boolean>((resolve, reject) => {
-      nativeWatch = this._tn.watch(this._keyEncoding.pack(key), !throwAll, (err, changed) => {
-        if (err) return reject(err)
-        else resolve(!!changed)
-      })
-    })
-
-    // I'd just return a promise with a cancel method, but the watch promise
-    // needs to be able to escape the transaction body, and node's promise
-    // semantics are stupid.
-    return {
-      cancel() {nativeWatch.cancel()},
-      watch: promise,
-    }
+    return this._tn.watch(this._keyEncoding.pack(key), !throwAll)
   }
 
   addReadConflictRange(start: Key, end: Key) {

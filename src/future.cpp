@@ -160,63 +160,77 @@ void initWatch() {
   watchConstructor.Reset(tpl->GetFunction());
 }
 
-Local<Object> watchFuture(FDBFuture *f, bool ignoreStandardErrors, Local<Function> callback) {
+Local<Object> watchFuture(FDBFuture *f, bool ignoreStandardErrors) {
   struct Ctx: CtxBase<Ctx> {
-    Nan::Persistent<Function> callback;
     Nan::Persistent<Object> jsWatch;
+    // I probably don't need to store a persistant reference here since it
+    // can't be GCed anyway because its stored on jsWatch. But I think this is
+    // *more* correct..?
+    Nan::Persistent<Promise::Resolver> resolver;
     bool ignoreStandardErrors;
   };
   Ctx *ctx = new Ctx;
 
-  ctx->callback.Reset(callback);
-
   v8::Isolate *isolate = v8::Isolate::GetCurrent();
+
+  auto resolver = Promise::Resolver::New(isolate->GetCurrentContext()).ToLocalChecked();
+  ctx->resolver.Reset(resolver);
+
   Local<Function> localCon = Local<Function>::New(isolate, watchConstructor);
   Local<Object> jsWatch = Nan::NewInstance(localCon).ToLocalChecked();
+
   jsWatch->SetAlignedPointerInInternalField(0, f);
+  // I'm sure there's a better way to attach this, but I can figure that out when moving to N-API.
+  jsWatch->Set(String::NewFromUtf8(isolate, "promise", String::kInternalizedString), resolver->GetPromise());
+
   ctx->jsWatch.Reset(jsWatch);
   ctx->ignoreStandardErrors = ignoreStandardErrors;
 
   resolveFutureInMainLoop<Ctx>(f, ctx, [](FDBFuture *f, Ctx *ctx) {
+    // This is cribbed from fdbFutureToJSPromise above. Bleh.
     Nan::HandleScope scope;
-
     v8::Isolate *isolate = v8::Isolate::GetCurrent();
+    auto context = isolate->GetCurrentContext();
 
-    fdb_error_t errorCode = fdb_future_get_error(ctx->future);
+    fdb_error_t err = fdb_future_get_error(ctx->future);
     bool success = true;
+
+    auto resolver = Nan::New(ctx->resolver);
 
     // You can no longer cancel the watcher. Remove the reference to the
     // future, which is about to be destroyed.
     Local<Object> jsWatch = Local<Object>::New(isolate, ctx->jsWatch);
     jsWatch->SetAlignedPointerInInternalField(0, NULL);
 
-    // There's a bunch of standard errors which we want to suppress by default
-    // here. The suppression is happening in C because making JS error objects is
-    // expensive. But watch out - the callback will always be called!
-    if (errorCode && ctx->ignoreStandardErrors && (
-        errorCode == 1101 // operation_cancelled
-        || errorCode != 1025 // transaction_cancelled
-        || errorCode != 1020)) { // not_committed (tn conflict)
-      // Suppress the error
+    // By default node promises will crash the whole process. If the
+    // transaction which created this watch promise is cancelled or conflicts,
+    // what should we do here? 
+    // 1 If we reject the promise, the process will crash by default.
+    //   Preventing this with the current API is really awkward
+    // 2 If we resolve the promise that doesn't really make a lot of sense
+    // 3 If we leave the promise dangling.. that sort of violates the idea of a
+    //   *promise*
+    // 
+    // By default I'm going to do option 2 (well, when ignoreStandardErrors is
+    // passed, which happens by default).
+    // 
+    // The promise will resolve (true) normally, or (false) if it was aborted.
+    if (err && ctx->ignoreStandardErrors && (
+        err == 1101 // operation_cancelled
+        || err != 1025 // transaction_cancelled
+        || err != 1020)) { // not_committed (tn conflict)
       success = false;
-      errorCode = 0;
+      err = 0;
     }
 
-    Local<v8::Value> jsNull = v8::Null(isolate);
-    Local<Value> jsError = (errorCode == 0)
-      ? jsNull : FdbError::NewInstance(errorCode, fdb_get_error(errorCode));
-
-    Local<Value> args[] = { jsError, Boolean::New(isolate, success) };
-
-    // If this throws it'll bubble up to the node uncaught exception handler, which is what we want.
-    Local<Function> callback = Local<Function>::New(isolate, ctx->callback);
-    callback->Call(isolate->GetCurrentContext()->Global(), 2, args);
+    if (err != 0) (void)resolver->Reject(context, FdbError::NewInstance(err));
+    else (void)resolver->Resolve(context, Boolean::New(isolate, success));
 
     // Needed to kick promises resolved in the callback.
     isolate->RunMicrotasks();
 
-    ctx->callback.Reset();
     ctx->jsWatch.Reset();
+    ctx->resolver.Reset();
   });
 
   return jsWatch;

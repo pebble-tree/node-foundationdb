@@ -330,23 +330,18 @@ void Transaction::ClearRange(const FunctionCallbackInfo<Value>& info) {
   fdb_transaction_clear_range(GetTransactionFromArgs(info), begin.str, begin.len, end.str, end.len);
 }
 
-// watch("somekey", ignoreStandardErrors, callback) -> {cancel()}. This does
+// watch("somekey", ignoreStandardErrors) -> {cancel(), promise}. This does
 // not return a promise. Due to race conditions the callback may be called
 // even after cancel has been called. The callback callback is *always* called
 // even if the owning txn is cancelled, conflicts, or is discarded.
 void Transaction::Watch(const FunctionCallbackInfo<Value>& info) {
-  Isolate *isolate = Isolate::GetCurrent();
-
   StringParams key(info[0]);
   bool ignoreStandardErrors = info[1]->BooleanValue();
-  Local<Function> callback = Local<Function>::New(isolate, Local<Function>::Cast(info[2]));
 
   FDBTransaction *tr = GetTransactionFromArgs(info);
-
   FDBFuture *f = fdb_transaction_watch(tr, key.str, key.len);
 
-  Local<Value> watch = watchFuture(f, ignoreStandardErrors, callback);
-  info.GetReturnValue().Set(watch);
+  info.GetReturnValue().Set(watchFuture(f, ignoreStandardErrors));
 }
 
 // addConflictRange(start, end)
@@ -473,4 +468,3 @@ void Transaction::Init() {
 
   constructor.Reset(tpl->GetFunction());
 }
-
