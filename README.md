@@ -254,14 +254,20 @@ All range read functions take an optional `options` argument with the following 
 - **reverse** (*boolean*): If specified, key-value pairs will be returned in reverse lexicographical order beginning at the end of the range.
 - **targetBytes** (*number*): If specified and non-zero, this indicates a (soft) cap on the combined number of bytes of keys and values to return. If you call `getRangeRaw` with a specified limit, and this limit was reached before the end of the specified range, `getRangeRaw` will specify `{more: true}` in the result. Specifying targetBytes is currently not supported by other range read functions. Please file a ticket if support for this feature is important to you.
 - **streamingMode**: This defines the policy for fetching data over the network. Options are:
-	- `fdb.StreamingMode.`**WantAll**: Client intends to consume the entire range and would like it all transferred as early as possible.
-	- `fdb.StreamingMode.`**Iterator**: The default. The client doesn't know how much of the range it is likely to used and wants different performance concerns to be balanced. Only a small portion of data is transferred to the client initially (in order to minimize costs if the client doesn't read the entire range), and as the caller iterates over more items in the range larger batches will be transferred in order to minimize latency.
+	- `fdb.StreamingMode.`**WantAll**: Client intends to consume the entire range and would like it all transferred as early as possible. *This is the default for `getRangeAll`*
+	- `fdb.StreamingMode.`**Iterator**: The client doesn't know how much of the range it is likely to used and wants different performance concerns to be balanced. Only a small portion of data is transferred to the client initially (in order to minimize costs if the client doesn't read the entire range), and as the caller iterates over more items in the range larger batches will be transferred in order to minimize latency. *This is the default mode for all range functions except getRangeAll.*
 	- `fdb.StreamingMode.`**Exact**: Infrequently used. The client has passed a specific row limit and wants that many rows delivered in a single batch. Consider `WantAll` StreamingMode instead. A row limit must be specified if this mode is used.
 	- `fdb.StreamingMode.`**Small**: Infrequently used. Transfer data in batches small enough to not be much more expensive than reading individual rows, to minimize cost if iteration stops early.
 	- `fdb.StreamingMode.`**Medium**: Infrequently used. Transfer data in batches sized in between small and large.
 	- `fdb.StreamingMode.`**Large**: Infrequently used. Transfer data in batches large enough to be, in a high-concurrency environment, nearly as efficient as possible. If the client stops iteration early, some disk and network bandwidth may be wasted. The batch size may still be too small to allow a single client to get high throughput from the database, so if that is what you need consider the SERIAL StreamingMode.
 	- `fdb.StreamingMode.`**Serial**: Transfer data in batches large enough that an individual client can get reasonable read bandwidth from the database. If the client stops iteration early, considerable disk and network bandwidth may be wasted.
 
+Example:
+
+```javascript
+// Get 10 key value pairs from 'z' backwards.
+await db.getRange('a', 'z', {reverse: true, limit: 10})
+```
 
 ## Key selectors
 
@@ -339,7 +345,7 @@ By default, the Node FoundationDB library accepts key and value input as either 
 
 You can configure a database to always automatically transform keys and values via an encoder. The following encoders are built into the library:
 
-- `fdb.encoders.`**int32BE**: Integer encoding using big-endian 32 bit ints
+- `fdb.encoders.`**int32BE**: Integer encoding using big-endian 32 bit ints. (Big endian is preferred because it preserves lexical ordering)
 - `fdb.encoders.`**string**: UTF-8 string encoding
 - `fdb.encoders.`**buffer**: Buffer encoding. This doesn't actually do anything, but it can be handy to suppress typescript warnings when you're dealing with binary data.
 - `fdb.encoders.`**json**: JSON encoding using the built-in JSON.stringify. This is not suitable for key encoding.
@@ -401,7 +407,7 @@ const books = rootDb.at(['data', 'books']) // Equivalent to .at(['myapp', 'data'
 ```
 
 
-#### Transactions in multiple scopes
+#### Multi-scoped transactions
 
 If you need to update objects across multiple scopes within the same transaction you can use `tn.scopedTo` to create an alias of the transaction in a different scope:
 
