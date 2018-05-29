@@ -12,11 +12,8 @@ import {
   keySelector,
   StreamingMode, MutationType,
   util,
+  TransactionOptionCode,
 } from '../lib'
-
-// This isn't globally exported because I don't expect people will want to use it directly.
-// File a github issue if this is not accurate.
-import {TransactionOptionCode} from '../lib/opts.g'
 
 import assert = require('assert')
 import nodeUtil = require('util')
@@ -287,7 +284,7 @@ const makeMachine = (db: Database, initialName: Buffer) => {
       pushLiteral("SET_CONFLICT_KEY")
     },
     disable_write_conflict(oper) {
-      ;(<Transaction>oper).rawSetOption(TransactionOptionCode.NextWriteNoWriteConflictRange)
+      ;(<Transaction>oper).setOption(TransactionOptionCode.NextWriteNoWriteConflictRange)
     },
 
     commit(oper) {pushValue(wrapP((<Transaction>oper).rawCommit()))},

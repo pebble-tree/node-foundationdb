@@ -68,9 +68,10 @@ export default class Transaction<Key = NativeValue, Value = NativeValue> {
     this.isSnapshot = snapshot
   }
 
-  // This is needed for the binding tester, but users should usually pass
-  // options when the transaction is constructed.
-  rawSetOption(opt: TransactionOptionCode, value?: number | string | Buffer) {
+  // Usually you should pass options when the transaction is constructed.
+  // Options are shared between a transaction object and any other aliases
+  // (snapshots, transactions in other scopes)
+  setOption(opt: TransactionOptionCode, value?: number | string | Buffer) {
     // TODO: Check type of passed option is valid.
     this._tn.setOption(opt, (value == null) ? null : value)
   }
