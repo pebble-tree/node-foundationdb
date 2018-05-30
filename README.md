@@ -4,6 +4,14 @@ Node bindings for [FoundationDB](https://foundationdb.org)!
 
 These bindings are currently in the process of being revived and renewed from some very old code. This library will not be entirely API-stable pre 1.0. Expect some slight API drift over the next few weeks before 1.0 lands.
 
+- [Getting started](#usage)
+- [Connecting to your database cluster](#connecting-to-your-cluster)
+- [Database Transactions](#database-transactions)
+- [Getting and setting values](#getting-and-setting-values)
+- [Range reads](#range-reads)
+- [Key selectors](#key-selectors)
+- [Watches](#watches)
+
 
 ## Usage
 
@@ -23,13 +31,15 @@ npm install --save foundationdb
 
 ```javascript
 const fdb = require('foundationdb')
+fdb.setAPIVersion(510) // Must be called before database is opened
 
-fdb.setAPIVersion(510)
 const db = fdb.openSync('fdb.cluster') // or just openSync() if the database is local.
+  .at('myapp.') // Use the 'myapp.' database prefix for all operations
+  .withValueEncoding(fdb.encoders.json) // automatically encode & decode values using JSON
 
 db.doTransaction(async tn => {
-  console.log('key hi has value', await tn.getStr('hi'))
-  tn.set('hi', 'yo')
+  console.log('key hi has value', await tn.get('hi'))
+  tn.set('hi', [1, 2, 3, 'echidna'])
 }) // returns a promise.
 ```
 
@@ -76,6 +86,8 @@ const fdb = require('foundationdb')
 })()
 ```
 
+Databases can be scoped to work out of a prefix, with specified key & value encoders. [See scoping section below](#scoping--key--value-transformations) for more information.
+
 
 ## Configuration
 
@@ -86,7 +98,9 @@ const fdb = require('foundationdb')
 
 Transactions are the core unit of atomicity in FoundationDB.
 
-You almost always want to create transactions via `db.doTransaction(async tn => {...})`. doTransaction takes a body function in which you do the work you want to do to the database.
+You almost always want to create transactions via `db.doTransaction(async tn => {...})`. doTransaction takes a body function in which you interact with the database.
+
+> `db.doTransaction` is aliased as `db.doTn`. Both forms are used interchangably in this document.
 
 The transaction will automatically be committed when the function's promise resolves. If the transaction had conflicts, it will be retried with exponential backoff.
 
@@ -112,11 +126,22 @@ doWork(val) // val is whatever your function returned above.
 
 ```javascript
 await db.doTransaction(async tn => {
-  const val = await tn.get('key1')
+  const val = await tn.get('key')
   doWork(val) // doWork may be called multiple times!
 })
 
 ```
+
+To cut down on work, most simple operations have helper functions on the database object:
+
+```javascript
+const val = await db.get('key')
+
+// .. Is a shorthand for:
+const val = db.doTransaction(async tn => return await tn.get('key'))
+```
+
+The db helper functions always return a promise, wheras many of the transaction functions are syncronous (eg *set*, *clear*, etc).
 
 
 ## Getting and setting values
@@ -152,20 +177,19 @@ or
 await db.set(mykey, value)
 ```
 
-The key and value must be either node Buffer objects or strings.
+The transaction version is synchronous. All set operations are immediately visible to subsequent get operations inside the transaction, and visible to external users only after the transaction has been committed.
 
-The transaction version is synchronous. All set operations are immediately visible to subsequent get operations inside the transaction, and visible to external users after the transaction has been committed.
-
-If you want to embed numbers, UUIDs, or multiple fields we recommend using the [tuple layer](https://apple.github.io/foundationdb/data-modeling.html#tuples):
+By default the key and value must be either node Buffer objects or strings. You can use [key and value transformers](#key-and-value-transformation) to make these functions accept and return whatever you want. If you want to embed numbers, UUIDs, or multiple fields in your keys we strongly recommend using the [tuple layer](https://apple.github.io/foundationdb/data-modeling.html#tuples)
 
 ```javascript
-const {tuple} = require('fdb')
+const fdb = require('fdb')
 
-// ...
-await db.get(tuple.pack(['booksByAuthorPageCount', 'Pinker', 576.3]))
+const db = fdb.openSync()
+  .withKeyEncoding(fdb.encoders.tuple)
+  .withValueEncoding(fdb.encoders.json)
+
+await db.get(['booksByAuthorPageCount', 'Pinker', 576.3]) // returns JSON-decoded data
 ```
-
-Unlike encoding fields using `JSON.stringify`, tuples maintain strict ordering constraints between keys. This is useful for sorting data to make it easy to use range queries.
 
 
 ## Range reads
@@ -176,24 +200,43 @@ All range read functions also support key selectors and range options. These fea
 
 ### Async iteration
 
-When using NodeJS 10+, Typescript or Babel, the best way to iterate through a range is using an [async iterator](https://github.com/tc39/proposal-async-iteration):
+The best way to iterate through a range is using an async iterator with **getRange(start, end, [opts])**:
 
 ```javascript
 db.doTransaction(async tn => {
   for await (const [key, value] of tn.getRange('x', 'y')) {
-    console.log(key.toString(), 'is', value.toString())
+    console.log(key, 'is', value)
   }
 })
 ```
 
-Used in this way `getRange` will fetch the data itself in batches, with a gradually increasing size. But note that the [transaction size limit still applies](https://apple.github.io/foundationdb/known-limitations.html#large-transactions).
+[Async iterators](https://github.com/tc39/proposal-async-iteration) are a new javascript feature. They are available in NodeJS 10+, Typescript or Babel, or node 8 and 9 with the `node --harmony-async-iteration` flag. Or you can [iterate through them manually](#manual-async-iteration).
 
-Async iterators are also natively available in node 8 and 9, but you need the `node --harmony-async-iteration` flag to use them.
+*Danger 💣:* Remember that the body of the transaction may be executed multiple times. This can especially be a problem for range reads because they can easily overflow the transaction read limit (default 1M) or time limit (default 5s). Bulk operations need to be more complex than a loop in a transaction. [More information here](https://apple.github.io/foundationdb/known-limitations.html#large-transactions)
+
+Internally `getRange` fetches the data over the network itself in batches, with a gradually increasing size.
+
+
+Range reads work really well with tuple keys:
+
+```javascript
+const db = fdb.openSync().withKeyEncoding(fdb.encoders.tuple)
+
+db.doTransaction(async tn => {
+  for await (const [key, studentId] of tn.getRange(
+    ['students', 'byrank', 0],
+    ['students', 'byrank', 10]
+  )) {
+    const rank = key[2]
+    console.log(rank + 1, ': ', studentId)
+  }
+})
+```
 
 
 ### Manual async iteration
 
-If `for await` isn't available yet, you can manually iterate through the iterator:
+If `for await` isn't available for your platform, you can manually iterate through the iterator like this:
 
 ```javascript
 db.doTransaction(async tn => {
@@ -203,32 +246,34 @@ db.doTransaction(async tn => {
     if (item.done) break
 
     const [key, value] = item.value
-    console.log(key.toString(), 'is', value.toString())
+    console.log(key, 'is', value)
   }
 })
 ```
 
-The data is still fetched over the network in batches.
+This is completely equivalent to the logic above. Its just more verbose.
 
 ### Batch iteration
 
-If you want to *process* the results in batches, you can bulk iterate through the range as above. This has better nodejs performance because it doesn't create as many temporary objects, and it doesn't need to thrash the event loop so much.
+You can process range results in batches for better nodejs performance:
 
 ```javascript
 db.doTransaction(async tn => {
   for await (const batch of tn.getRangeBatch('x', 'y')) {
     for (let i = 0; i < batch.length; i++) {
       const [key, value] = batch[i]
-      console.log(key.toString(), 'is', value.toString())
+      console.log(key, 'is', value)
     }
   }
 })
 ```
 
+This performs better because it doesn't thrash the event loop as much.
+
 
 ### Get an entire range to an array
 
-If you're going to load the range into an array anyway, its faster to bulk load the range into an array using:
+If you're going to load the range into an array, you can do that directly:
 
 ```javascript
 await db.getRangeAll('x', 'y')
@@ -243,7 +288,7 @@ db.doTransaction(async tn => {
 }
 ```
 
-This will load the entire range in a single network request.
+The entire range is loaded in in a single network request using the `StreamingMode.WantAll` option, described below.
 
 
 ### Range Options
@@ -268,83 +313,6 @@ Example:
 // Get 10 key value pairs from 'z' backwards.
 await db.getRange('a', 'z', {reverse: true, limit: 10})
 ```
-
-
-## Watches
-
-Foundationdb lets you watch a key and get notified when the key changes. A watch will only fire once - if you want to find out every time a key is changed, you will need to re-issue the watch once it has fired.
-
-You can read more about working with watches in the [FDB developer guide](https://apple.github.io/foundationdb/developer-guide.html#watches).
-
-```javascript
-const watch = await db.doTn(async tn => {
-  tn.set('foo', 'bar')
-  return tn.watch('foo')
-})
-
-watch.promise.then(changed => {
-  if (changed) console.log('foo changed')
-  else console.log('Watch was cancelled')
-})
-
-setTimeout(() => {
-  watch.cancel()
-}, 1000)
-```
-
-Watch objects have two properties:
-
-- **promise**: A promise which will resolve when the watch fires, errors, or is cancelled. If the watch fires the promise will resolve with a value of *true*. If the watch is cancelled by the user, or if the containing transaction is aborted or conflicts, the watch will resolve to *false*.
-- **cancel()**: Function to cancel the watch. When you cancel a watch it will immediately resolve the watch, passing a value of *false* to your function.
-
-*Warning:* a watch won't work until the transaction which created it has been committed. This will deadlock your program:
-
-```javascript
-db.doTn(async tn => {
-  await tn.watch('foo') // DO NOT DO THIS - This will deadlock
-})
-```
-
-And if you do this, your resolver may fire multiple times due to the transaction retry loop. The promise will resolve to `false` when the transaction fails.
-
-```javascript
-db.doTn(async tn => {
-  tn.watch('foo').then(changed => {
-    // DO NOT DO THIS! Function may be called multiple times
-  })
-})
-```
-
-Instead you should return the watch from the transaction, and wait for it there:
-
-```javascript
-const watch = await db.doTn(async tn => {
-  return tn.watch('foo')
-})
-
-await watch.promise
-```
-
-If you want to watch multiple values, return them all:
-
-```javascript
-const [watchFoo, watchBar] = await db.doTn(async tn => {
-  return [
-    tn.watch('foo'),
-    tn.watch('bar'),
-  ]
-})
-```
-
-### Watch helpers
-
-There are a few helper functions on the database object for working with watches:
-
-- `db.`**getAndWatch(key)**: Get a value and watch it for changes. Because `get` is called in the same transaction which created the watch, this is safe from race conditions. Returns a watch with a `value` property containing the key's value.
-- `db.`**setAndWatch(key, value)**: Set a value and watch it for changes within the same transaction.
-- `db.`**clearAndWatch(key)**: Clear a value and watch it for changes within the same transaction.
-
-
 
 ## Key selectors
 
@@ -378,6 +346,119 @@ await db.getKey(ks.add(ks.firstGreaterOrEqual('a'), 10))
 ```
 
 You can also specify raw key selectors using `fdb.keySelector(key: string | Buffer, orEqual: boolean, offset: number)`. See [FDB documentation](https://apple.github.io/foundationdb/developer-guide.html#key-selectors) on how these are interpreted.
+
+Key selectors work with scoped types. This will fetch all students with ranks 1-10, inclusive:
+
+```javascript
+const db = fdb.openSync().withKeyEncoding(fdb.encoders.tuple)
+const index = db.at(['index'])
+
+const students = index.getRangeAll(
+  ['students', 'byrank', 1], // Defaults to firstGreaterOrEqual(...).
+  fdb.firstGreaterThan(['students', 'byrank', 10])
+)
+```
+
+## Watches
+
+Foundationdb lets you watch a key and get notified when the key changes. A watch will only fire once - if you want to find out every time a key is changed, you will need to re-issue the watch once it has fired.
+
+You can read more about working with watches in the [FDB developer guide](https://apple.github.io/foundationdb/developer-guide.html#watches).
+
+The simplest way to use watches is to call one of the helper functions on the database object:
+
+```javascript
+const watch = await db.doTn(async tn => {
+  tn.set('foo', 'bar')
+  return tn.watch('foo')
+})
+
+watch.promise.then(changed => {
+  if (changed) console.log('foo changed')
+  else console.log('Watch was cancelled')
+})
+
+setTimeout(() => {
+  watch.cancel()
+}, 1000)
+```
+
+Or directly from the database object:
+
+```javacript
+const watch = db.getAndWatch('somekey')
+console.log('value is currently', watch.value)
+watch.then(() => console.log('and now it has changed'))
+```
+
+Watch objects have two properties:
+
+- **promise**: A promise which will resolve when the watch fires, errors, or is cancelled. If the watch fires the promise will resolve with a value of *true*. If the watch is cancelled by the user, or if the containing transaction is aborted or conflicts, the watch will resolve to *false*.
+- **cancel()**: Function to cancel the watch. When you cancel a watch it will immediately resolve the watch, passing a value of *false* to your function.
+
+The promise resolves to a value of *true* (the watch succeeded normally) or *false* in any of these cases:
+
+- The promise was cancelled by the user
+- The transaction which created the promise was aborted due to a conflict
+- The transaction was manually cancelled via `tn.rawCancel`
+
+*Warning 💣:* Watches won't fire until their transaction is committed. This will deadlock your program:
+
+```javascript
+db.doTn(async tn => {
+  const watch = tn.watch('foo')
+  await watch.promise // DO NOT DO THIS - This will deadlock your program
+})
+```
+
+*Danger 💣:* **DO NOT DO THIS!** If you attach a listener to the watch inside your transaction, your resolver may fire multiple times because the transaction itself may run multiple times.
+
+```javascript
+db.doTn(async tn => {
+  tn.watch('foo').then(changed => {
+    // DO NOT DO THIS!
+    doWork() // Function may be called multiple times
+  })
+})
+```
+
+There are two workarounds:
+
+1. Check the value of `changed`. It will be *false* when the watch was aborted due to a conflict.
+2. *Recommended*: Return the watch from the transaction, and wait for it to resolve outside of the transaction body:
+
+```javascript
+const watch = await db.doTn(async tn => {
+  return tn.watch('foo')
+})
+
+await watch.promise
+```
+
+If you want to watch multiple values, return them all:
+
+```javascript
+const [watchFoo, watchBar] = await db.doTn(async tn => {
+  return [
+    tn.watch('foo'),
+    tn.watch('bar'),
+  ]
+})
+```
+
+### Watch helpers
+
+The easiest way to use watches is via helper functions on the database object:
+
+- `db.`**getAndWatch(key)**: Get a value and watch it for changes. Because `get` is called in the same transaction which created the watch, this is safe from race conditions. Returns a watch with a `value` property containing the key's value.
+- `db.`**setAndWatch(key, value)**: Set a value and watch it for changes within the same transaction.
+- `db.`**clearAndWatch(key)**: Clear a value and watch it for changes within the same transaction.
+
+```javascript
+const watch = db.setAndWatch('highscore', '1000')
+await watch.promise
+console.log('Your high score has been usurped!')
+```
 
 
 ## Scoping & Key / Value transformations
@@ -569,7 +650,7 @@ Please consult [the foundationdb forum](https://forums.foundationdb.org/c/using-
 
 The bindings do not currently support the `Directory` layer. We have code, it just hasn't been ported to the new typescript API. If someone wants to take a stab at it, raise an issue so we don't repeat work.
 
-The API also entirely depends on node Promises. The C part of the bindings supports doing everything via callbacks but a callback-oriented API hasn't been written. If this is important to you for some reason, I think the best architecture would be to split out the native C backend into a `foundationdb-native` library and have an alternate callback-oriented frontend. Raise an issue if this is important to you.
+The API also entirely depends on node Promises. The C part of the bindings supports doing almost everything via callbacks but a callback-oriented API hasn't been written. If this is important to you for some reason, I think the best architecture would be to split out the native C backend into a `foundationdb-native` library and have an alternate callback-oriented frontend. Raise an issue if this is important to you. I'd be particularly interested in benchmarks showing how promise- or callback- oriented APIs perform.
 
 ## Revival progress
 
@@ -600,6 +681,11 @@ The API also entirely depends on node Promises. The C part of the bindings suppo
 
 ## History
 
-These bindings are currently based on an old version of FDB's bindings from years ago. The plan is to resurrect them over the next few weeks and get them production ready.
+These bindings are based on an old version of FDB's bindings from years ago, with contributions form @skozin and others.
 
-Patches welcome!
+- The native binding code has been updated to work with modern versions of v8, and return promises in all cases if a callback is not provided.
+- The javascript code has been almost entirely rewritten. It has been modernized, ported from JS to Typescript and changed to use promises throughout.
+
+## License
+
+This project is published under the MIT License. See the [LICENSE file](LICENSE) for details.
