@@ -179,7 +179,7 @@ await db.set(mykey, value)
 
 The transaction version is synchronous. All set operations are immediately visible to subsequent get operations inside the transaction, and visible to external users only after the transaction has been committed.
 
-By default the key and value must be either node Buffer objects or strings. You can use [key and value transformers](#key-and-value-transformation) to make these functions accept and return whatever you want. If you want to embed numbers, UUIDs, or multiple fields in your keys we strongly recommend using the [tuple layer](https://apple.github.io/foundationdb/data-modeling.html#tuples)
+By default the key and value must be either node Buffer objects or strings. You can use [key and value transformers](#key-and-value-transformation) to make these functions accept and return whatever you want. If you want to embed numbers, UUIDs, or multiple fields in your keys we strongly recommend using the [tuple layer for encoding keys](https://apple.github.io/foundationdb/data-modeling.html#tuples):
 
 ```javascript
 const fdb = require('fdb')
@@ -188,7 +188,11 @@ const db = fdb.openSync()
   .withKeyEncoding(fdb.encoders.tuple)
   .withValueEncoding(fdb.encoders.json)
 
-await db.get(['booksByAuthorPageCount', 'Pinker', 576.3]) // returns JSON-decoded data
+await db.set(['class', 6], {teacher: 'fred', room: '101a'})
+
+// ...
+
+await db.get(['class', 6]) // returns {teacher: 'fred', room: '101a'}
 ```
 
 
