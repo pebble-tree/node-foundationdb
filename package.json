@@ -4,6 +4,7 @@
   "description": "Node.js bindings for the FoundationDB database",
   "keywords": [
     "foundationdb",
+    "fdb",
     "database",
     "NoSQL",
     "ACID"
