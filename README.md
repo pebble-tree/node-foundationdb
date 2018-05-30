@@ -406,7 +406,7 @@ The promise resolves to a value of *true* (the watch succeeded normally) or *fal
 - The transaction which created the promise was aborted due to a conflict
 - The transaction was manually cancelled via `tn.rawCancel`
 
-*Warning 💣:* Watches won't fire until their transaction is committed. This will deadlock your program:
+*Warning:* Watches won't fire until their transaction is committed. This will deadlock your program:
 
 ```javascript
 db.doTn(async tn => {
