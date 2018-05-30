@@ -2,7 +2,7 @@
 
 Node bindings for [FoundationDB](https://foundationdb.org)!
 
-These bindings are currently in the process of being revived and renewed from some very old code. This library will not be entirely API-stable pre 1.0. Expect some slight API drift over the next few weeks before 1.0 lands.
+These bindings are currently in the process of being revived. [See progress below](#revival-progress). Until then this library will work, but there will be small API changes. Treat minor versions as semver breakage points.
 
 - [Getting started](#usage)
 - [Connecting to your database cluster](#connecting-to-your-cluster)
