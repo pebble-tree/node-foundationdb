@@ -523,7 +523,7 @@ These problems are fixed by using [FDB tuple encoding](https://apple.github.io/f
 These problems only apply for key encoding. JSON is fine for encoding values, if a little space-inefficient.
 
 
-For example:
+Examples:
 
 #### Using a key encoding:
 
@@ -590,7 +590,7 @@ data.doTransaction(async tn => {
 })
 ```
 
-Aliased transactions inherit their `isSnapshot` property from the object they were created from, and the prefix and encoders from the database for which they are an alias. They support all methods from the normal transaction API, including ranges, watches and so on.
+Aliased transactions inherit their `isSnapshot` property from the object they were created from, and the prefix and encoders from the database parameter. They support the complete transaction API, including ranges, watches, etc.
 
 
 ## Snapshot Reads
