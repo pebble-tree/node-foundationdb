@@ -513,12 +513,14 @@ You can configure a database to always automatically transform keys and values v
 - `fdb.encoders.`**json**: JSON encoding using the built-in JSON.stringify. This is not suitable for key encoding.
 - `fdb.encoders.`**tuple**: Encode values using FDB [tuple encoding](https://apple.github.io/foundationdb/data-modeling.html#tuples). [Spec here](https://github.com/apple/foundationdb/blob/master/design/tuple.md).
 
-**Beware** JSON encoding is generally unsuitable as a key encoding method for many reasons:
+**Beware** JSON encoding is generally unsuitable as a key encoding method:
 
 - JSON objects have no guaranteed encoding order. Eg `{a:4, b:3}` could be encoded as `{"a":4,"b":3}` or `{"b":3,"a":4}`. When fetching a key, FDB does an equality check on the encoded value, so you might find your data is gone when you go to fetch it again later.
 - When performing range queries, the lexographical ordering is undefined in innumerable ways. For example, `2` is lexographically after `10`.
 
 These problems are fixed by using [FDB tuple encoding](https://apple.github.io/foundationdb/data-modeling.html#tuples). Tuple encoding is supported by all FDB frontends, it formally (and carefully) defines ordering for all objects and it supports transparent concatenation (tuple.pack(`['a']`) + tuple.pack(`['b']`) === tuple.pack(`['a', 'b']`)).
+
+These problems only apply for key encoding. JSON is fine for encoding values, if a little space-inefficient.
 
 
 For example:
@@ -571,7 +573,7 @@ const books = rootDb.at(['data', 'books']) // Equivalent to .at(['myapp', 'data'
 
 #### Multi-scoped transactions
 
-If you need to update objects across multiple scopes within the same transaction you can use `tn.scopedTo` to create an alias of the transaction in a different scope:
+To update objects in multiple scopes within the same transaction, use `tn.scopedTo(db)` to create an alias of the transaction in the foreign scope:
 
 ```javascript
 const root = fdb.openSync('fdb.cluster').withKeyEncoding(fdb.encoders.tuple).at(['myapp'])
