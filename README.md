@@ -148,9 +148,9 @@ const val = db.doTransaction(async tn => await tn.get('key'))
 The db helper functions always return a promise, wheras many of the transaction functions are syncronous (eg *set*, *clear*, etc).
 
 
-## Getting and setting values
+### Getting values
 
-To **read** key/value pairs in a transaction, call `get`:
+To **read** key/value pairs in a transaction, call `get(key)`:
 
 ```javascript
 const valueBytes = await db.doTransaction(async tn => {
@@ -164,7 +164,10 @@ If you don't need a transaction you can call `get` on the database object direct
 const valueBytes = await db.get(mykey)
 ```
 
-`get(key: string | Buffer) => Promise<Buffer>` fetches the named key and returns the bytes via a Promise. If the key is specified via a string it will be encoded to bytes in UTF8.
+Unless you have specified a value encoding, `get` returns the data via a nodejs `Buffer`.
+
+
+### Setting values
 
 To **store**, use `Transaction#set(key, value)` or `Database#set(key, value) => Promise`, eg:
 
@@ -198,6 +201,38 @@ await db.set(['class', 6], {teacher: 'fred', room: '101a'})
 
 await db.get(['class', 6]) // returns {teacher: 'fred', room: '101a'}
 ```
+
+### Other transaction methods
+
+#### getKey(selector)
+
+`tn.getKey` or `db.getKey` is used to get a key in the database via a [key selector](#key-selectors). For example:
+
+```javascript
+const ks = require('foundationdb').keySelector
+
+const key = await db.getKey(ks.firstGreaterThan('students.')) // Get the first student key
+```
+
+getKey returns the key as a node buffer object unless you specify a key encoding.
+
+#### clear(key), clearRange(start, end) and clearRangeStartsWith(prefix)
+
+You can remove individual keys from the database via `clear(key)`. `clear(start, end)` removes all keys *start* ≥ key ≥ *end*. These methods *do not* support key selectors. If you want to use more complex rules to specify the keys to clear range, first call *getKey* to find your specific range boundary.
+
+You can also call `clearRangeStartsWith(prefix)` to clear all keys with the specific prefix.
+
+These methods are available on transaction or database objects. The transaction variants are syncronous, and the database variants return promises.
+
+
+#### Add Conflict Keys and ranges
+
+> TODO addReadConflictKey(key), addReadConflictRange(start, end), addWriteConflictKey(key), addWriteConflictRange.
+
+
+### Atomics
+
+> TODO
 
 
 ## Range reads

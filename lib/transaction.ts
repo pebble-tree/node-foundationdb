@@ -243,7 +243,7 @@ export default class Transaction<Key = NativeValue, Value = NativeValue> {
   }
   // Just an alias for unary clearRange.
   clearRangeStartsWith(prefix: Key) {
-    return this.clearRange(prefix)
+    this.clearRange(prefix)
   }
 
   watch(key: Key, opts?: WatchOptions): Watch {
