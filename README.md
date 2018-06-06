@@ -23,8 +23,8 @@ These bindings are currently in the process of being revived. [See progress belo
 
 To connect to a remote cluster you need:
 
-- A copy of the client library installed, with matching major and minor version numbers. You really only need the C dynamic library file to connect, but its usually easier to just install the fdb client library. See [Notes on API versions](#notes-on-api-versions) below for more information.
-- A copy of the `fdb.cluster` file for your database cluster
+- A copy of the client library with matching major and minor version numbers. You really only need the `libfdb_c` dynamic library file to connect, but its usually easier to just install the fdb client library. See [Notes on API versions](#notes-on-api-versions) below for more information.
+- A copy of the `fdb.cluster` file for your database cluster.
 
 #### Step 2
 
@@ -48,7 +48,7 @@ db.doTransaction(async tn => {
 }) // returns a promise.
 ```
 
-> Note: You must set the FDB API version before using this library. You can specify any version number less than or equal to the version of FDB you are using in your cluster. If in doubt, set to the version of FoundationDB you have installed.
+> Note: You must set the FDB API version before using this library. You can specify any version number ≤ the version of FDB you are using in your cluster. If in doubt, set to the version of FoundationDB you have installed.
 
 
 # API
@@ -634,11 +634,11 @@ Since the very first release, FoundationDB has kept full backwards compatibility
 
 From the point of view of a nodejs fdb client application, there are effectively three semi-independant versions your app consumes:
 
-- The version of fdb you are running on your server
-- The operational semantics of the FDB client API (which change sometimes between versions of FDB)
-- The API of this binding library
+1. **Cluster version**: The version of fdb you are running on your database cluster. Eg *5.1.7*
+2. **API version**: The semantics of the FDB client API (which change sometimes between versions of FDB). This affects supported FDB options and whether or not transactions read-your-writes is enabled by default. Eg *510*. Must be ≤ cluster version.
+3. **binding version**: The semver version of this library in npm. Eg *0.6.1*.
 
-I considered tying the semver version of this library to the FDB API semantic version. Then with every new release of FoundationDB we would need to increment the major version number in npm. Unfortunately, new API versions depend on new versions of the database itself. Tying the latest version of `node-foundationdb` to the latest version of the FDB API would require users to either:
+I considered tying this library's version to the API version. Then with every new release of FoundationDB we would need to increment the major version number in npm. Unfortunately, new API versions depend on new versions of the database itself. Tying the latest version of `node-foundationdb` to the latest version of the FDB API would require users to either:
 
 - Always deploy the latest version of FDB, or
 - Stick to an older version of this library, which may be missing useful features and bug fixes.
@@ -647,25 +647,29 @@ Both of these options would be annoying.
 
 So to deal with this, you need to manage all API versions:
 
-- This library needs access to a copy of `libfdb_c` which is compatible with the fdb cluster it is connecting to.
-- The API version of foundationdb is managed via a call at startup to `fdb.setAPIVersion`. This must be ≤ the version of the db cluster you are connecting to.
-- This package is versioned normally via npm & package.json.
+1. This library needs access to a copy of `libfdb_c` which is compatible with the fdb cluster it is connecting to. Usually this means major & minor versions should match.
+2. The API version of foundationdb is managed via a call at startup to `fdb.setAPIVersion`. This must be ≤ the version of the db cluster you are connecting to.
+3. This package is versioned normally via npm & package.json.
 
-You should be free to upgrade this library and your foundationdb database independantly. However, this library will only maintain support for FDB versions within a recent range. This is simply a constraint of development time & testing.
+You should be free to upgrade this library and your foundationdb database independantly. However, this library will only maintain support for API versions within a recent range. This is simply a constraint of development time & testing.
+
 
 ### Upgrading your cluster
 
-While all of your code will continue to work with new versions of the foundationdb database, at runtime your application needs access to the `libfdb_c_5.1.7.so` / `libfdb_c_5.1.7.dylib` / `libfdb_c_5.1.7.dll` dynamic library file with a major and minor version which matches the version of the database that you are connecting to.
+While all of your code should continue to work with new versions of foundationdb without modification, at runtime your application needs access to the dynamic library `libfdb_c_5.1.7.so` / `libfdb_c_5.1.7.dylib` / `libfdb_c_5.1.7.dll` with a major and minor version number matching the version of the database that you are connecting to.
 
-Upgrading to a new version of FDB without downtime is possible but tricky. You need to:
+Upgrading your database cluster without any application downtime is possible but tricky. You need to:
 
-1. Deploy your client application with both old and new copies of the `libfdb_c` dynamic library file. You can point your application a directory containing copies of all versions of `libfdb_c` that you want it to support connecting with via the `EXTERNAL_CLIENT_DIRECTORY` environment variable or the `external_client_directory` network option. When the client connects to your database it will try all versions of the fdb library found in this directory. [Read more here](https://apple.github.io/foundationdb/api-general.html#multi-version-client)
-2. Upgrade your foundationdb database instance. The client should reconnect using the new library version.
+1. Deploy your client application with both old and new copies of the `libfdb_c` dynamic library file. You can point your application a directory containing copies of all versions of `libfdb_c` that you want it to support connecting with via the `EXTERNAL_CLIENT_DIRECTORY` environment variable or the `external_client_directory` network option. When the client connects to your database it will try all versions of the fdb library found in this directory. The `libfdb_c` dynamic library files can be downloaded directly from the [FDB Downloads page](https://www.foundationdb.org/download/).
+2. Upgrade your foundationdb database instances. Your app should automatically reconnect using the new dynamic library version.
 3. Once the database is upgraded, remove old, unused copies of the `libfdb_c` client library from your frontend machines as they may degrade performance.
 
-Please consult [the foundationdb forum](https://forums.foundationdb.org/c/using-foundationdb) for help and more information.
+In practice, you only need to do this complicated process when the FDB network protocol changes.
 
-The API version you pass to `fdb.setAPIVersion` is independant of the version of your database cluster. The API version only needs to be changed if you want access to semantics & new features provided in new versions of foundationdb. See FDB [release notes](https://apple.github.io/foundationdb/release-notes.html) for information on what has changed between versions.
+Read more about the [multi-versioned client design here](https://apple.github.io/foundationdb/api-general.html#multi-version-client) and consult [the foundationdb forum](https://forums.foundationdb.org/c/using-foundationdb) for help and more information.
+
+The API version number you pass to `fdb.setAPIVersion` is independant of the version of your database cluster. The API version only needs to be changed if you want access to semantics & new features provided in new versions of foundationdb. See FDB [release notes](https://apple.github.io/foundationdb/release-notes.html) for information on what has changed between versions.
+
 
 ## Caveats
 
@@ -692,11 +696,11 @@ The API also entirely depends on node Promises. The C part of the bindings suppo
 - [x] Testing integrated with the harness for the other bindings
 - [x] Subspace support
 - [x] Configure prebuilds so users don't need a local development environment to `npm install` this library
-- [ ] Move to NAPI
+- [ ] Directory layer support
 - [ ] API documentation for options (and TS types for them)
 - [ ] API documentation for all transaction methods (get, set, getKey, etc)
-- [ ] Directory layer support
 - [ ] Cut 1.0
+- [ ] Move to NAPI
 - [ ] Figure out a decent way to bundle the native `libfdb_c` code so users don't need to download their own copy
 
 
