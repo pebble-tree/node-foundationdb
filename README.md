@@ -204,14 +204,14 @@ await db.get(['class', 6]) // returns {teacher: 'fred', room: '101a'}
 
 There are several ways to read a range of values. Note that large transactions give poor performance in foundationdb, and are considered [an antipattern](https://apple.github.io/foundationdb/known-limitations.html#large-transactions). If your transaction reads more than 1MB of data or is held open for 5+ seconds, consider rethinking your design.
 
-Range reads are always exclusive of the end `[start, end)`. Ie, reading a range from 'a' to 'z' would read the value for key 'a' but not the value for key 'z'. You can override this behaviour using [key selectors](#key-selectors) instead of raw values to specify the start and end of the range.
+By default all range reads return keys *start* ≥ key > *end*. Ie, reading a range from 'a' to 'z' would read 'a' but not 'z'. You can override this behaviour using [key selectors](#key-selectors).
 
-All range read functions take an optional [range options](#range-options) object as the last parameter.
+All range read functions can be passed optional [range options](#range-options) as the last parameter.
 
 
 ### Async iteration
 
-The best way to iterate through a range is using an async iterator with **getRange(start, end, [opts])**:
+The easiest way to iterate through a range is using an async iterator with **getRange(start, end, [opts])**:
 
 ```javascript
 db.doTransaction(async tn => {
@@ -284,7 +284,7 @@ This has better performance better because it doesn't thrash the event loop as m
 
 ### Get an entire range to an array
 
-If you're going to load the range into an array, you can do that directly:
+You can also bulk read a range straight into an array via **getRangeAll(start, end, [opts])**:
 
 ```javascript
 await db.getRangeAll('x', 'y') // returns [[key1, val1], [key2, val2], ...]
@@ -301,12 +301,12 @@ db.doTransaction(async tn => {
 
 The returned object is a list of key, value pairs. Unless you have specified a key encoding, the key and value will be `Buffer` objects.
 
-The entire range is loaded in in a single network request using the `StreamingMode.WantAll` option, described below.
+The entire range is loaded in a single network request via the `StreamingMode.WantAll` option, described below.
 
 
 ### Range Options
 
-All range read functions take an optional `options` argument with the following properties:
+All range read functions take an optional `options` object argument with the following properties:
 
 - **limit** (*number*): If specified and non-zero, indicates the maximum number of key-value pairs to return. If you call `getRangeRaw` with a specified limit, and this limit was reached before the end of the specified range, `getRangeRaw` will specify `{more: true}` in the result. In other range read modes, the returned range (or range iterator) will stop after the specified limit.
 - **reverse** (*boolean*): If specified, key-value pairs will be returned in reverse lexicographical order beginning at the end of the range.
@@ -320,12 +320,13 @@ All range read functions take an optional `options` argument with the following 
 	- `fdb.StreamingMode.`**Large**: Infrequently used. Transfer data in batches large enough to be, in a high-concurrency environment, nearly as efficient as possible. If the client stops iteration early, some disk and network bandwidth may be wasted. The batch size may still be too small to allow a single client to get high throughput from the database, so if that is what you need consider the SERIAL StreamingMode.
 	- `fdb.StreamingMode.`**Serial**: Transfer data in batches large enough that an individual client can get reasonable read bandwidth from the database. If the client stops iteration early, considerable disk and network bandwidth may be wasted.
 
-Example:
+For example:
 
 ```javascript
 // Get 10 key value pairs from 'z' backwards.
 await db.getRange('a', 'z', {reverse: true, limit: 10})
 ```
+
 
 ## Key selectors
 
