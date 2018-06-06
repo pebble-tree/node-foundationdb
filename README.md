@@ -19,7 +19,7 @@ These bindings are currently in the process of being revived. [See progress belo
 
 #### Step 1
 
-[Install foundationdb](https://www.foundationdb.org/download/). If you have a choice, you only need the client library.
+[Install foundationdb](https://www.foundationdb.org/download/). You only need the client library.
 
 #### Step 2
 
@@ -33,7 +33,7 @@ npm install --save foundationdb
 const fdb = require('foundationdb')
 fdb.setAPIVersion(510) // Must be called before database is opened
 
-const db = fdb.openSync('fdb.cluster') // or just openSync() if the database is local.
+const db = fdb.openSync() // or openSync('/path/to/fdb.cluster')
   .at('myapp.') // Use the 'myapp.' database prefix for all operations
   .withValueEncoding(fdb.encoders.json) // automatically encode & decode values using JSON
 
@@ -129,7 +129,6 @@ await db.doTransaction(async tn => {
   const val = await tn.get('key')
   doWork(val) // doWork may be called multiple times!
 })
-
 ```
 
 To cut down on work, most simple operations have helper functions on the database object:
@@ -137,8 +136,8 @@ To cut down on work, most simple operations have helper functions on the databas
 ```javascript
 const val = await db.get('key')
 
-// .. Is a shorthand for:
-const val = db.doTransaction(async tn => return await tn.get('key'))
+// Which is a shorthand for:
+const val = db.doTransaction(async tn => await tn.get('key'))
 ```
 
 The db helper functions always return a promise, wheras many of the transaction functions are syncronous (eg *set*, *clear*, etc).
@@ -177,9 +176,9 @@ or
 await db.set(mykey, value)
 ```
 
-The transaction version is synchronous. All set operations are immediately visible to subsequent get operations inside the transaction, and visible to external users only after the transaction has been committed.
+Note that `tn.set` is synchronous. All set operations are immediately visible to subsequent get operations inside the transaction, and visible to external users only after the transaction has been committed.
 
-By default the key and value must be either node Buffer objects or strings. You can use [key and value transformers](#key-and-value-transformation) to make these functions accept and return whatever you want. If you want to embed numbers, UUIDs, or multiple fields in your keys we strongly recommend using the [tuple layer for encoding keys](https://apple.github.io/foundationdb/data-modeling.html#tuples):
+By default the key and value arguments must be either node Buffer objects or strings. You can use [key and value transformers](#key-and-value-transformation) for automatic argument encoding. If you want to embed numbers, UUIDs, or multiple fields in your keys we strongly recommend using [fdb tuple encoding](https://apple.github.io/foundationdb/data-modeling.html#tuples) for your keys:
 
 ```javascript
 const fdb = require('fdb')
@@ -200,7 +199,10 @@ await db.get(['class', 6]) // returns {teacher: 'fred', room: '101a'}
 
 There are several ways to read a range of values. Note that large transactions give poor performance in foundationdb, and are considered [an antipattern](https://apple.github.io/foundationdb/known-limitations.html#large-transactions). If your transaction reads more than 1MB of data or is held open for 5+ seconds, consider rethinking your design.
 
-All range read functions also support key selectors and range options. These features are described below.
+Range reads are always exclusive of the end `[start, end)`. Ie, reading a range from 'a' to 'z' would read the value for key 'a' but not the value for key 'z'. You can override this behaviour using [key selectors](#key-selectors) instead of raw values to specify the start and end of the range.
+
+All range read functions take an optional [range options](#range-options) object as the last parameter.
+
 
 ### Async iteration
 
@@ -214,14 +216,14 @@ db.doTransaction(async tn => {
 })
 ```
 
-[Async iterators](https://github.com/tc39/proposal-async-iteration) are a new javascript feature. They are available in NodeJS 10+, Typescript or Babel, or node 8 and 9 with the `node --harmony-async-iteration` flag. Or you can [iterate through them manually](#manual-async-iteration).
+[Async iteration](https://github.com/tc39/proposal-async-iteration) is a new javascript feature. It is available in NodeJS 10+, Typescript, Babel, and node 8 and 9 with the `node --harmony-async-iteration` flag. You can also [iterate an async iterator manually](#manual-async-iteration).
 
-*Danger 💣:* Remember that the body of the transaction may be executed multiple times. This can especially be a problem for range reads because they can easily overflow the transaction read limit (default 1M) or time limit (default 5s). Bulk operations need to be more complex than a loop in a transaction. [More information here](https://apple.github.io/foundationdb/known-limitations.html#large-transactions)
+*Danger 💣:* Remember that your transaction body may be executed multiple times. This can especially be a problem for range reads because they can easily overflow the transaction read limit (default 1M) or time limit (default 5s). Bulk operations need to be more complex than a loop in a transaction. [More information here](https://apple.github.io/foundationdb/known-limitations.html#large-transactions)
 
-Internally `getRange` fetches the data over the network itself in batches, with a gradually increasing size.
+Internally `getRange` fetches the data in batches, with a gradually increasing batch size.
 
 
-Range reads work really well with tuple keys:
+Range reads work well with tuple keys:
 
 ```javascript
 const db = fdb.openSync().withKeyEncoding(fdb.encoders.tuple)
@@ -231,7 +233,7 @@ db.doTransaction(async tn => {
     ['students', 'byrank', 0],
     ['students', 'byrank', 10]
   )) {
-    const rank = key[2]
+    const rank = key[2] // 0-9, as the range is exclusive of the end.
     console.log(rank + 1, ': ', studentId)
   }
 })
@@ -259,7 +261,7 @@ This is completely equivalent to the logic above. Its just more verbose.
 
 ### Batch iteration
 
-You can process range results in batches for better nodejs performance:
+You can process range results in batches for slightly improved performance:
 
 ```javascript
 db.doTransaction(async tn => {
@@ -272,7 +274,7 @@ db.doTransaction(async tn => {
 })
 ```
 
-This performs better because it doesn't thrash the event loop as much.
+This has better performance better because it doesn't thrash the event loop as much.
 
 
 ### Get an entire range to an array
@@ -280,10 +282,10 @@ This performs better because it doesn't thrash the event loop as much.
 If you're going to load the range into an array, you can do that directly:
 
 ```javascript
-await db.getRangeAll('x', 'y')
+await db.getRangeAll('x', 'y') // returns [[key1, val1], [key2, val2], ...]
 ```
 
-or as part of a snapshot:
+or as part of a transaction:
 
 ```javascript
 db.doTransaction(async tn => {
@@ -291,6 +293,8 @@ db.doTransaction(async tn => {
   await tn.getRangeAll('x', 'y')
 }
 ```
+
+The returned object is a list of key, value pairs. Unless you have specified a key encoding, the key and value will be `Buffer` objects.
 
 The entire range is loaded in in a single network request using the `StreamingMode.WantAll` option, described below.
 
