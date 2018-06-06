@@ -206,7 +206,7 @@ await db.get(['class', 6]) // returns {teacher: 'fred', room: '101a'}
 
 #### getKey(selector)
 
-`tn.getKey` or `db.getKey` is used to get a key in the database via a [key selector](#key-selectors). For example:
+`tn.getKey` or `db.getKey` is used to get a key in the database via a key or [key selector](#key-selectors). For example:
 
 ```javascript
 const ks = require('foundationdb').keySelector
@@ -214,7 +214,39 @@ const ks = require('foundationdb').keySelector
 const key = await db.getKey(ks.firstGreaterThan('students.')) // Get the first student key
 ```
 
+You can also specify a key to fetch the first key greater than or equal to the specified key.
+
+```javascript
+const key = await db.getKey('a') // returns the first key ≥ 'a' in the db.
+```
+
 getKey returns the key as a node buffer object unless you specify a key encoding.
+
+This works particularly well combined with tuple encoding:
+
+```javascript
+const fdb = require('fdb')
+const db = fdb.openSync()
+  .withKeyEncoding(fdb.encoders.tuple)
+
+const key = await db.getKey(['students', 'by_enrolment_date', 0])
+const date = key[2] // The earliest enrolment date in the database
+```
+
+You can also do something like this to get & use the last key in a range. This is awkward with the API as it is right now, but its very fast & computationally efficient:
+
+```javascript
+const fdb = require('fdb')
+const db = fdb.openSync()
+
+// The next key after all the student scores
+const afterScore = fdb.util.strInc(tuple.pack(['students', 'by_score']))
+
+const key = await db.getKey(fdb.keySelector.lastLessThan(afterScore))
+
+const highestScore = fdb.tuple.unpack(key)[2]
+```
+
 
 #### clear(key), clearRange(start, end) and clearRangeStartsWith(prefix)
 
@@ -317,7 +349,7 @@ db.doTransaction(async tn => {
 This has better performance better because it doesn't thrash the event loop as much.
 
 
-### Get an entire range to an array
+### Read entire range
 
 You can also bulk read a range straight into an array via **getRangeAll(start, end, [opts])**:
 

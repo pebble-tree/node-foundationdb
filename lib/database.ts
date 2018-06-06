@@ -90,9 +90,12 @@ export default class Database<Key = NativeValue, Value = NativeValue> {
     return new Database(this._db, concatPrefix(this._prefix, _prefix), keyXf, valueXf)
   }
 
-  withKeyEncoding<ChildKey>(keyXf: Transformer<ChildKey>): Database<ChildKey, Value> {
+  withKeyEncoding<NativeBuffer>(): Database<NativeValue, Value>;
+  withKeyEncoding<ChildKey>(keyXf?: Transformer<ChildKey>): Database<ChildKey, Value>;
+  withKeyEncoding<ChildKey>(keyXf: Transformer<any> = defaultTransformer): Database<ChildKey, Value> {
     return new Database(this._db, this._prefix, keyXf, this._valueXf)
   }
+
   withValueEncoding<ChildVal>(valXf: Transformer<ChildVal>): Database<Key, ChildVal> {
     return new Database(this._db, this._prefix, this._keyXf, valXf)
   }
