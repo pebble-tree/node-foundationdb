@@ -18,6 +18,10 @@
           'link_settings': { 'libraries': ['<!(echo %FOUNDATIONDB_INSTALL_PATH%)\\lib\\foundationdb\\fdb_c.lib'] },
           'include_dirs': ['<!(echo %FOUNDATIONDB_INSTALL_PATH%)\\include'],
         }],
+        ['OS=="freebsd"', {
+          'include_dirs': ['/usr/local/include'],
+          'link_settings': { 'libraries': ['-lfdb_c', '-L/usr/local/lib'] },
+        }],
       ],
       'cflags': ['-std=c++0x'],
       'include_dirs': [
