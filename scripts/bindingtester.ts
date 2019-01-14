@@ -247,7 +247,7 @@ const makeMachine = (db: Database, initialName: Buffer) => {
       const key = await popStrBuf()
       const val = await popStrBuf()
       if (verbose) {
-        const key2 = tuple.unpack(key as Buffer).map(v => Buffer.isBuffer(v) ? v.toString() : v)
+        const key2 = tuple.unpack(key as Buffer, true).map(v => Buffer.isBuffer(v) ? v.toString() : v)
         if (key2[1] !== 'workspace') console.error('SET', key2, val)
       }
       maybePush(oper.set(key, val))
