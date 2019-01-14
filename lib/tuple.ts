@@ -49,6 +49,9 @@ enum Code {
   False = 0x26,
   True = 0x27,
   UUID = 0x30,
+  // There's also an 80 bit versionstamp, but none of the other bindings use it.
+  
+  Versionstamp = 0x33, // Writing versionstamps not yet supported.
 }
 
 // Supported tuple item types.
@@ -66,14 +69,19 @@ export type TupleItem = null | Buffer | string | TupleArr | number | boolean | {
 } | {
   // As above, although this is only used for noCanonicalize + NaN value.
   type: 'double', value: number, rawEncoding?: Buffer,
+} | {
+  // Buffer will be 12 bytes long. The first 10 bytes contain the database-
+  // internal version, then 2 byte user version (which is usually the offset
+  // within the transaction).
+  type: 'versionstamp', value: Buffer
 }
 
 export interface TupleArr extends Array<TupleItem> {}
 
 
-const nullByte = Buffer.from('00', 'hex')
-const falseByte = Buffer.from('26', 'hex')
-const trueByte = Buffer.from('27', 'hex')
+const nullByte = Buffer.from([Code.Null])
+const falseByte = Buffer.from([Code.False])
+const trueByte = Buffer.from([Code.True])
 
 const findNullBytes = (buf: Buffer, pos: number, searchForTerminators: boolean = false) => {
   var nullBytes = [];
@@ -224,7 +232,15 @@ const encode = (into: BufferBuilder, item: TupleItem) => {
     assert(item.value.length === 16, 'Invalid UUID: Should be 16 bytes exactly')
     into.appendBuffer(item.value)
 
-  } else throw new TypeError('Packed items must be basic types or lists')
+  } else if (typeof item === 'object' && item.type === 'versionstamp') {
+    // TODO. This is messy - when writing an item with a versionstamp we need
+    // to use a different write method.
+    throw new Error('Encoding versionstamps not yet implemented in JS tuples')
+
+  } else {
+    let x: never = item // Compile error if this is legitimately reachable
+    throw new TypeError('Packed items must be basic types or lists')
+  }
 }
 
 export function pack(arr: TupleItem[]) {
@@ -334,6 +350,12 @@ function decode(buf: Buffer, pos: {p: number}, noCanonicalize: boolean): TupleIt
       buf.copy(value, 0, p, p+16)
       pos.p += 16
       return {type: 'uuid', value}
+    }
+    case Code.Versionstamp: {
+      const value = Buffer.alloc(12)
+      buf.copy(value, 0, p, p+12)
+      pos.p += 12
+      return {type: 'versionstamp', value}
     }
     default: {
       const byteLen = code-20 // negative if number is negative.
