@@ -16,6 +16,12 @@
   "cpu": [
     "x64"
   ],
+  "files": [
+    "dist",
+    "src",
+    "prebuilds",
+    "binding.gyp"
+  ],
   "scripts": {
     "install": "node-gyp-build",
     "test": "mocha -r ts-node/register test/*.ts",
