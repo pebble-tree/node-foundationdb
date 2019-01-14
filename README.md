@@ -23,8 +23,8 @@ These bindings are currently in the process of being revived. [See progress belo
 
 To connect to a remote cluster you need:
 
-- A copy of the client library with matching major and minor version numbers. You really only need the `libfdb_c` dynamic library file to connect, but its usually easier to just install the fdb client library. See [Notes on API versions](#notes-on-api-versions) below for more information.
-- A copy of the `fdb.cluster` file for your database cluster.
+- A copy of the client library with matching major and minor version numbers. You really only need the `libfdb_c` dynamic library file to connect ([available on the fdb downloads page](https://www.foundationdb.org/download/)). But its usually easier to just install the fdb client library for your platform. See [Notes on API versions](#notes-on-api-versions) below for more information.
+- A copy of the `fdb.cluster` file for your database cluster. This is generated when you deploy your cluster. If you don't provide this file, node-fdb connect to localhost instead.
 
 #### Step 2
 
@@ -36,7 +36,7 @@ npm install --save foundationdb
 
 ```javascript
 const fdb = require('foundationdb')
-fdb.setAPIVersion(510) // Must be called before database is opened
+fdb.setAPIVersion(600) // Must be called before database is opened
 
 const db = fdb.openSync() // or openSync('/path/to/fdb.cluster')
   .at('myapp.') // Use the 'myapp.' database prefix for all operations
@@ -703,7 +703,7 @@ Since the very first release, FoundationDB has kept full backwards compatibility
 From the point of view of a nodejs fdb client application, there are effectively three semi-independant versions your app consumes:
 
 1. **Cluster version**: The version of fdb you are running on your database cluster. Eg *5.1.7*
-2. **API version**: The semantics of the FDB client API (which change sometimes between versions of FDB). This affects supported FDB options and whether or not transactions read-your-writes is enabled by default. Eg *510*. Must be ≤ cluster version.
+2. **API version**: The semantics of the FDB client API (which change sometimes between versions of FDB). This affects supported FDB options and whether or not transactions read-your-writes is enabled by default. Eg *600*. Must be ≤ cluster version.
 3. **binding version**: The semver version of this library in npm. Eg *0.6.1*.
 
 I considered tying this library's version to the API version. Then with every new release of FoundationDB we would need to increment the major version number in npm. Unfortunately, new API versions depend on new versions of the database itself. Tying the latest version of `node-foundationdb` to the latest version of the FDB API would require users to either:

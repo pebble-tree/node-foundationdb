@@ -7,9 +7,9 @@ export type NetworkOptions = {
   trace_enable?: string  // path to output directory (or NULL for current working directory)
   trace_roll_size?: number  // max size of a single trace output file
   trace_max_logs_size?: number  // max total size of trace files
-  trace_log_group?: string  // value of the logGroup attribute
+  trace_log_group?: string  // value of the LogGroup attribute
   knob?: string  // knob_name=knob_value
-  TLS_plugin?: string  // file path or linker-resolved name
+  TLS_plugin?: string // DEPRECATED
   TLS_cert_bytes?: Buffer  // certificates
   TLS_cert_path?: string  // file path
   TLS_key_bytes?: Buffer  // key
@@ -19,6 +19,9 @@ export type NetworkOptions = {
   Buggify_disable?: true
   Buggify_section_activated_probability?: number  // probability expressed as a percentage between 0 and 100
   Buggify_section_fired_probability?: number  // probability expressed as a percentage between 0 and 100
+  TLS_ca_bytes?: Buffer  // ca bundle
+  TLS_ca_path?: string  // file path
+  TLS_password?: string  // key passphrase
   disable_multi_version_client_api?: true
   callbacks_on_external_threads?: true
   external_client_library?: string  // path to client library
@@ -54,15 +57,14 @@ export enum NetworkOptionCode {
   // this means that a maximum of 10 trace files will be written at a time.
   TraceMaxLogsSize = 32,
 
-  // Sets the 'logGroup' attribute with the specified value for all events
+  // Sets the 'LogGroup' attribute with the specified value for all events
   // in the trace output files. The default log group is 'default'.
   TraceLogGroup = 33,
 
   // Set internal tuning or debugging knobs
   Knob = 40,
 
-  // Set the TLS plugin to load. This option, if used, must be set before
-  // any other TLS options
+  // DEPRECATED
   TLSPlugin = 41,
 
   // Set the certificate chain
@@ -92,6 +94,16 @@ export enum NetworkOptionCode {
 
   // Set the probability of an active BUGGIFY section being fired
   BuggifySectionFiredProbability = 51,
+
+  // Set the ca bundle
+  TLSCaBytes = 52,
+
+  // Set the file from which to load the certificate authority bundle
+  TLSCaPath = 53,
+
+  // Set the passphrase for encrypted private key. Password should be set
+  // before setting the key for the password to be used.
+  TLSPassword = 54,
 
   // Disables the multi-version client API and instead uses the local
   // client directly. Must be set before setting up the network.
@@ -183,10 +195,10 @@ export type TransactionOptions = {
   commit_on_first_proxy?: true
   check_writes_enable?: true
   read_your_writes_disable?: true
-  read_ahead_disable?: true
+  read_ahead_disable?: true // DEPRECATED
   durability_datacenter?: true
   durability_risky?: true
-  durability_dev_null_is_web_scale?: true
+  durability_dev_null_is_web_scale?: true // DEPRECATED
   priority_system_immediate?: true
   priority_batch?: true
   initialize_new_database?: true
@@ -203,6 +215,7 @@ export type TransactionOptions = {
   lock_aware?: true
   used_during_commit_protection_disable?: true
   read_lock_aware?: true
+  first_in_batch?: true
 }
 
 export enum TransactionOptionCode {
@@ -242,17 +255,14 @@ export enum TransactionOptionCode {
   // transaction.
   ReadYourWritesDisable = 51,
 
-  // Disables read-ahead caching for range reads. Under normal operation, a
-  // transaction will read extra rows from the database into cache if range
-  // reads are used to page through a series of data one row at a time
-  // (i.e. if a range read with a one row limit is followed by another one
-  // row range read starting immediately after the result of the first).
+  // DEPRECATED
   ReadAheadDisable = 52,
 
   DurabilityDatacenter = 110,
 
   DurabilityRisky = 120,
 
+  // DEPRECATED
   DurabilityDevNullIsWebScale = 130,
 
   // Specifies that this transaction should be treated as highest priority
@@ -334,6 +344,10 @@ export enum TransactionOptionCode {
 
   // The transaction can read from locked databases.
   ReadLockAware = 702,
+
+  // No other transactions will be applied before this transaction within
+  // the same commit version.
+  FirstInBatch = 710,
 
 }
 
@@ -428,6 +442,17 @@ export enum MutationType {
   // truncated to match the length of ``param``.
   BitXor = 8,
 
+  // Appends ``param`` to the end of the existing value already in the
+  // database at the given key (or creates the key and sets the value to
+  // ``param`` if the key is empty). This will only append the value if the
+  // final concatenated value size is less than or equal to the maximum
+  // value size (i.e., if it fits). WARNING: No error is surfaced back to
+  // the user if the final value is too large because the mutation will not
+  // be applied until after the transaction has been committed. Therefore,
+  // it is only safe to use this mutation type if one can guarantee that
+  // one will keep the total value size under the maximum size.
+  AppendIfFits = 9,
+
   // Performs a little-endian comparison of byte strings. If the existing
   // value in the database is not present or shorter than ``param``, it is
   // first extended to the length of ``param`` with zero bytes.  If
@@ -447,23 +472,36 @@ export enum MutationType {
   Min = 13,
 
   // Transforms ``key`` using a versionstamp for the transaction. Sets the
-  // transformed key in the database to ``param``. A versionstamp is a 10
-  // byte, unique, monotonically (but not sequentially) increasing value
-  // for each committed transaction. The first 8 bytes are the committed
-  // version of the database. The last 2 bytes are monotonic in the
-  // serialization order for transactions. WARNING: At this time
-  // versionstamps are compatible with the Tuple layer only in the Java and
-  // Python bindings. Note that this implies versionstamped keys may not be
-  // used with the Subspace and Directory layers except in those languages.
+  // transformed key in the database to ``param``. The key is transformed
+  // by removing the final four bytes from the key and reading those as a
+  // little-Endian 32-bit integer to get a position ``pos``. The 10 bytes
+  // of the key from ``pos`` to ``pos + 10`` are replaced with the
+  // versionstamp of the transaction used. The first byte of the key is
+  // position 0. A versionstamp is a 10 byte, unique, monotonically (but
+  // not sequentially) increasing value for each committed transaction. The
+  // first 8 bytes are the committed version of the database (serialized in
+  // big-Endian order). The last 2 bytes are monotonic in the serialization
+  // order for transactions. WARNING: At this time, versionstamps are
+  // compatible with the Tuple layer only in the Java and Python bindings.
+  // Also, note that prior to API version 520, the offset was computed from
+  // only the final two bytes rather than the final four bytes.
   SetVersionstampedKey = 14,
 
   // Transforms ``param`` using a versionstamp for the transaction. Sets
-  // ``key`` in the database to the transformed parameter. A versionstamp
-  // is a 10 byte, unique, monotonically (but not sequentially) increasing
-  // value for each committed transaction. The first 8 bytes are the
-  // committed version of the database. The last 2 bytes are monotonic in
-  // the serialization order for transactions. WARNING: At this time
-  // versionstamped values are not compatible with the Tuple layer.
+  // the ``key`` given to the transformed ``param``. The parameter is
+  // transformed by removing the final four bytes from ``param`` and
+  // reading those as a little-Endian 32-bit integer to get a position
+  // ``pos``. The 10 bytes of the parameter from ``pos`` to ``pos + 10``
+  // are replaced with the versionstamp of the transaction used. The first
+  // byte of the parameter is position 0. A versionstamp is a 10 byte,
+  // unique, monotonically (but not sequentially) increasing value for each
+  // committed transaction. The first 8 bytes are the committed version of
+  // the database (serialized in big-Endian order). The last 2 bytes are
+  // monotonic in the serialization order for transactions. WARNING: At
+  // this time, versionstamps are compatible with the Tuple layer only in
+  // the Java and Python bindings. Also, note that prior to API version
+  // 520, the versionstamp was always placed at the beginning of the
+  // parameter rather than computing an offset.
   SetVersionstampedValue = 15,
 
   // Performs lexicographic comparison of byte strings. If the existing
@@ -543,9 +581,9 @@ export const networkOptionData: OptionData = {
 
   trace_log_group: {
     code: 33,
-    description: "Sets the 'logGroup' attribute with the specified value for all events in the trace output files. The default log group is 'default'.",
+    description: "Sets the 'LogGroup' attribute with the specified value for all events in the trace output files. The default log group is 'default'.",
     type: 'string',
-    paramDescription: "value of the logGroup attribute",
+    paramDescription: "value of the LogGroup attribute",
   },
 
   knob: {
@@ -557,7 +595,8 @@ export const networkOptionData: OptionData = {
 
   TLS_plugin: {
     code: 41,
-    description: "Set the TLS plugin to load. This option, if used, must be set before any other TLS options",
+    description: "Deprecated",
+    deprecated: true,
     type: 'string',
     paramDescription: "file path or linker-resolved name",
   },
@@ -621,6 +660,27 @@ export const networkOptionData: OptionData = {
     description: "Set the probability of an active BUGGIFY section being fired",
     type: 'int',
     paramDescription: "probability expressed as a percentage between 0 and 100",
+  },
+
+  TLS_ca_bytes: {
+    code: 52,
+    description: "Set the ca bundle",
+    type: 'bytes',
+    paramDescription: "ca bundle",
+  },
+
+  TLS_ca_path: {
+    code: 53,
+    description: "Set the file from which to load the certificate authority bundle",
+    type: 'string',
+    paramDescription: "file path",
+  },
+
+  TLS_password: {
+    code: 54,
+    description: "Set the passphrase for encrypted private key. Password should be set before setting the key for the password to be used.",
+    type: 'string',
+    paramDescription: "key passphrase",
   },
 
   disable_multi_version_client_api: {
@@ -765,7 +825,8 @@ export const transactionOptionData: OptionData = {
 
   read_ahead_disable: {
     code: 52,
-    description: "Disables read-ahead caching for range reads. Under normal operation, a transaction will read extra rows from the database into cache if range reads are used to page through a series of data one row at a time (i.e. if a range read with a one row limit is followed by another one row range read starting immediately after the result of the first).",
+    description: "Deprecated",
+    deprecated: true,
     type: 'none',
   },
 
@@ -783,7 +844,8 @@ export const transactionOptionData: OptionData = {
 
   durability_dev_null_is_web_scale: {
     code: 130,
-    description: "undefined",
+    description: "Deprecated",
+    deprecated: true,
     type: 'none',
   },
 
@@ -885,6 +947,12 @@ export const transactionOptionData: OptionData = {
   read_lock_aware: {
     code: 702,
     description: "The transaction can read from locked databases.",
+    type: 'none',
+  },
+
+  first_in_batch: {
+    code: 710,
+    description: "No other transactions will be applied before this transaction within the same commit version.",
     type: 'none',
   },
 

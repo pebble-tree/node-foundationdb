@@ -13,6 +13,8 @@ import {Transformer} from './transaction'
 let apiVersion: number | null = null
 let initCalled = false
 
+const SUPPORTED_PROTOCOL_VERSION = 600
+
 // Eg 510.
 export function setAPIVersion(version: number) {
   if (typeof version !== 'number') throw TypeError('version must be a number')
@@ -24,8 +26,21 @@ export function setAPIVersion(version: number) {
   } else {
     // Old versions probably work fine, but there are no tests to check.
     if (version < 500) throw Error('FDB Node bindings only support API versions >= 500')
-    // We can't support newer versions of fdb without regenerating options & atomics.
-    if (version > 510) throw Error('The installed version of the FDB Node bindings only support FDB API versions <= 510. Check for updates or file a ticket')
+    
+    if (version > SUPPORTED_PROTOCOL_VERSION) {
+      // I'm going to allow it to work anyway since API changes seem to be
+      // backwards compatible, but its possible that API-incompatible changes
+      // will break something.
+
+      // To update, we should really only need to regenerate lib/opts.g.ts
+      // using scripts/gentsopts.ts then re-run the binding test suite to make
+      // sure everything is working.
+      console.warn(`Warning: Using foundationdb protocol version ${version} > ${SUPPORTED_PROTOCOL_VERSION}. This version of node-foundationdb only officially supports protocol version ${SUPPORTED_PROTOCOL_VERSION} or earlier.
+
+Please update node-foundationdb if you haven't done so then file a ticket:
+https://github.com/josephg/node-foundationdb/issues
+`)
+    }
 
     nativeMod.setAPIVersion(version)
     apiVersion = version
