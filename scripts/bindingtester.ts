@@ -223,7 +223,7 @@ const makeMachine = (db: Database, initialName: Buffer) => {
       const prefix = await popBuffer()
 
       const results = (await oper.getRangeAll(beginSel, endSel, {streamingMode, limit, reverse}))
-        .filter(([k]) => bufBeginsWith(k, prefix))
+        .filter(([k]) => bufBeginsWith(k as Buffer, prefix))
 
       pushValue(tuple.pack(Array.prototype.concat.apply([], results)))
     },
@@ -443,7 +443,7 @@ const run = async (db: Database, prefix: Buffer, log?: fs.WriteStream) => {
   const instructions = await db.getRangeAll(begin, end)
   // console.log(`Executing ${instructions.length} instructions from ${prefix.toString()}`)
   for (const [key, value] of instructions) {
-    await machine.run(value, log)
+    await machine.run(value as Buffer, log)
     // TODO: consider inserting tiny sleeps to increase concurrency.
   }
   instructionsRun += instructions.length

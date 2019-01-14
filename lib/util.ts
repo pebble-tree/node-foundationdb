@@ -23,7 +23,9 @@ byteZero.writeUInt8(0, 0)
 
 // This appends \x00 to a key to get the next key.
 export const strNext = (val: string | Buffer): Buffer => {
-  const buf = Buffer.from(val)
+  // Buffer.from does support taking a string but @types/node has overly
+  // strict type definitions for the function.
+  const buf = Buffer.from(val as any)
   return Buffer.concat([buf, byteZero], buf.length + 1)
 }
 

@@ -39,7 +39,7 @@ const conflictWrites = async () => {
   console.log('\nValue is now', fromBuf(await db.get('val')), 'after', txnAttempts, 'commit attempts')
 }
 
-const batchToStr = (batch: [Buffer, Buffer][]) => batch.map(([k,v]) => [k.toString(), v.toString()])
+const batchToStr = (batch: [string | Buffer, string | Buffer][]) => batch.map(([k,v]) => [k.toString(), v.toString()])
 
 const rangeTest = async () => {
   await db.clearRangeStartsWith('x')

@@ -8,7 +8,7 @@ import {
 
 
 withEachDb(db => describe('key value functionality', () => {
-  const batchToStrUnprefix = (batch: [Buffer, Buffer][]) => (
+  const batchToStrUnprefix = (batch: [string | Buffer, string | Buffer][]) => (
     batch.map(([k,v]) => [k.toString(), v.toString()])
   )
 

@@ -51,7 +51,8 @@ export type WatchOptions = {
 // Polyfill for node < 10.0 to make asyncIterators work (getRange / getRangeBatch).
 if ((<any>Symbol).asyncIterator == null) (<any>Symbol).asyncIterator = Symbol.for("Symbol.asyncIterator")
 
-// export default class Transaction<Key = string | Buffer, Value = Buffer> {
+// NativeValue is string | Buffer because the C code accepts either format.
+// But all values returned from methods will actually just be Buffer.
 export default class Transaction<Key = NativeValue, Value = NativeValue> {
   _tn: NativeTransaction
   isSnapshot: boolean
@@ -224,7 +225,7 @@ export default class Transaction<Key = NativeValue, Value = NativeValue> {
     const childOpts: RangeOptions = {...opts}
     if (childOpts.streamingMode == null) childOpts.streamingMode = StreamingMode.WantAll
 
-    const result: [Buffer, Buffer][] = []
+    const result: [Key, Value][] = []
     for await (const batch of this.getRangeBatch(start, end, childOpts)) {
       result.push.apply(result, batch)
     }
