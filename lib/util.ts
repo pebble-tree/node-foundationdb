@@ -1,3 +1,5 @@
+import * as apiVersion from './apiVersion'
+
 // String increment. Find the next string (well, buffer) after this buffer.
 export const strInc = (val: string | Buffer): Buffer => {
   const buf = typeof val === 'string' ? Buffer.from(val) : val
@@ -29,10 +31,17 @@ export const strNext = (val: string | Buffer): Buffer => {
   return Buffer.concat([buf, byteZero], buf.length + 1)
 }
 
-export const packVersionstampedValue = (vs: Buffer | null, val: Buffer) => {
-  const result = Buffer.alloc(val.length + 10)
-  if (vs) vs.copy(result, 0)
-  val.copy(result, 10)
+export const packVersionstampedValue = (val: Buffer, pos: number = 0) => {
+  const writeOffset = apiVersion.get()! >= 520
+  if (!writeOffset && pos !== 0) throw Error('Cannot write versionstamped value at non-zero offset before API version 520')
+
+  const result = Buffer.alloc(val.length + 10 + (writeOffset ? 4 : 0))
+  // if (vs) vs.copy(result, pos)
+
+  if (pos > 0) val.copy(result, 0, 0, pos)
+  val.copy(result, pos + 10, pos)
+  if (writeOffset) result.writeUInt32LE(pos, result.length - 4)
+
   return result
 }
 

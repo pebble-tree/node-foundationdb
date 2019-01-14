@@ -24,7 +24,8 @@ export const strXF = {
 }
 
 // Only testing with one API version for now.
-export const testApiVersion = 510
+// This should work with API versions 510, 520 and 600.
+export const testApiVersion = 600
 
 export const withEachDb = (fn: (db: fdb.Database) => void) => {
   fdb.setAPIVersion(testApiVersion)

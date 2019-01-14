@@ -18,6 +18,9 @@ import {
 } from './opts.g'
 import Database from './database'
 
+import * as apiVersion from './apiVersion'
+
+
 const byteZero = Buffer.alloc(1)
 byteZero.writeUInt8(0, 0)
 
@@ -325,17 +328,35 @@ export default class Transaction<Key = NativeValue, Value = NativeValue> {
     this.atomicOpNative(MutationType.SetVersionstampedKey, keyBytes, this._valueEncoding.pack(value))
   }
 
+  encodeStamp(prefix: Buffer | null, suffix: Buffer | null, index?: number): Buffer {
+    // TODO: It might make sense to rip this out and leave it to the KV
+    // encoder to deal with.
+
+    const stampPos = prefix ? prefix.length : 0
+
+    // Version <520: last 2 bytes of passed key is LE key position
+    // Version >= 520: last 4 bytes of passed key contain key pos
+    const use4ByteKey = apiVersion.get()! >= 520
+
+    const len = stampPos + 10 + (suffix ? suffix.length : 0) + (use4ByteKey ? 4 : 2)
+
+    const stamp = Buffer.alloc(len)
+
+    if (prefix) prefix.copy(stamp, 0)
+    if (suffix) suffix.copy(stamp, stampPos + 10)
+
+    // Using BE here so they're ordered within the transaction.
+    // stamp.writeUInt16BE(0xab, stampPos + 10)
+
+    if (use4ByteKey) stamp.writeUInt32LE(stampPos, stamp.length - 4)
+    else stamp.writeUInt16LE(stampPos, stamp.length - 2)
+
+    return stamp
+  }
+
   // This sets the key [prefix, 10 bytes versionstamp, suffix] to value.
   setVersionstampedKeyBuf(prefix: Buffer | null, suffix: Buffer | null, value: Value) {
-    const stampPos = prefix ? prefix.length : 0
-    // Last 2 bytes of key need to contain LE length.
-    const len = stampPos + 10 + (suffix ? suffix.length : 0) + 2
-
-    const key = Buffer.alloc(len)
-    if (prefix) prefix.copy(key, 0)
-    if (suffix) suffix.copy(key, stampPos + 10)
-    key.writeUInt16LE(stampPos, key.length - 2)
-
+    const key = this.encodeStamp(prefix, suffix)
     this.atomicOpNative(MutationType.SetVersionstampedKey, key, this._valueEncoding.pack(value))
   }
   setVersionstampedKey(prefix: Key, suffix: Buffer | null, value: Value) {
@@ -355,8 +376,8 @@ export default class Transaction<Key = NativeValue, Value = NativeValue> {
   // This packs the value by prefixing the version stamp to the
   // valueEncoding's packed version of the value.
   // This is intended for use with getPackedVersionstampedValue.
-  setPackedVersionstampedValue(key: Key, value: Value) {
-    const valPack = packVersionstampedValue(null, asBuf(this._valueEncoding.pack(value)))
+  setPackedVersionstampedValue(key: Key, value: Value, pos?: number) {
+    const valPack = packVersionstampedValue(asBuf(this._valueEncoding.pack(value)), pos)
     this.atomicOpKB(MutationType.SetVersionstampedValue, key, valPack)
   }
 }

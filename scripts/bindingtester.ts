@@ -5,6 +5,9 @@
 // 
 // https://github.com/apple/foundationdb/blob/master/bindings/bindingtester/spec/bindingApiTester.md
 
+// This script should not be invoked directly. Instead checkout foundationdb
+// and invoke the binding tester from there, pointing it at this script.
+
 import * as fdb from '../lib'
 import {
   Transaction, Database,

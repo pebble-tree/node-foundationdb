@@ -10,46 +10,16 @@ import {eachOption} from './opts'
 import {NetworkOptions, networkOptionData, DatabaseOptions} from './opts.g'
 import {Transformer} from './transaction'
 
-let apiVersion: number | null = null
+import * as apiVersion from './apiVersion'
+
+// Must be called before fdb is initialized. Eg setAPIVersion(510).
+export {set as setAPIVersion} from './apiVersion'
+
 let initCalled = false
-
-const SUPPORTED_PROTOCOL_VERSION = 600
-
-// Eg 510.
-export function setAPIVersion(version: number) {
-  if (typeof version !== 'number') throw TypeError('version must be a number')
-
-  if (apiVersion != null) {
-    if (apiVersion !== version) {
-      throw Error('foundationdb already initialized with API version ' + apiVersion)
-    }
-  } else {
-    // Old versions probably work fine, but there are no tests to check.
-    if (version < 500) throw Error('FDB Node bindings only support API versions >= 500')
-    
-    if (version > SUPPORTED_PROTOCOL_VERSION) {
-      // I'm going to allow it to work anyway since API changes seem to be
-      // backwards compatible, but its possible that API-incompatible changes
-      // will break something.
-
-      // To update, we should really only need to regenerate lib/opts.g.ts
-      // using scripts/gentsopts.ts then re-run the binding test suite to make
-      // sure everything is working.
-      console.warn(`Warning: Using foundationdb protocol version ${version} > ${SUPPORTED_PROTOCOL_VERSION}. This version of node-foundationdb only officially supports protocol version ${SUPPORTED_PROTOCOL_VERSION} or earlier.
-
-Please update node-foundationdb if you haven't done so then file a ticket:
-https://github.com/josephg/node-foundationdb/issues
-`)
-    }
-
-    nativeMod.setAPIVersion(version)
-    apiVersion = version
-  }
-}
 
 // This is called implicitly when the first cluster / db is opened.
 const init = () => {
-  if (apiVersion == null) {
+  if (apiVersion.get() == null) {
     throw Error('You must specify an API version to connect to FoundationDB. Eg: fdb.setAPIVersion(510);')
   }
 

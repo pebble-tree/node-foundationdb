@@ -93,13 +93,24 @@ withEachDb(db => describe('key value functionality', () => {
 
   it('handles setVersionstampedKey correctly', async () => {
     const keyPrefix = Buffer.from('hi there')
+    const keySuffix = Buffer.from('xxyy')
 
-    await db.setVersionstampedKeyPrefix(keyPrefix, Buffer.from('yo yo'))
+    await db.setVersionstampedKey(keyPrefix, keySuffix, Buffer.from('yo yo'))
     const result = await db.getRangeAllStartsWith(keyPrefix)
     assert.strictEqual(result.length, 1)
     const [keyResult, valResult] = result[0]
-    assert.strictEqual(keyResult.slice(0, keyPrefix.length).toString(), 'hi there')
-    assert.strictEqual(keyResult.length, keyPrefix.length + 10)
+
+    // keyResult should be (keyPrefix) (10 bytes of stamp) (2 byte user suffix) (keySuffix).
+    assert.strictEqual(keyResult.length, keyPrefix.length + 10 + keySuffix.length)
+    const actualPrefix = keyResult.slice(0, keyPrefix.length)
+    const actualStamp = keyResult.slice(keyPrefix.length, keyPrefix.length + 10)
+    const actualSuffix = keyResult.slice(keyPrefix.length + 10)
+    
+    assert.deepStrictEqual(actualPrefix, keyPrefix)
+    assert.deepStrictEqual(actualSuffix, keySuffix)
+
+    console.log('stamp', actualStamp)
+
     assert.strictEqual(valResult.toString(), 'yo yo')
   })
 
