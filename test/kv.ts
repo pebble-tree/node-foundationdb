@@ -109,7 +109,7 @@ withEachDb(db => describe('key value functionality', () => {
     assert.deepStrictEqual(actualPrefix, keyPrefix)
     assert.deepStrictEqual(actualSuffix, keySuffix)
 
-    console.log('stamp', actualStamp)
+    // console.log('stamp', actualStamp)
 
     assert.strictEqual(valResult.toString(), 'yo yo')
   })
