@@ -1,10 +1,12 @@
 import * as fdb from './native'
 import Transaction, {
-  Transformer,
   RangeOptions,
   Watch,
   WatchOptions,
 } from './transaction'
+import {
+  Transformer, isPackUnbound
+} from './transformer'
 import {NativeValue} from './native'
 import {KeySelector} from './keySelector'
 import FDBError from './error'
@@ -37,8 +39,16 @@ const prefixTransformer = <V>(prefix: string | Buffer, inner: Transformer<V>): T
   return {
     pack(v: V) {
       // If you heavily nest these it'll get pretty inefficient.
-      const buf = asBuf(inner.pack(v))
-      return concat2(_prefix, buf)
+      const innerVal = inner.pack(v)
+      if (isPackUnbound(innerVal)) {
+        return {
+          data: concat2(_prefix, innerVal.data),
+          stampPos: _prefix.length + innerVal.stampPos,
+          codePos: innerVal.codePos != null ? _prefix.length + innerVal.codePos : undefined,
+        }
+      } else {
+        return concat2(_prefix, asBuf(innerVal))
+      }
     },
     unpack(buf: Buffer) {
       return inner.unpack(buf.slice(_prefix.length))
@@ -87,6 +97,7 @@ export default class Database<Key = NativeValue, Value = NativeValue> {
   at<ChildKey, ChildVal>(prefix: Key | null, keyXf: Transformer<ChildKey>, valueXf: Transformer<ChildVal>): Database<ChildKey, ChildVal>;
   at<ChildKey, ChildVal>(prefix: Key | null, keyXf: Transformer<any> = this._keyXf, valueXf: Transformer<any> = this._valueXf) {
     const _prefix = prefix == null ? null : this._keyXf.pack(prefix)
+    if (_prefix != null && isPackUnbound(_prefix)) throw new TypeError('Cannot use unset versionstamp as a DB prefix')
     return new Database(this._db, concatPrefix(this._prefix, _prefix), keyXf, valueXf)
   }
 
@@ -115,6 +126,7 @@ export default class Database<Key = NativeValue, Value = NativeValue> {
         // See if we can retry the transaction
         if (err instanceof FDBError) {
           await tn.rawOnError(err.code) // If this throws, punt error to caller.
+          tn.resetCode()
           // If that passed, loop.
         } else throw err
       }
@@ -146,12 +158,22 @@ export default class Database<Key = NativeValue, Value = NativeValue> {
   getKey(selector: Key | KeySelector<Key>): Promise<Key | null> {
     return this.doTransaction(tn => tn.snapshot().getKey(selector))
   }
-  getPackedVersionstampedValue(key: Key): Promise<{stamp: Buffer, val: Value} | null> {
-    return this.doTransaction(tn => tn.snapshot().getPackedVersionstampedValue(key))
+  getVersionstampPrefixedValue(key: Key): Promise<{stamp: Buffer, val: Value} | null> {
+    return this.doTransaction(tn => tn.snapshot().getVersionstampPrefixedValue(key))
   }
 
   set(key: Key, value: Value) {
     return this.doOneshot(tn => tn.set(key, value))
+  }
+
+  // I'm not sure what to call this... this is sort of awkward, but maybe
+  // fine. It'd be nice to have a version of this method which bakes the
+  // versionstamp into the passed key
+  async setAndGetVersionStamp(key: Key, value: Value) {
+    return await (await this.doTransaction(async tn => {
+      tn.set(key, value)
+      return [tn.getVersionStamp()]
+    }))[0]
   }
 
   clear(key: Key) {
@@ -245,8 +267,8 @@ export default class Database<Key = NativeValue, Value = NativeValue> {
 
   setVersionstampedValue(key: Key, oper: Value) { return this.atomicOp(MutationType.SetVersionstampedValue, key, oper) }
   setVersionstampedValueBuf(key: Key, oper: Buffer) { return this.atomicOpKB(MutationType.SetVersionstampedValue, key, oper) }
-  setPackedVersionstampedValue(key: Key, value: Value) {
-    return this.doOneshot(tn => tn.setPackedVersionstampedValue(key, value))
+  setVersionstampPrefixedValue(key: Key, value: Value) {
+    return this.doOneshot(tn => tn.setVersionstampPrefixedValue(key, value))
   }
 }
 

@@ -108,7 +108,7 @@ const versions = async () => {
 
   const tn = db.rawCreateTransaction()
   // tn.set('x', 'y')
-  tn.setVersionstampedValue('x', Buffer.from([1, 2,1,2,1,2,1,2,1,2]))
+  tn.setVersionstampPrefixedValue('x', Buffer.from([1,2,3]))
   // await tn.rawCommit()
   // console.log(await tn.getCommittedVersion())
   const vstn = tn.getVersionStamp()
@@ -119,7 +119,7 @@ const versions = async () => {
 
 const versions2 = async () => {
   const stamp = await db.doTransaction(async tn => {
-    tn.setVersionstampedValue('x', Buffer.from([1,2, 1,2,1,2,1,2,1,2]))
+    tn.setVersionstampPrefixedValue('x', Buffer.from([1,2,3]))
     return tn.getVersionStamp()
   })
 

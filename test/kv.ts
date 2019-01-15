@@ -6,9 +6,19 @@ import {
   bufToNum,
   withEachDb,
 } from './util'
-import {MutationType} from '../lib'
+import {MutationType, tuple, TupleItem, encoders} from '../lib'
 
 process.on('unhandledRejection', err => { throw err })
+
+
+const codeBuf = (code: number) => {
+  const b = Buffer.alloc(2)
+  b.writeUInt16BE(code, 0)
+  return b
+}
+const bakeVersionStamp = (vs: Buffer, code: number): TupleItem => ({
+  type: 'versionstamp', value: Buffer.concat([vs, codeBuf(code)])
+})
 
 withEachDb(db => describe('key value functionality', () => {
   it('reads its writes inside a txn', async () => {
@@ -91,39 +101,96 @@ withEachDb(db => describe('key value functionality', () => {
     assert(txnAttempts > concurrentWrites)
   })
 
-  it('handles setVersionstampedKey correctly', async () => {
-    const keyPrefix = Buffer.from('hi there')
-    const keySuffix = Buffer.from('xxyy')
+  describe('version stamps', () => {
+    it('handles setVersionstampedKey correctly', async () => {
+      const keyPrefix = Buffer.from('hi there')
+      const keySuffix = Buffer.from('xxyy')
 
-    await db.setVersionstampedKey(keyPrefix, keySuffix, Buffer.from('yo yo'))
-    const result = await db.getRangeAllStartsWith(keyPrefix)
-    assert.strictEqual(result.length, 1)
-    const [keyResult, valResult] = result[0]
+      await db.setVersionstampedKey(keyPrefix, keySuffix, Buffer.from('yo yo'))
+      const result = await db.getRangeAllStartsWith(keyPrefix)
+      assert.strictEqual(result.length, 1)
+      const [keyResult, valResult] = result[0]
 
-    // keyResult should be (keyPrefix) (10 bytes of stamp) (2 byte user suffix) (keySuffix).
-    assert.strictEqual(keyResult.length, keyPrefix.length + 10 + keySuffix.length)
-    const actualPrefix = keyResult.slice(0, keyPrefix.length)
-    const actualStamp = keyResult.slice(keyPrefix.length, keyPrefix.length + 10)
-    const actualSuffix = keyResult.slice(keyPrefix.length + 10)
-    
-    assert.deepStrictEqual(actualPrefix, keyPrefix)
-    assert.deepStrictEqual(actualSuffix, keySuffix)
+      // keyResult should be (keyPrefix) (10 bytes of stamp) (2 byte user suffix) (keySuffix).
+      assert.strictEqual(keyResult.length, keyPrefix.length + 10 + keySuffix.length)
+      const actualPrefix = keyResult.slice(0, keyPrefix.length)
+      const actualStamp = keyResult.slice(keyPrefix.length, keyPrefix.length + 10)
+      const actualSuffix = keyResult.slice(keyPrefix.length + 10)
+      
+      assert.deepStrictEqual(actualPrefix, keyPrefix)
+      assert.deepStrictEqual(actualSuffix, keySuffix)
 
-    // console.log('stamp', actualStamp)
+      // console.log('stamp', actualStamp)
 
-    assert.strictEqual(valResult.toString(), 'yo yo')
-  })
+      assert.strictEqual(valResult.toString(), 'yo yo')
+    })
 
-  it('handles setVersionstampedValue', async () => {
-    const db_ = db.withValueEncoding(strXF)
-    await db_.setPackedVersionstampedValue('hi there', 'yooo')
-    
-    const result = await db_.getPackedVersionstampedValue('hi there')
-    assert(result != null)
+    it('handles setVersionstampedValue', async () => {
+      const db_ = db.withValueEncoding(strXF)
+      await db_.setVersionstampPrefixedValue('hi there', 'yooo')
+      
+      const result = await db_.getVersionstampPrefixedValue('hi there')
+      assert(result != null)
 
-    const {stamp, val} = result!
-    assert.strictEqual(stamp.length, 10) // Opaque.
-    assert.strictEqual(val, 'yooo')
+      const {stamp, val} = result!
+      assert.strictEqual(stamp.length, 10) // Opaque.
+      assert.strictEqual(val, 'yooo')
+    })
+
+    it('roundtrips a tuple key', async () => {
+      const db_ = db.withKeyEncoding(tuple)
+      await db_.set([1,2,3], 'hi there')
+      const result = await db_.get([1,2,3])
+      assert.strictEqual(result!.toString('utf8'), 'hi there')
+    })
+
+    it('commits a tuple with unbound versionstamps', async () => {
+      const db_ = db.withKeyEncoding(tuple)
+      await db_.set([1,2,3, {type: 'unbound versionstamp'}], 'hi there')
+
+      // const results = await db.getRangeAllStartsWith(tuple.packBound([1,2,3]))
+      // assert.strictEqual(results.length, 1)
+      // console.log(results[0][0])
+      const results = await db_.getRangeAllStartsWith([1,2,3])
+      assert.strictEqual(results.length, 1)
+      const [key, value] = results[0]
+
+      // We don't know what the versionstamp is, so we'll need to peel it off.
+      const stamp = key.pop() as any
+      assert.deepStrictEqual(key, [1,2,3])
+      assert.strictEqual(stamp.type, 'versionstamp')
+      assert((stamp.value as Buffer).readUInt32BE(4) > 0)
+
+      assert.strictEqual(value.toString('utf8'), 'hi there')
+    })
+
+    it('supports multiple different versionstamp keys in the same txn', async () => {
+      const db_ = db.withKeyEncoding(tuple).withValueEncoding(encoders.string)
+      const vsp = (await db_.doTn(async tn => {
+        tn.set([{type: 'unbound versionstamp'}], 'a')
+        tn.set([{type: 'unbound versionstamp'}], 'b')
+        return [tn.getVersionStamp()] // Avoid the automatic double-unwrapping of promises :(
+      }))[0]
+
+      const vs = await vsp
+      // console.log('vs', vs)
+      const results = await db_.getRangeAllStartsWith([])
+      // console.log('results', results[0], results[1])
+
+
+      assert.deepStrictEqual(results, [
+        [[bakeVersionStamp(vs, 0)], 'a'],
+        [[bakeVersionStamp(vs, 1)], 'b'],
+      ])
+    })
+
+    it('correctly encodes versionstamps in child tuples', async () => {
+      const db_ = db.withKeyEncoding(tuple).withValueEncoding(encoders.string)
+      const vs = await db_.setAndGetVersionStamp([1,[2, {type: 'unbound versionstamp'}]], 'hi there')
+
+      const results = await db_.getRangeAllStartsWith([])
+      assert.deepStrictEqual(results, [[[1,[2, bakeVersionStamp(vs, 0)]], 'hi there']])
+    })
   })
 
   describe('watch', () => {

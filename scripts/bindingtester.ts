@@ -18,6 +18,8 @@ import {
   TransactionOptionCode,
 } from '../lib'
 
+import {asBound} from '../lib/transformer'
+
 import assert = require('assert')
 import nodeUtil = require('util')
 import chalk from 'chalk'
@@ -57,12 +59,12 @@ const makeMachine = (db: Database, initialName: Buffer) => {
     if (e instanceof fdb.FDBError) {
       // This encoding is silly.
       // console.error('xxx', e.code, e.message, e.stack)
-      return fdb.tuple.pack([Buffer.from('ERROR'), Buffer.from(e.code.toString())])
+      return asBound(fdb.tuple.pack([Buffer.from('ERROR'), Buffer.from(e.code.toString())]))
     } else throw e
   }
 
   const unwrapNull = <T>(val: T | null) => val == null ? Buffer.from('RESULT_NOT_PRESENT') : val
-  const wrapP = <T>(p: Promise<T>) => (p instanceof Promise) ? p.then(unwrapNull, catchFdbErr) : unwrapNull(p)
+  const wrapP = <T>(p: T | Promise<T>) => (p instanceof Promise) ? p.then(unwrapNull, catchFdbErr) : unwrapNull(p)
 
   const popValue = async () => {
     assert(stack.length, 'popValue when stack is empty')
@@ -145,10 +147,13 @@ const makeMachine = (db: Database, initialName: Buffer) => {
         await db.doTransaction(async tn => {
           for (let k = 0; k < 100 && i < stack.length; k++) {
             const {instrId, data} = stack[i]
-            let packedData = fdb.tuple.pack([await wrapP<TupleItem>(data)])
+            let packedData = asBound(fdb.tuple.pack([
+              await wrapP<TupleItem>(data)
+            ]))
             if (packedData.length > 40000) packedData = packedData.slice(0, 40000)
 
-            tn.set(Buffer.concat([prefix, fdb.tuple.pack([i, instrId])]), packedData)
+            // TODO: Would be way better here to use a tuple transaction.
+            tn.set(Buffer.concat([prefix, asBound(fdb.tuple.pack([i, instrId]))]), packedData)
             i++
           }
         })
@@ -325,10 +330,11 @@ const makeMachine = (db: Database, initialName: Buffer) => {
       pushValue(end)
     },
     async tuple_sort() {
-      // Look I'll be honest. I could put a compare function into the tuple type, but it doesn't do anything you can't trivially do yourself.
+      // Look I'll be honest. I could put a compare function into the tuple
+      // type, but it doesn't do anything you can't trivially do yourself.
       const items = (await popNValues())
         .map(buf => tuple.unpack(buf as Buffer, true))
-        .sort((a: TupleItem[], b: TupleItem[]) => tuple.pack(a).compare(tuple.pack(b)))
+        .sort((a: TupleItem[], b: TupleItem[]) => asBound(tuple.pack(a)).compare(asBound(tuple.pack(b))))
 
       for (const item of items) pushValue(tuple.pack(item))
     },

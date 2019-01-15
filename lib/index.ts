@@ -8,7 +8,7 @@ import nativeMod, * as fdb from './native'
 import Database, {createDatabase} from './database'
 import {eachOption} from './opts'
 import {NetworkOptions, networkOptionData, DatabaseOptions} from './opts.g'
-import {Transformer} from './transaction'
+import {Transformer} from './transformer'
 
 import * as apiVersion from './apiVersion'
 
@@ -57,10 +57,10 @@ import {strInc} from './util'
 export const util = {strInc}
 
 // TODO: Remove tuple from the root API. Tuples should be in a separate module.
-import {pack, unpack, range, TupleItem} from './tuple'
+import {pack, unpack, range, packBound, TupleItem, TupleItemBound} from './tuple'
 
-export {TupleItem}
-export const tuple = {pack, unpack, range}
+export {TupleItem, TupleItemBound}
+export const tuple = {pack, unpack, range, packBound}
 
 const id = (x: any) => x
 export const encoders = {

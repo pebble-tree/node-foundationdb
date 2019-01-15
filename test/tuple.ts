@@ -2,6 +2,12 @@ import 'mocha'
 import assert = require('assert')
 import {tuple, TupleItem} from '../lib'
 
+const floatBytes = (x: number) => {
+  const result = Buffer.alloc(4)
+  result.writeFloatBE(x, 0)
+  return result
+}
+
 describe('tuple', () => {
   const assertRoundTrip = (val: TupleItem, strict: boolean = false) => {
     const packed = tuple.pack([val])
@@ -20,7 +26,7 @@ describe('tuple', () => {
     assertRoundTrip(data)
 
     assertRoundTrip(0.75)
-    assertRoundTrip({type: 'float', value: 0.5}, true)
+    assertRoundTrip({type: 'float', value: 0.5, rawEncoding:floatBytes(0.5)}, true)
   })
 
   it('preserves encoding of values in strict mode', () => {
@@ -49,14 +55,14 @@ describe('tuple', () => {
     // These are from the examples here:
     // https://github.com/apple/foundationdb/blob/master/design/tuple.md
 
-    const testConformance = (name: string, value: any, bytes: Buffer | string) => {
+    const testConformance = (name: string, value: TupleItem, bytes: Buffer | string) => {
       it(name, () => {
         const encoded = tuple.pack([value])
         assert.deepStrictEqual(encoded, Buffer.isBuffer(bytes) ? bytes : Buffer.from(bytes, 'ascii'))
 
         const decoded = tuple.unpack(encoded)
         // Node 8
-        if (isNaN(value)) assert(isNaN(decoded[0] as number))
+        if (isNaN(value as number)) assert(isNaN(decoded[0] as number))
         else assert.deepStrictEqual(decoded, [value])
       })
     }
@@ -76,5 +82,10 @@ describe('tuple', () => {
     // testConformance(-42.
     // testConformance('nan float', NaN, Buffer.from('0007ffffffffffff', 'hex')
     testConformance('nan double', NaN, Buffer.from('21fff8000000000000', 'hex'))
+    testConformance('bound version stamp',
+      {type: 'versionstamp', value: Buffer.alloc(12).fill(0xe3)},
+      Buffer.from('33e3e3e3e3e3e3e3e3e3e3e3e3', 'hex')
+    )
+    // TODO: unbound versionstamps
   })
 })

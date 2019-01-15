@@ -36,7 +36,8 @@ export const withEachDb = (fn: (db: fdb.Database) => void) => {
   const db = fdb.openSync().at(prefix)
 
   // We need to do this both before and after tests run to clean up any mess
-  // that a previously aborted test left behind.
+  // that a previously aborted test left behind. This is safe - it only clears
+  // everything at the specified prefix. Its terrifying though.
   beforeEach(() => db.clearRangeStartsWith(''))
   afterEach(() => db.clearRangeStartsWith(''))
 

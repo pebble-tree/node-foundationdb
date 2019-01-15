@@ -26,6 +26,8 @@
 // final argument to decode.
 
 import assert = require('assert')
+import {ValWithUnboundVersionStamp, isPackUnbound, asBound} from './transformer'
+
 
 const numByteLen = (num: number) => {
   let max = 1
@@ -57,7 +59,7 @@ enum Code {
 // Supported tuple item types.
 // This awkwardness brougth to you by:
 // https://github.com/unional/typescript-guidelines/blob/master/pages/advance-types/recursive-types.md
-export type TupleItem = null | Buffer | string | TupleArr | number | boolean | {
+export type TupleItemBound = null | Buffer | string | TupleArr | number | boolean | {
   type: 'uuid', value: Buffer
 } | {
   // This is flattened into a double during decoding if noCanonicalize is
@@ -65,15 +67,33 @@ export type TupleItem = null | Buffer | string | TupleArr | number | boolean | {
   // single binary layout. To preserve the binary representation of NaNs
   // across encoding / decoding, we'll store the original NaN encoding on the
   // object. This is needed for the binding tester to pass.
-  type: 'float', value: number, rawEncoding?: Buffer, // Encoding used for NaN
+  type: 'float', value: number, rawEncoding?: Buffer, // Encoding needed to pass binding tester
 } | {
   // As above, although this is only used for noCanonicalize + NaN value.
   type: 'double', value: number, rawEncoding?: Buffer,
 } | {
+  // Lets talk a bit about versionstamps. They're a really useful feature, but
+  // they totally wreck all our abstractions, because the versionstamp doesn't
+  // get filled in until we commit the transaction. This means:
+  //
+  // - The data field for a versionstamp is optional. If its missing, that
+  //   means we'll fill it in on commit
+  // - Tuples can only contain have one incomplete versionstamp. When setting
+  //   a value using tuples, either the key or the value can contain a
+  //   versionstamp but not both.
+  // - There's a dodgy escape hatch so that txn.set() will use
+  //   setVersionstampedKey or setVersionstampedValue when committing
+  // - TODO: Ideally the versionstamp itself in the tuple should get filled in
+  //   on commit
+
   // Buffer will be 12 bytes long. The first 10 bytes contain the database-
   // internal version, then 2 byte user version (which is usually the offset
   // within the transaction).
   type: 'versionstamp', value: Buffer
+}
+
+export type TupleItem = TupleItemBound | {
+  type: 'unbound versionstamp', code?: number
 }
 
 export interface TupleArr extends Array<TupleItem> {}
@@ -144,6 +164,26 @@ class BufferBuilder {
     val.copy(this.storage, this.used)
     this.used += val.length
   }
+
+  // This returns a slice into the specified number of bytes that the caller
+  // can fill. Note the slice is only valid until the next call to a write
+  // function. Write into the slice before then.
+  writeInto(numBytes: number): Buffer {
+    this.need(numBytes)
+    this.used += numBytes
+    return this.storage.slice(this.used - numBytes, this.used)
+  }
+
+  // appendZeros(num: number) {
+  //   this.need(num)
+  //   this.used += num
+  // }
+
+  // appendU16BE(num: number) {
+  //   this.need(2)
+  //   this.storage.writeUInt16BE(num, this.used)
+  //   this.used += 2
+  // }
 }
 
 const adjustFloat = (data: Buffer, isEncode: boolean) => {
@@ -155,7 +195,8 @@ const adjustFloat = (data: Buffer, isEncode: boolean) => {
   return data
 }
 
-const encode = (into: BufferBuilder, item: TupleItem) => {
+type VersionStampPos = {stamp?: number, code?: number}
+const encode = (into: BufferBuilder, item: TupleItem, versionStampPos: VersionStampPos) => {
   if (item === undefined) throw new TypeError('Packed element cannot be undefined')
   else if (item === null) into.appendByte(Code.Null)
   else if (item === false) into.appendByte(Code.False)
@@ -180,9 +221,10 @@ const encode = (into: BufferBuilder, item: TupleItem) => {
     into.appendByte(0)
 
   } else if (Array.isArray(item)) {
+    // Embedded child tuple.
     into.appendByte(Code.Nested)
     for (let i = 0; i < item.length; i++) {
-      encode(into, item[i])
+      encode(into, item[i], versionStampPos)
       if (item[i] == null) into.appendByte(0xff)
     }
     into.appendByte(0)
@@ -232,27 +274,42 @@ const encode = (into: BufferBuilder, item: TupleItem) => {
     assert(item.value.length === 16, 'Invalid UUID: Should be 16 bytes exactly')
     into.appendBuffer(item.value)
 
+  } else if (typeof item === 'object' && item.type === 'unbound versionstamp') {
+    into.appendByte(Code.Versionstamp)
+    if (versionStampPos.stamp != null) throw new TypeError('Tuples may only contain 1 unset versionstamp')
+    versionStampPos.stamp = into.used
+    into.writeInto(10)
+    if (item.code != null) {
+      into.writeInto(2).writeUInt16BE(item.code, 0)
+    } else {
+      versionStampPos.code = into.used
+      into.writeInto(2)
+    }
   } else if (typeof item === 'object' && item.type === 'versionstamp') {
-    // TODO. This is messy - when writing an item with a versionstamp we need
-    // to use a different write method.
-    throw new Error('Encoding versionstamps not yet implemented in JS tuples')
-
+    into.appendByte(Code.Versionstamp)
+    into.appendBuffer(item.value)
   } else {
     let x: never = item // Compile error if this is legitimately reachable
     throw new TypeError('Packed items must be basic types or lists')
   }
 }
 
-export function pack(arr: TupleItem[]) {
-  if (!Array.isArray(arr))
-    throw new TypeError('fdb.tuple.pack must be called with an array');
+export function pack(arr: TupleItem[]): Buffer | ValWithUnboundVersionStamp {
+  if (!Array.isArray(arr)) throw new TypeError('fdb.tuple.pack must be called with an array')
 
+  let versionStampPos: VersionStampPos = {}
   const builder = new BufferBuilder()
   for (let i = 0; i < arr.length; i++) {
-    encode(builder, arr[i])
+    encode(builder, arr[i], versionStampPos)
   }
-  return builder.make()
+
+  const data = builder.make()
+  return versionStampPos.stamp == null
+    ? data
+    : {data, stampPos: versionStampPos.stamp, codePos: versionStampPos.code}
 }
+
+export const packBound = (arr: TupleItemBound[]): Buffer => asBound(pack(arr))
 
 
 // *** Decode
@@ -281,9 +338,9 @@ function decodeNumber(buf: Buffer, offset: number, numBytes: number) {
   return num
 }
 
-function decode(buf: Buffer, pos: {p: number}, noCanonicalize: boolean): TupleItem {
+function decode(buf: Buffer, pos: {p: number}, vsAt: number, noCanonicalize: boolean): TupleItem {
   const code = buf.readUInt8(pos.p++) as Code
-  let p = pos.p
+  let {p} = pos
 
   switch (code) {
     case Code.Null: return null
@@ -311,7 +368,7 @@ function decode(buf: Buffer, pos: {p: number}, noCanonicalize: boolean): TupleIt
             pos.p += 2
             result.push(null)
           }
-        } else result.push(decode(buf, pos, noCanonicalize))
+        } else result.push(decode(buf, pos, vsAt, noCanonicalize))
       }
       pos.p++ // Eat trailing 0.
       return result
@@ -322,17 +379,20 @@ function decode(buf: Buffer, pos: {p: number}, noCanonicalize: boolean): TupleIt
       adjustFloat(numBuf, false)
       pos.p += 8
 
-      // There's a couple things going on here:
-      // - buffer.readDoubleBE canonicalizes all NaNs to the same NaN value.
-      // This is usually fine, but it means unpack(pack(val)) is sometimes not
-      // bit-identical. Amongst other things, this makes the binding tester fail.
-      // DataView#getFloat64 doesn't have this behaviour.
-      // 
-      // - In canonical mode we also wrap all doubles so that when you re-encode
-      // them they don't get confused with ints (or floats, or anything else).
+      // In canonical mode we wrap all doubles & floats so that when you re-
+      // encode them they don't get confused with other numeric types.
+
+      // Also buffer.readDoubleBE canonicalizes all NaNs to the same NaN
+      // value. This is usually fine, but it means unpack(pack(val)) is
+      // sometimes not bit-identical. There's also some canonicalization of
+      // other funky float values. We need to avoid all of that to make the
+      // bindingtester pass - which is a bit unnecessarily exhausting; but
+      // fine. To solve this I'm storing the raw encoding so we can copy that
+      // back in encode().
+      const value = numBuf.readDoubleBE(0)
       return noCanonicalize
-        ? {type: 'double', value: new DataView(numBuf.buffer).getFloat64(0, false)}
-        : numBuf.readDoubleBE(0)
+        ? {type: 'double', value, rawEncoding: numBuf}
+        : value
     }
     case Code.Float: {
       const numBuf = Buffer.alloc(4)
@@ -340,10 +400,10 @@ function decode(buf: Buffer, pos: {p: number}, noCanonicalize: boolean): TupleIt
       adjustFloat(numBuf, false)
       pos.p += 4
 
-      // Surprisingly, this seems to preserve any weird NaN encoding in the float.
+      const value = numBuf.readFloatBE(0)
       return noCanonicalize
-        ? {type: 'float', value: new DataView(numBuf.buffer).getFloat32(0, false)}
-        : numBuf.readFloatBE(0)
+        ? {type: 'float', value, rawEncoding: numBuf}
+        : value
     }
     case Code.UUID: {
       const value = Buffer.alloc(16)
@@ -352,10 +412,18 @@ function decode(buf: Buffer, pos: {p: number}, noCanonicalize: boolean): TupleIt
       return {type: 'uuid', value}
     }
     case Code.Versionstamp: {
-      const value = Buffer.alloc(12)
-      buf.copy(value, 0, p, p+12)
       pos.p += 12
-      return {type: 'versionstamp', value}
+      if (vsAt === p) {
+        // Its unbound. Decode as-is. I'm not sure when this will come up in
+        // practice, but it means pack and unpack are absolute inverses of one
+        // another.
+        return {type: 'unbound versionstamp'}
+      }
+      else {
+        const value = Buffer.alloc(12)
+        buf.copy(value, 0, p, p+12)
+        return {type: 'versionstamp', value}
+      }
     }
     default: {
       const byteLen = code-20 // negative if number is negative.
@@ -370,12 +438,16 @@ function decode(buf: Buffer, pos: {p: number}, noCanonicalize: boolean): TupleIt
   }
 }
 
-export function unpack(key: Buffer, noCanonicalize: boolean = false) {
+export function unpack(key: Buffer | ValWithUnboundVersionStamp, noCanonicalize: boolean = false) {
   const pos = {p: 0}
-  const arr = []
+  const arr: TupleItem[] = []
 
-  while(pos.p < key.length) {
-    arr.push(decode(key, pos, noCanonicalize))
+  const isUnbound = isPackUnbound(key)
+  const buf: Buffer = isUnbound ? (key as ValWithUnboundVersionStamp).data : (key as Buffer)
+  const vsAt = isUnbound ? (key as ValWithUnboundVersionStamp).stampPos : -1
+
+  while(pos.p < buf.length) {
+    arr.push(decode(buf, pos, vsAt, noCanonicalize))
   }
 
   return arr
@@ -383,6 +455,7 @@ export function unpack(key: Buffer, noCanonicalize: boolean = false) {
 
 export function range(arr: TupleItem[]) {
   var packed = pack(arr)
+  if (isPackUnbound(packed)) throw TypeError('tuple.range() cannot be called with an unset versionstamp field')
   return {
     begin: Buffer.concat([packed, nullByte]),
     end: Buffer.concat([packed, Buffer.from('ff', 'hex')])
