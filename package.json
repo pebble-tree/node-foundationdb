@@ -27,7 +27,7 @@
     "test": "mocha -r ts-node/register test/*.ts",
     "prepare": "tsc -p .",
     "prepublishOnly": "rm -rf prebuilds && prebuildify-ci download",
-    "prebuild": "prebuildify -t 8.0.0 -t 9.0.0 -t 10.0.0 -t electron@1.8.0 --strip -m"
+    "prebuild": "prebuildify -t 8.0.0 -t 10.0.0 -t 11.0.0 --strip -m"
   },
   "dependencies": {
     "nan": "^2.10.0",
