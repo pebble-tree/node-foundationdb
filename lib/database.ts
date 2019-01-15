@@ -172,8 +172,8 @@ export default class Database<Key = NativeValue, Value = NativeValue> {
   async setAndGetVersionStamp(key: Key, value: Value) {
     return await (await this.doTransaction(async tn => {
       tn.set(key, value)
-      return [tn.getVersionStamp()]
-    }))[0]
+      return tn.getVersionStamp()
+    })).promise
   }
 
   clear(key: Key) {

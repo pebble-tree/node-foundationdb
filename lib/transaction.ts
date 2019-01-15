@@ -355,10 +355,11 @@ export default class Transaction<Key = NativeValue, Value = NativeValue> {
 
   getCommittedVersion() { return this._tn.getCommittedVersion() }
 
-  getVersionStamp(): Promise<Buffer>
+  // We don't return a promise here because doing so makes the API basically impossible to use, just like watch.
+  getVersionStamp(): {promise: Promise<Buffer>}
   getVersionStamp(cb: Callback<Buffer>): void
   getVersionStamp(cb?: Callback<Buffer>) {
-    return cb ? this._tn.getVersionStamp(cb) : this._tn.getVersionStamp()
+    return cb ? this._tn.getVersionStamp(cb) : {promise: this._tn.getVersionStamp()}
   }
 
   getAddressesForKey(key: Key): string[] {

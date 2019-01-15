@@ -166,17 +166,13 @@ withEachDb(db => describe('key value functionality', () => {
 
     it('supports multiple different versionstamp keys in the same txn', async () => {
       const db_ = db.withKeyEncoding(tuple).withValueEncoding(encoders.string)
-      const vsp = (await db_.doTn(async tn => {
+      const vs = await (await db_.doTn(async tn => {
         tn.set([{type: 'unbound versionstamp'}], 'a')
         tn.set([{type: 'unbound versionstamp'}], 'b')
-        return [tn.getVersionStamp()] // Avoid the automatic double-unwrapping of promises :(
-      }))[0]
+        return tn.getVersionStamp()
+      })).promise
 
-      const vs = await vsp
-      // console.log('vs', vs)
       const results = await db_.getRangeAllStartsWith([])
-      // console.log('results', results[0], results[1])
-
 
       assert.deepStrictEqual(results, [
         [[bakeVersionStamp(vs, 0)], 'a'],
@@ -190,6 +186,14 @@ withEachDb(db => describe('key value functionality', () => {
 
       const results = await db_.getRangeAllStartsWith([])
       assert.deepStrictEqual(results, [[[1,[2, bakeVersionStamp(vs, 0)]], 'hi there']])
+    })
+
+    it('allows the versionstamp code to be overwritten', async () => {
+      const db_ = db.withKeyEncoding(tuple).withValueEncoding(encoders.string)
+      const vs = await db_.setAndGetVersionStamp([1,[2, {type: 'unbound versionstamp', code: 321}]], 'hi there')
+
+      const results = await db_.getRangeAllStartsWith([])
+      assert.deepStrictEqual(results, [[[1,[2, bakeVersionStamp(vs, 321)]], 'hi there']])
     })
   })
 
