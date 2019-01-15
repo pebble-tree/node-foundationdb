@@ -17,8 +17,8 @@ before_install:
 node_js:
   - node
   - '8'
-  - '9'
   - '10'
+  - '11'
 os:
   - linux
   - osx
