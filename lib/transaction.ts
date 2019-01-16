@@ -24,7 +24,6 @@ import {
 } from './opts.g'
 import Database from './database'
 
-import * as apiVersion from './apiVersion'
 import {
   ValWithUnboundVersionStamp,
   Transformer,
@@ -32,49 +31,14 @@ import {
   asBound,
 } from './transformer'
 
+import {
+  packVersionStamp,
+  packPrefixedVersionStamp,
+  packVersionStampPrefixSuffix
+} from './versionStamp'
+
 const byteZero = Buffer.alloc(1)
 byteZero.writeUInt8(0, 0)
-
-// const bufEmpty = Buffer.alloc(0)
-
-const packedBufLen = (dataLen: number, isKey: boolean): number => {
-  const use4ByteOffset = apiVersion.get()! >= 520
-  return dataLen + (use4ByteOffset ? 4 : (isKey ? 2 : 0))
-}
-
-// If preallocated is set, the buffer already has space for the offset at the end
-const packVersionStampRaw = (data: Buffer, pos: number, isKey: boolean, preallocated: boolean): Buffer => {
-  const use4ByteOffset = apiVersion.get()! >= 520
-
-  // Before API version 520 it was a bit of a mess:
-  // - Keys had a 2 byte offset appended to the end
-  // - Values did not support an offset at all. Versionstamps in a value must be the first 10 bytes of that value.
-  if (!isKey && !use4ByteOffset && pos > 0) {
-    throw Error('API version <520 do not support versionstamps in a key value at a non-zero offset')
-  }
-
-  const result = preallocated ? data : Buffer.alloc(packedBufLen(data.length, isKey))
-  if (!preallocated) data.copy(result, 0)
-
-  if (use4ByteOffset) result.writeUInt32LE(pos, result.length - 4)
-  else if (isKey) result.writeUInt16LE(pos, result.length - 2)
-
-  return result
-}
-const packVersionStamp = ({data, stampPos}: ValWithUnboundVersionStamp, isKey: boolean): Buffer => (
-  packVersionStampRaw(data, stampPos, isKey, false)
-)
-
-const packVersionStampPrefixSuffix = (prefix: Buffer | null, suffix: Buffer | null, isKey: boolean): Buffer => {
-  const use4ByteOffset = apiVersion.get()! >= 520
-
-  const stampPos = prefix != null ? prefix.length : 0
-  const buf = Buffer.alloc(packedBufLen(stampPos + 10 + (suffix != null ? suffix.length : 0), isKey))
-  if (prefix) prefix.copy(buf)
-  if (suffix) suffix.copy(buf, stampPos + 10)
-  packVersionStampRaw(buf, stampPos, isKey, true)
-  return buf
-}
 
 
 export interface RangeOptionsBatch {
@@ -203,11 +167,12 @@ export default class Transaction<Key = NativeValue, Value = NativeValue> {
     // TODO: In this case, it'd be nice to automatically bake the committed versionstamp back into the tuple.
     if (isPackUnbound(keyPack)) {
       if (isPackUnbound(valPack)) throw new TypeError('Cannot set a key/value pair where both key and value have undefined versionstamp fields')
-      // console.log('unbound pack', keyPack)
       this.bakeCode(keyPack)
+      // console.log('unbound key pack', keyPack)
       this._tn.atomicOp(MutationType.SetVersionstampedKey, packVersionStamp(keyPack, true), valPack)
     } else if (isPackUnbound(valPack)) {
       this.bakeCode(valPack)
+      // console.log('unbound val pack', keyPack)
       this._tn.atomicOp(MutationType.SetVersionstampedValue, keyPack, packVersionStamp(valPack, false))
     } else {
       this._tn.set(keyPack, valPack)
@@ -405,13 +370,14 @@ export default class Transaction<Key = NativeValue, Value = NativeValue> {
   }
 
   // This sets the key [prefix, 10 bytes versionstamp, suffix] to value.
-  setVersionstampedKeyBuf(prefix: Buffer | null, suffix: Buffer | null, value: Value) {
+  setVersionstampedKeyBuf(prefix: Buffer | undefined, suffix: Buffer | undefined, value: Value) {
     const key = packVersionStampPrefixSuffix(prefix, suffix, true)
+    // console.log('key', key)
     this.atomicOpNative(MutationType.SetVersionstampedKey, key, this.packBoundVal(value))
   }
 
   // TODO: These method names are really confusing.
-  setVersionstampedKey(prefix: Key, suffix: Buffer | null, value: Value) {
+  setVersionstampedKey(prefix: Key, suffix: Buffer | undefined, value: Value) {
     const _prefix = asBuf(this.packBoundKey(prefix))
     this.setVersionstampedKeyBuf(_prefix, suffix, value)
   }
@@ -436,7 +402,7 @@ export default class Transaction<Key = NativeValue, Value = NativeValue> {
   // This function leans on the value transformer to pack & unpack versionstamps.
   setVersionstampPrefixedValue(key: Key, value: Value, valPrefix?: Buffer) {
     const valBuf = asBuf(this.packBoundVal(value))
-    const val = packVersionStampPrefixSuffix(valPrefix || null, valBuf, false)
+    const val = packVersionStampPrefixSuffix(valPrefix, valBuf, false)
     this.atomicOpKB(MutationType.SetVersionstampedValue, key, val)
   }
 

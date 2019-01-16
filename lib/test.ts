@@ -87,9 +87,11 @@ const rangeTest3 = async () => {
   // await db.doTransaction(async tn => {
   //   await tn.getRangeRaw(fdb.keySelector.from('a'), fdb.keySelector.from('b'), 0, 0, StreamingMode.Exact, 0, false)
   // })
-  await db.getRangeAll('a', 'b', {
-    limit: 0,
-    streamingMode: StreamingMode.Exact
+  await db.getRangeAll('c', 'b', {
+    // limit: 0,
+    streamingMode: StreamingMode.Medium,
+    limit: 397,
+    reverse: false,
   })
 }
 
@@ -123,7 +125,7 @@ const versions2 = async () => {
     return tn.getVersionStamp()
   })
 
-  console.log(await stamp[0])
+  console.log(await stamp.promise)
   
   console.log(await db.get('x'))
 }
@@ -167,5 +169,5 @@ const crash = async () => {
 // rangeTest3()
 // opts()
 // versions2()
-crash()
+// crash()
 // c2()

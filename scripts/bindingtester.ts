@@ -11,14 +11,16 @@
 import * as fdb from '../lib'
 import {
   Transaction, Database,
-  tuple, TupleItem,
+  tuple, TupleItem, TupleItemBound,
   keySelector,
   StreamingMode, MutationType,
   util,
   TransactionOptionCode,
 } from '../lib'
 
-import {asBound} from '../lib/transformer'
+// TODO: Expose these in lib
+import {ValWithUnboundVersionStamp, asBound, isPackUnbound} from '../lib/transformer'
+import {packPrefixedVersionStamp} from '../lib/versionStamp'
 
 import assert = require('assert')
 import nodeUtil = require('util')
@@ -57,8 +59,8 @@ const makeMachine = (db: Database, initialName: Buffer) => {
 
   const catchFdbErr = (e: Error) => {
     if (e instanceof fdb.FDBError) {
-      // This encoding is silly.
-      // console.error('xxx', e.code, e.message, e.stack)
+      // This encoding is silly. Also note that these errors are normal & part of the test.
+      // console.error('xxx', instrId, e.code, e.message)
       return asBound(fdb.tuple.pack([Buffer.from('ERROR'), Buffer.from(e.code.toString())]))
     } else throw e
   }
@@ -101,6 +103,7 @@ const makeMachine = (db: Database, initialName: Buffer) => {
     if (verbose) console.log('pushValue', instrId, data)
     stack.push({instrId, data})
   }
+  const pushTupleItem = (data: TupleItem) => pushValue(data)
   const pushLiteral = (data: string) => pushValue(Buffer.from(data, 'ascii'))
   const maybePush = (data: Promise<void> | void) => {
     if (data) pushValue(wrapP(data))
@@ -147,13 +150,13 @@ const makeMachine = (db: Database, initialName: Buffer) => {
         await db.doTransaction(async tn => {
           for (let k = 0; k < 100 && i < stack.length; k++) {
             const {instrId, data} = stack[i]
-            let packedData = asBound(fdb.tuple.pack([
-              await wrapP<TupleItem>(data)
-            ]))
+            let packedData = fdb.tuple.packBound([
+              await wrapP<TupleItemBound>(data)
+            ])
             if (packedData.length > 40000) packedData = packedData.slice(0, 40000)
 
             // TODO: Would be way better here to use a tuple transaction.
-            tn.set(Buffer.concat([prefix, asBound(fdb.tuple.pack([i, instrId]))]), packedData)
+            tn.set(Buffer.concat([prefix, fdb.tuple.packBound([i, instrId])]), packedData)
             i++
           }
         })
@@ -164,11 +167,13 @@ const makeMachine = (db: Database, initialName: Buffer) => {
     // Transactions
     new_transaction() {
       transactions[tnNameKey()] = db.rawCreateTransaction()
+      // transactions[tnNameKey()].setOption(fdb.TransactionOptionCode.TransactionLoggingEnable, Buffer.from(''+instrId))
     },
     async use_transaction() {
       tnName = await popBuffer()
       console.log('using tn', tnName)
       if (transactions[tnNameKey()] == null) transactions[tnNameKey()] = db.rawCreateTransaction()
+      // transactions[tnNameKey()].setOption(fdb.TransactionOptionCode.TransactionLoggingEnable, Buffer.from('x '+instrId))
     },
     async on_error(tn) {
       const code = await popInt()
@@ -207,12 +212,14 @@ const makeMachine = (db: Database, initialName: Buffer) => {
       const reverse = await popBool()
       const streamingMode = await popInt() as StreamingMode
       // console.log('get range', instrId, beginKey, endKey, limit, reverse, streamingMode, oper)
+      
+      const v = await oper.get(beginKey)
       const results = await oper.getRangeAll(
         keySelector.from(beginKey), keySelector.from(endKey),
         {streamingMode, limit, reverse}
       )
       // console.log('get range result', results)
-      pushValue(tuple.pack(Array.prototype.concat.apply([], results)))
+      pushTupleItem(tuple.packBound(Array.prototype.concat.apply([], results)))
     },
     async get_range_starts_with(oper) {
       const prefix = await popBuffer()
@@ -220,7 +227,7 @@ const makeMachine = (db: Database, initialName: Buffer) => {
       const reverse = await popBool()
       const streamingMode = await popInt() as StreamingMode
       const results = await oper.getRangeAllStartsWith(prefix, {streamingMode, limit, reverse})
-      pushValue(tuple.pack(Array.prototype.concat.apply([], results)))
+      pushValue(tuple.packBound(Array.prototype.concat.apply([], results)))
     },
     async get_range_selector(oper) {
       const beginSel = await popSelector()
@@ -233,7 +240,7 @@ const makeMachine = (db: Database, initialName: Buffer) => {
       const results = (await oper.getRangeAll(beginSel, endSel, {streamingMode, limit, reverse}))
         .filter(([k]) => bufBeginsWith(k as Buffer, prefix))
 
-      pushValue(tuple.pack(Array.prototype.concat.apply([], results)))
+      pushValue(tuple.packBound(Array.prototype.concat.apply([], results)))
     },
     async get_read_version(oper) {
       try {
@@ -244,7 +251,7 @@ const makeMachine = (db: Database, initialName: Buffer) => {
       }
     },
     async get_versionstamp(oper) {
-      pushValue(wrapP((<Transaction>oper).getVersionStamp()))
+      pushValue(wrapP((<Transaction>oper).getVersionStamp().promise))
     },
 
     // Transaction set operations
@@ -295,7 +302,10 @@ const makeMachine = (db: Database, initialName: Buffer) => {
       ;(<Transaction>oper).setOption(TransactionOptionCode.NextWriteNoWriteConflictRange)
     },
 
-    commit(oper) {pushValue(wrapP((<Transaction>oper).rawCommit()))},
+    commit(oper) {
+      const i = instrId
+      pushValue(wrapP((<Transaction>oper).rawCommit()))
+    },
     reset(oper) {(<Transaction>oper).rawReset()},
     cancel(oper) {(<Transaction>oper).rawCancel()},
 
@@ -312,15 +322,39 @@ const makeMachine = (db: Database, initialName: Buffer) => {
     // Tuple operations
     async tuple_pack() {
       pushValue(tuple.pack(await popNValues()))
+      // pushValue(shittyBake(tuple.pack(await popNValues())))
     },
     async tuple_pack_with_versionstamp() {
-      throw Error('Not implemented')
-      // const prefix = await popBuffer()
-
+      const prefix = await popBuffer()
+      // console.log('prefix', prefix.toString('hex'), prefix.length)
+      try {
+        const value = tuple.pack(await popNValues())
+        // console.log('a', value)
+        if (Buffer.isBuffer(value)) pushLiteral('ERROR: NONE')
+        else {
+          const _value = value as ValWithUnboundVersionStamp
+          // console.log('_', _value.data.toString('hex'), _value.data.length)
+          // console.log('b', packPrefixedVersionStamp(prefix, _value, true).toString('hex'))
+          pushLiteral('OK')
+          // pushValue(Buffer.concat([]))
+          // pushValue(Buffer.concat([prefix, (value as ValWithUnboundVersionStamp).data, ]))
+          // const pack = packVersionStamp({data: Buffer.concat([prefix, _value.data]), _value.stampPos + prefix.length, true, false)
+          const pack = packPrefixedVersionStamp(prefix, _value, true)
+          // console.log('packed', pack.toString('hex'))
+          pushValue(pack)
+        }
+      } catch (e) {
+        // console.log('c', e)
+        if (e.message === 'Tuples may only contain 1 unset versionstamp') {
+          pushLiteral('ERROR: MULTIPLE')
+        } else throw e
+      }
     },
     async tuple_unpack() {
       const packed = await popBuffer()
       for (const item of tuple.unpack(packed, true)) {
+        // const pack = tuple.pack([item])
+        // pushValue(isPackUnbound(pack) ? null : pack)
         pushValue(tuple.pack([item]))
       }
     },
@@ -343,30 +377,48 @@ const makeMachine = (db: Database, initialName: Buffer) => {
       // DataView avoids Buffer's canonicalization of NaN.
       const value = new DataView(buf.buffer).getFloat32(0, false)
 
+      // console.log('bt encode_float', buf, value)
       // Could just pushValue({type: 'float', value})
-      // pushValue(tuple.unpack(tuple.pack([{type: 'float', value}]), true)[0])
       pushValue({type: 'float', value})
+      // pushValue(tuple.unpack(tuple.pack([{type: 'float', value}]), true)[0])
+      // pushTupleItem({type: 'float', value, rawEncoding: buf})
     },
     async encode_double() {
       const buf = await popBuffer()
       const value = new DataView(buf.buffer).getFloat64(0, false)
-      // pushValue(tuple.unpack(tuple.pack([{type: 'double', value}]), true)[0])
+      // console.log('bt encode_double', buf, value)
       pushValue({type: 'double', value})
+      // pushValue(tuple.unpack(tuple.pack([{type: 'double', value}]), true)[0])
+      // pushTupleItem({type: 'double', value: 0, rawEncoding: buf})
     },
     async decode_float() {
       // These are both super gross. Not sure what to do about that.
-      const val = await popValue() as {type: 'float', value: number}
+      const val = await popValue() as {type: 'float', value: number, rawEncoding: Buffer}
       assert(typeof val === 'object' && val.type === 'float')
-      const buf = Buffer.alloc(4)
-      buf.writeFloatBE(val.value, 0)
-      pushValue(buf)
+
+      const dv = new DataView(new ArrayBuffer(4))
+      dv.setFloat32(0, val.value, false)
+      // console.log('bt decode_float', val, Buffer.from(dv.buffer))
+      pushValue(Buffer.from(dv.buffer))
+      
+      // const buf = Buffer.alloc(4)
+      // buf.writeFloatBE(val.value, 0)
+      // pushValue(buf)
+      // pushValue(val.rawEncoding)
     },
     async decode_double() {
-      const val = await popValue() as {type: 'double', value: number}
+      const val = await popValue() as {type: 'double', value: number, rawEncoding: Buffer}
       assert(val.type === 'double', 'val is ' + nodeUtil.inspect(val))
-      const buf = Buffer.alloc(8)
-      buf.writeDoubleBE(val.value, 0)
-      pushValue(buf)
+
+      const dv = new DataView(new ArrayBuffer(8))
+      dv.setFloat64(0, val.value, false)
+      pushValue(Buffer.from(dv.buffer))
+      // console.log('bt decode_double', val, Buffer.from(dv.buffer))
+
+      // const buf = Buffer.alloc(8)
+      // buf.writeDoubleBE(val.value, 0)
+      // pushValue(buf)
+      // pushValue(val.rawEncoding)
     },
 
     // Thread Operations
@@ -481,6 +533,10 @@ if (require.main === module) (async () => {
   const log = undefined
 
   fdb.setAPIVersion(requestedAPIVersion)
+  fdb.configNetwork({
+    // trace_enable: 'trace',
+    // external_client_library: '~/3rdparty/foundationdb/lib/libfdb_c.dylib-debug',
+  })
   const db = fdb.openSync(clusterFile)
 
   runFromPrefix(db, Buffer.from(prefixStr, 'ascii'), log)

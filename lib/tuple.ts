@@ -28,6 +28,7 @@
 import assert = require('assert')
 import {ValWithUnboundVersionStamp, isPackUnbound, asBound} from './transformer'
 
+const UNSET_TR_VERSION = Buffer.alloc(10).fill(0xff)
 
 const numByteLen = (num: number) => {
   let max = 1
@@ -266,6 +267,8 @@ const encode = (into: BufferBuilder, item: TupleItem, versionStampPos: VersionSt
       bytes = Buffer.allocUnsafe(isFloat ? 4 : 8)
       if (isFloat) bytes.writeFloatBE(item.value, 0)
       else bytes.writeDoubleBE(item.value, 0)
+      // console.error('encode item', item, bytes)
+      // throw new Error('asdfsdf')
     }
     adjustFloat(bytes, true)
     into.appendBuffer(bytes)
@@ -278,7 +281,7 @@ const encode = (into: BufferBuilder, item: TupleItem, versionStampPos: VersionSt
     into.appendByte(Code.Versionstamp)
     if (versionStampPos.stamp != null) throw new TypeError('Tuples may only contain 1 unset versionstamp')
     versionStampPos.stamp = into.used
-    into.writeInto(10)
+    into.writeInto(10).fill(0xff)
     if (item.code != null) {
       into.writeInto(2).writeUInt16BE(item.code, 0)
     } else {
@@ -390,6 +393,7 @@ function decode(buf: Buffer, pos: {p: number}, vsAt: number, noCanonicalize: boo
       // fine. To solve this I'm storing the raw encoding so we can copy that
       // back in encode().
       const value = numBuf.readDoubleBE(0)
+      // console.log('tuple decode double', numBuf, value)
       return noCanonicalize
         ? {type: 'double', value, rawEncoding: numBuf}
         : value
@@ -401,6 +405,7 @@ function decode(buf: Buffer, pos: {p: number}, vsAt: number, noCanonicalize: boo
       pos.p += 4
 
       const value = numBuf.readFloatBE(0)
+      // console.log('tuple decode float', numBuf, value)
       return noCanonicalize
         ? {type: 'float', value, rawEncoding: numBuf}
         : value
@@ -413,16 +418,24 @@ function decode(buf: Buffer, pos: {p: number}, vsAt: number, noCanonicalize: boo
     }
     case Code.Versionstamp: {
       pos.p += 12
-      if (vsAt === p) {
+      if (vsAt === p /*|| !buf.compare(UNSET_TR_VERSION, 0, 10, p, p+10)*/) {
         // Its unbound. Decode as-is. I'm not sure when this will come up in
         // practice, but it means pack and unpack are absolute inverses of one
         // another.
+
+        // This logic is copied from the python bindings. But I'm
+        // confused why they still keep the code even when its unbound.
+        // return {type: 'unbound versionstamp', code: buf.readUInt16BE(p+10)}
         return {type: 'unbound versionstamp'}
       }
       else {
         const value = Buffer.alloc(12)
         buf.copy(value, 0, p, p+12)
-        return {type: 'versionstamp', value}
+        // return {type: 'versionstamp', value}
+
+        return value.compare(UNSET_TR_VERSION, 0, 10, 0, 10)
+          ? {type: 'versionstamp', value}
+          : {type: 'unbound versionstamp', code: value.readUInt16BE(10)}
       }
     }
     default: {

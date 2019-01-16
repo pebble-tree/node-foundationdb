@@ -255,14 +255,14 @@ export default class Database<Key = NativeValue, Value = NativeValue> {
   byteMin(key: Key, oper: Value) { return this.atomicOp(MutationType.ByteMin, key, oper) }
   byteMax(key: Key, oper: Value) { return this.atomicOp(MutationType.ByteMax, key, oper) }
 
-  setVersionstampedKeyBuf(prefix: Buffer | null, suffix: Buffer | null, value: Value) {
+  setVersionstampedKeyBuf(prefix: Buffer | undefined, suffix: Buffer | undefined, value: Value) {
     return this.doOneshot(tn => tn.setVersionstampedKeyBuf(prefix, suffix, value))
   }
-  setVersionstampedKey(prefix: Key, suffix: Buffer | null, value: Value) {
+  setVersionstampedKey(prefix: Key, suffix: Buffer | undefined, value: Value) {
     return this.doOneshot(tn => tn.setVersionstampedKey(prefix, suffix, value))
   }
   setVersionstampedKeyPrefix(prefix: Key, value: Value) {
-    return this.setVersionstampedKey(prefix, null, value)
+    return this.setVersionstampedKey(prefix, undefined, value)
   }
 
   setVersionstampedValue(key: Key, oper: Value) { return this.atomicOp(MutationType.SetVersionstampedValue, key, oper) }
