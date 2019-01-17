@@ -78,6 +78,8 @@ withEachDb(db => describe('key value functionality', () => {
     // this test takes to run is super variable based on how unlucky we get
     // with concurrency.
     this.slow(3000)
+    this.timeout(10000)
+
     const concurrentWrites = 30
     const key = 'num'
 
