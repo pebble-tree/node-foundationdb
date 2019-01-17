@@ -1,4 +1,5 @@
 import assert = require('assert')
+import FDBError from './error'
 import {
   Watch,
   NativeTransaction,
@@ -71,7 +72,13 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
   isSnapshot: boolean
   _keyEncoding: Transformer<KeyIn, KeyOut>
   _valueEncoding: Transformer<ValIn, ValOut>
-  code: number = 0
+  nextCode: number = 0
+
+  // If you call setVersionstampedKey / setVersionstampedValue, we pull out
+  // the versionstamp from the txn and bake it back into the tuple (or
+  // whatever) after the transaction commits.
+  keysToBake: null | {k:KeyIn, code:Buffer | null}[] = null
+  valsToBake: null | {v:ValIn, code:Buffer | null}[] = null
 
   constructor(tn: NativeTransaction, snapshot: boolean,
       keyEncoding: Transformer<KeyIn, KeyOut>, valueEncoding: Transformer<ValIn, ValOut>,
@@ -83,16 +90,45 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
     this.isSnapshot = snapshot
   }
 
-  bakeCode(into: UnboundStamp) {
-    if (this.isSnapshot) throw new Error('Cannot use this method in a snapshot transaction')
-    if (into.codePos != null) {
-      // We edit the buffer in-place but leave the codepos as is so if the txn
-      // retries it'll overwrite the code.
-      into.data.writeInt16BE(this.code++, into.codePos)
-    }
-  }
+  // Internal method to actually run a transaction retry loop. Do not call
+  // this directly - instead use Database.doTn().
+  async _exec<T>(body: (tn: Transaction<KeyIn, KeyOut, ValIn, ValOut>) => Promise<T>, opts?: TransactionOptions): Promise<T> {
+    // Logic described here:
+    // https://apple.github.io/foundationdb/api-c.html#c.fdb_transaction_on_error
+    do {
+      try {
+        const result: T = await body(this)
+        const stampPromise = ((this.keysToBake && this.keysToBake.length)
+          || (this.valsToBake && this.valsToBake.length))
+            ? this.getVersionStamp().promise
+            : null
+        await this.rawCommit()
 
-  resetCode() { this.code = 0 }
+        if (stampPromise) {
+          const stamp = await stampPromise
+
+          if (this.keysToBake) this.keysToBake.forEach(({k, code}) => (
+            this._keyEncoding.bakeVersion!(k, stamp, code))
+          )
+          if (this.valsToBake) this.valsToBake.forEach(({v, code}) => (
+            this._valueEncoding.bakeVersion!(v, stamp, code))
+          )
+        }
+        return result // Ok, success.
+      } catch (err) {
+        // See if we can retry the transaction
+        if (err instanceof FDBError) {
+          await this.rawOnError(err.code) // If this throws, punt error to caller.
+          // If that passed, loop.
+        } else throw err
+      }
+
+      // Reset our local state that will have been filled in by calling the body.
+      this.nextCode = 0
+      if (this.keysToBake) this.keysToBake.length = 0
+      if (this.valsToBake) this.valsToBake.length = 0
+    } while (true)
+  }
 
   // Usually you should pass options when the transaction is constructed.
   // Options are shared between a transaction object and any other aliases
@@ -344,6 +380,19 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
   byteMax(key: KeyIn, val: ValIn) { this.atomicOp(MutationType.ByteMax, key, val) }
 
 
+  // **** Version stamp stuff
+
+  bakeCode(into: UnboundStamp) {
+    if (this.isSnapshot) throw new Error('Cannot use this method in a snapshot transaction')
+    if (into.codePos != null) {
+      // We edit the buffer in-place but leave the codepos as is so if the txn
+      // retries it'll overwrite the code.
+      into.data.writeInt16BE(this.nextCode++, into.codePos)
+      return into.data.slice(into.codePos, into.codePos+2)
+    }
+    return null
+  }
+
   setVersionstampedKeyRaw(keyBytes: Buffer, value: ValIn) {
     this.atomicOpNative(MutationType.SetVersionstampedKey, keyBytes, this._valueEncoding.pack(value))
   }
@@ -355,25 +404,67 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
     this.atomicOpNative(MutationType.SetVersionstampedKey, key, this._valueEncoding.pack(value))
   }
 
-  // TODO: These method names are a bit confusing
-  setVersionstampedKey(key: KeyIn, value: ValIn) {
-    const pack = this._keyEncoding.packUnboundStamp!(key)
-    this.bakeCode(pack)
+  // TODO: These method names are a bit confusing.
+  // 
+  // The short version is, if you're using the tuple type with an unbound
+  // versionstamp, use setVersionstampedKey. Otherwise if you just want your
+  // key to be baked out with a versionstamp after it, use
+  // setVersionstampSuffixedKey.
+  setVersionstampedKey(key: KeyIn, value: ValIn, bakeAfterCommit: boolean = true) {
+    if (!this._keyEncoding.packUnboundStamp) {
+      throw TypeError('Key encoding does not support unbound versionstamps. Use setVersionstampPrefixedValue instead')
+    }
+
+    const pack = this._keyEncoding.packUnboundStamp(key)
+    const code = this.bakeCode(pack)
     this.setVersionstampedKeyRaw(packVersionStamp(pack, true), value)
+
+    if (bakeAfterCommit && this._keyEncoding.bakeVersion) {
+      if (this.keysToBake == null) this.keysToBake = []
+      this.keysToBake.push({k:key, code})
+    }
   }
 
   setVersionstampSuffixedKey(key: KeyIn, value: ValIn, suffix?: Buffer) {
     const prefix = asBuf(this._keyEncoding.pack(key))
     this.setVersionstampedKeyBuf(prefix, suffix, value)
   }
-  // setVersionstampedKeyPrefix(prefix: Key, value: Value) {
-  //   this.setVersionstampedKey(prefix, null, value)
-  // }
 
+  // Ok now versionstamped values
 
+  setVersionstampedValueRaw(key: KeyIn, value: Buffer) {
+    this.atomicOpKB(MutationType.SetVersionstampedValue, key, value)
+  }
 
-  // Get the specified key and split out the stamp and value pair. This
-  // requires that the stamp was put at offset 0 (the start) of the value.
+  setVersionstampedValue(key: KeyIn, value: ValIn, bakeAfterCommit: boolean = true) {
+    // This is super similar to setVersionstampedKey. I wish I could reuse the code.
+    if (!this._valueEncoding.packUnboundStamp) {
+      throw TypeError('Value encoding does not support unbound versionstamps. Use setVersionstampPrefixedValue instead')
+    }
+
+    const pack = this._valueEncoding.packUnboundStamp(value)
+    const code = this.bakeCode(pack)
+    this.setVersionstampedValueRaw(key, packVersionStamp(pack, false))
+
+    if (bakeAfterCommit && this._valueEncoding.bakeVersion) {
+      if (this.valsToBake == null) this.valsToBake = []
+      this.valsToBake.push({v:value, code})
+    }
+  }
+
+  // Set key = [10 byte versionstamp, value in bytes]. This function leans on
+  // the value transformer to pack & unpack versionstamps. An extra value
+  // prefix is only supported on API version 520+.
+  setVersionstampPrefixedValue(key: KeyIn, value: ValIn, prefix?: Buffer) {
+    const valBuf = asBuf(this._valueEncoding.pack(value))
+    const val = packVersionStampPrefixSuffix(prefix, valBuf, false)
+    this.atomicOpKB(MutationType.SetVersionstampedValue, key, val)
+  }
+
+  // Helper to get the specified key and split out the stamp and value pair.
+  // This requires that the stamp is at offset 0 (the start) of the value.
+  // This is designed to work with setVersionstampPrefixedValue. If you're
+  // using setVersionstampedValue with tuples or something, just call get().
   async getVersionstampPrefixedValue(key: KeyIn): Promise<{stamp: Buffer, val: ValOut} | null> {
     const val = await this._tn.get(this._keyEncoding.pack(key), this.isSnapshot)
     return val == null ? null
@@ -381,19 +472,6 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
         stamp: val.slice(0, 10),
         val: this._valueEncoding.unpack(val.slice(10))
       }
-  }
-
-  // Set key = [10 byte versionstamp, value in bytes].
-  // This function leans on the value transformer to pack & unpack versionstamps.
-  setVersionstampPrefixedValue(key: KeyIn, value: ValIn, prefix?: Buffer) {
-    const valBuf = asBuf(this._valueEncoding.pack(value))
-    const val = packVersionStampPrefixSuffix(prefix, valBuf, false)
-    this.atomicOpKB(MutationType.SetVersionstampedValue, key, val)
-  }
-
-  setVersionstampedValue(key: KeyIn, value: ValIn) {
-    const pack = this._valueEncoding.packUnboundStamp!(value)
-    this.atomicOpKB(MutationType.SetVersionstampedValue, key, packVersionStamp(pack, false))
   }
 
   // This packs the value by prefixing the version stamp to the

@@ -7,7 +7,6 @@ import Transaction, {
 import {Transformer, defaultTransformer, prefixTransformer} from './transformer'
 import {NativeValue} from './native'
 import {KeySelector} from './keySelector'
-import FDBError from './error'
 import {TupleItem, pack} from './tuple'
 import {asBuf, concat2} from './util'
 import {eachOption} from './opts'
@@ -76,24 +75,7 @@ export default class Database<KeyIn = NativeValue, KeyOut = Buffer, ValIn = Nati
 
   // This is the API you want to use for non-trivial transactions.
   async doTn<T>(body: (tn: Transaction<KeyIn, KeyOut, ValIn, ValOut>) => Promise<T>, opts?: TransactionOptions): Promise<T> {
-    const tn = this.rawCreateTransaction(opts)
-
-    // Logic described here:
-    // https://apple.github.io/foundationdb/api-c.html#c.fdb_transaction_on_error
-    do {
-      try {
-        const result: T = await body(tn)
-        await tn.rawCommit()
-        return result // Ok, success.
-      } catch (err) {
-        // See if we can retry the transaction
-        if (err instanceof FDBError) {
-          await tn.rawOnError(err.code) // If this throws, punt error to caller.
-          tn.resetCode()
-          // If that passed, loop.
-        } else throw err
-      }
-    } while (true)
+    return this.rawCreateTransaction(opts)._exec(body)
   }
   // Alias for db.doTn.
   async doTransaction<T>(body: (tn: Transaction<KeyIn, KeyOut, ValIn, ValOut>) => Promise<T>, opts?: TransactionOptions): Promise<T> {
@@ -218,11 +200,11 @@ export default class Database<KeyIn = NativeValue, KeyOut = Buffer, ValIn = Nati
   byteMin(key: KeyIn, oper: ValIn) { return this.atomicOp(MutationType.ByteMin, key, oper) }
   byteMax(key: KeyIn, oper: ValIn) { return this.atomicOp(MutationType.ByteMax, key, oper) }
 
-  setVersionstampedKeyBuf(prefix: Buffer | undefined, suffix: Buffer | undefined, value: ValIn) {
-    return this.doOneshot(tn => tn.setVersionstampedKeyBuf(prefix, suffix, value))
-  }
-  setVersionstampedKey(key: KeyIn, value: ValIn) {
-    return this.doOneshot(tn => tn.setVersionstampedKey(key, value))
+  // setVersionstampedKeyBuf(prefix: Buffer | undefined, suffix: Buffer | undefined, value: ValIn) {
+  //   return this.doOneshot(tn => tn.setVersionstampedKeyBuf(prefix, suffix, value))
+  // }
+  setVersionstampedKey(key: KeyIn, value: ValIn, bakeAfterCommit?: boolean) {
+    return this.doOneshot(tn => tn.setVersionstampedKey(key, value, bakeAfterCommit))
   }
   setVersionstampSuffixedKey(key: KeyIn, value: ValIn, suffix?: Buffer) {
     return this.doOneshot(tn => tn.setVersionstampSuffixedKey(key, value, suffix))
@@ -232,10 +214,13 @@ export default class Database<KeyIn = NativeValue, KeyOut = Buffer, ValIn = Nati
   //   return this.setVersionstampedKey(prefix, undefined, value)
   // }
 
-  setVersionstampedValue(key: KeyIn, oper: ValIn) { return this.atomicOp(MutationType.SetVersionstampedValue, key, oper) }
-  setVersionstampedValueBuf(key: KeyIn, oper: Buffer) { return this.atomicOpKB(MutationType.SetVersionstampedValue, key, oper) }
-  setVersionstampPrefixedValue(key: KeyIn, value: ValIn) {
-    return this.doOneshot(tn => tn.setVersionstampPrefixedValue(key, value))
+  setVersionstampedValue(key: KeyIn, value: ValIn, bakeAfterCommit: boolean = true) {
+    return this.doOneshot(tn => tn.setVersionstampedValue(key, value, bakeAfterCommit))
+  }
+
+  // setVersionstampedValueBuf(key: KeyIn, oper: Buffer) { return this.atomicOpKB(MutationType.SetVersionstampedValue, key, oper) }
+  setVersionstampPrefixedValue(key: KeyIn, value: ValIn, prefix?: Buffer) {
+    return this.doOneshot(tn => tn.setVersionstampPrefixedValue(key, value, prefix))
   }
 }
 

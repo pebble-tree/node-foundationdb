@@ -57,10 +57,11 @@ import {strInc} from './util'
 export const util = {strInc}
 
 // TODO: Remove tuple from the root API. Tuples should be in a separate module.
-import {pack, packUnboundStamp, unpack, range, TupleItem, TupleItemBound} from './tuple'
+import {pack, packUnboundStamp, unpack, range, bakeVersion, TupleItem, TupleItemBound} from './tuple'
+// import * as tuple from './tuple'
 
 export {TupleItem, TupleItemBound}
-export const tuple = {pack, unpack, range, packUnboundStamp}
+export const tuple = {pack, unpack, range, packUnboundStamp, bakeVersion}
 
 const id = (x: any) => x
 export const encoders = {
@@ -92,7 +93,7 @@ export const encoders = {
     pack,
     unpack,
     packUnboundStamp,
-    bakeVersion: () => {throw Error('not implemented')}
+    bakeVersion,
   } as Transformer<TupleItem[], TupleItem[]>,
 }
 

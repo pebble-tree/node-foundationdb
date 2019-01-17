@@ -27,6 +27,7 @@
 
 import assert = require('assert')
 import {UnboundStamp} from './versionStamp'
+import {concat2} from './util'
 
 const UNSET_TR_VERSION = Buffer.alloc(10).fill(0xff)
 
@@ -96,6 +97,9 @@ export type TupleItemBound = null | Buffer | string | TupleArr | number | boolea
 export type TupleItem = TupleItemBound | {
   type: 'unbound versionstamp', code?: number
 }
+
+// I only need this helper because {type: 'unbound versionstamp'} is so awful to type ... :/
+export const unboundVStamp = (code?: number) => ({type: 'unbound versionstamp', code})
 
 export interface TupleArr extends Array<TupleItem> {}
 
@@ -493,5 +497,32 @@ export function range(arr: TupleItemBound[]) {
   return {
     begin: Buffer.concat([packed, nullByte]),
     end: Buffer.concat([packed, Buffer.from('ff', 'hex')])
+  }
+}
+
+const vsFrom = (versionStamp: Buffer, code: number): Buffer => {
+  const result = Buffer.alloc(12)
+  versionStamp.copy(result)
+  result.writeUInt16BE(code, 10)
+  return result
+}
+
+export function bakeVersion(val: TupleItem[], versionStamp: Buffer, codeBytes: Buffer | null) {
+  // This is called after a transaction has been committed to bake in the (now
+  // known) versionstamp into the tuple.
+  for (let i = 0; i < val.length; i++) {
+    const v = val[i]
+    if (Array.isArray(v)) bakeVersion(v, versionStamp, codeBytes)
+    else if (v != null && typeof v === 'object' && !Buffer.isBuffer(v) && v.type === 'unbound versionstamp') {
+      // ^-- thats gross
+      if (codeBytes == null && v.code == null) {
+        throw Error('Internal consistency error: unknown versionstamp code in bakeVersion. This should never happen - file a bug')
+      }
+
+      val[i] = {
+        type: 'versionstamp',
+        value: codeBytes ? concat2(versionStamp, codeBytes) : vsFrom(versionStamp, v.code!)
+      }
+    }
   }
 }

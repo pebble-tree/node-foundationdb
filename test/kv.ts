@@ -148,62 +148,93 @@ withEachDb(db => describe('key value functionality', () => {
       assert.strictEqual(result!.toString('utf8'), 'hi there')
     })
 
-    it('commits a tuple with unbound versionstamps', async () => {
-      const db_ = db.withKeyEncoding(encoders.tuple)
-      const data: TupleItem[] = [1,2,3, {type: 'unbound versionstamp'}]
-      await db_.setVersionstampedKey(data, 'hi there')
-      console.log('---- written')
-
-      // const results = await db.getRangeAllStartsWith(tuple.packBound([1,2,3]))
-      // assert.strictEqual(results.length, 1)
-      // console.log(results[0][0])
-      const results = await db_.getRangeAllStartsWith([1,2,3])
-      assert.strictEqual(results.length, 1)
-      const [key, value] = results[0]
-
-      // We don't know what the versionstamp is, so we'll need to peel it off.
-      const stamp = key.pop() as any
-      assert.deepStrictEqual(key, [1,2,3])
-      assert.strictEqual(stamp.type, 'versionstamp')
-      assert((stamp.value as Buffer).readUInt32BE(4) > 0)
-
-      // console.log('actual key', results[0][0])
-      // assert.deepStrictEqual(results[0][0], data.slice(0, -1))
-
-      assert.strictEqual(value.toString('utf8'), 'hi there')
-    })
-
-    it('supports multiple different versionstamp keys in the same txn', async () => {
+    it('commits a tuple with unbound key versionstamps and bakes the vs and code', async () => {
       const db_ = db.withKeyEncoding(encoders.tuple).withValueEncoding(encoders.string)
-      const vs = await (await db_.doTn(async tn => {
-        tn.setVersionstampedKey([{type: 'unbound versionstamp'}], 'a')
-        tn.setVersionstampedKey([{type: 'unbound versionstamp'}], 'b')
+      const key1: TupleItem[] = [1,2,3, {type: 'unbound versionstamp'}] // should end up with code 1
+      const key2: TupleItem[] = [1,2,3, {type: 'unbound versionstamp'}] // code 2
+      const key3: TupleItem[] = [1,2,3, {type: 'unbound versionstamp', code: 321}] // code 321
+
+      const actualStamp = await (await db_.doTn(async tn => {
+        await tn.setVersionstampedKey(key1, '1')
+        await tn.setVersionstampedKey(key2, '2')
+        await tn.setVersionstampedKey(key3, '3')
         return tn.getVersionStamp()
       })).promise
 
-      const results = await db_.getRangeAllStartsWith([])
+      // await db_.setVersionstampedKey(key1, 'hi there')
+
+      // The versionstamp should have been baked into the object
+      assert.deepStrictEqual(key1[3], bakeVersionStamp(actualStamp, 0))
+      assert.deepStrictEqual(key2[3], bakeVersionStamp(actualStamp, 1))
+      assert.deepStrictEqual(key3[3], bakeVersionStamp(actualStamp, 321))
+
+      // const results = await db.getRangeAllStartsWith(tuple.packBound([1,2,3]))
+      // assert.strictEqual(results.length, 1)
+      const results = await db_.getRangeAllStartsWith([1,2,3])
 
       assert.deepStrictEqual(results, [
-        [[bakeVersionStamp(vs, 0)], 'a'],
-        [[bakeVersionStamp(vs, 1)], 'b'],
+        [key1, '1'],
+        [key2, '2'],
+        [key3, '3'],
       ])
     })
 
-    // it('correctly encodes versionstamps in child tuples', async () => {
-    //   const db_ = db.withKeyEncoding(encoders.tuple).withValueEncoding(encoders.string)
-    //   const vs = await db_.setAndGetVersionStamp([1,[2, {type: 'unbound versionstamp'}]], 'hi there')
+    it('does not bake the vs in setVersionstampedKey(bakeAfterCommit=false)', async () => {
+      const db_ = db.withKeyEncoding(encoders.tuple)
+      const key: TupleItem[] = [1,2,3, {type: 'unbound versionstamp'}]
+      await db_.setVersionstampedKey(key, 'hi', false)
+      
+      assert.deepStrictEqual(key, [1,2,3, {type: 'unbound versionstamp'}])
+    })
 
-    //   const results = await db_.getRangeAllStartsWith([])
-    //   assert.deepStrictEqual(results, [[[1,[2, bakeVersionStamp(vs, 0)]], 'hi there']])
-    // })
+    it('encodes versionstamps in child tuples', async () => {
+      const db_ = db.withKeyEncoding(encoders.tuple).withValueEncoding(encoders.string)
+      const key: any[] = [1,[2, {type: 'unbound versionstamp'}]]
 
-    // it('allows the versionstamp code to be overwritten', async () => {
-    //   const db_ = db.withKeyEncoding(encoders.tuple).withValueEncoding(encoders.string)
-    //   const vs = await db_.setAndGetVersionStamp([1,[2, {type: 'unbound versionstamp', code: 321}]], 'hi there')
+      const actualStamp = await (await db_.doTn(async tn => {
+        await tn.setVersionstampedKey(key, 'hi there')
+        return tn.getVersionStamp()
+      })).promise
 
-    //   const results = await db_.getRangeAllStartsWith([])
-    //   assert.deepStrictEqual(results, [[[1,[2, bakeVersionStamp(vs, 321)]], 'hi there']])
-    // })
+      // Check its been baked
+      assert.deepStrictEqual(key, [1,[2, bakeVersionStamp(actualStamp, 0)]])
+
+      const results = await db_.getRangeAllStartsWith([])
+      assert.deepStrictEqual(results, [[key, 'hi there']])
+    })
+
+    it('resets the code in retried transactions')
+
+    it('commits a tuple with unbound value versionstamps and bakes the vs and code', async () => {
+      const db_ = db.withKeyEncoding(encoders.string).withValueEncoding(encoders.tuple)
+      const val1: TupleItem[] = [1,2,3, {type: 'unbound versionstamp'}, 5] // code 1
+      const val2: TupleItem[] = [1,2,3, {type: 'unbound versionstamp'}] // code 2
+      const val3: TupleItem[] = [1,2,3, {type: 'unbound versionstamp', code: 321}] // code 321
+
+      const actualStamp = await (await db_.doTn(async tn => {
+        await tn.setVersionstampedValue('1', val1)
+        await tn.setVersionstampedValue('2', val2)
+        await tn.setVersionstampedValue('3', val3)
+        return tn.getVersionStamp()
+      })).promise
+
+      // await db_.setVersionstampedKey(key1, 'hi there')
+
+      // The versionstamp should have been baked into the object
+      assert.deepStrictEqual(val1[3], bakeVersionStamp(actualStamp, 0))
+      assert.deepStrictEqual(val2[3], bakeVersionStamp(actualStamp, 1))
+      assert.deepStrictEqual(val3[3], bakeVersionStamp(actualStamp, 321))
+
+      // const results = await db.getRangeAllStartsWith(tuple.packBound([1,2,3]))
+      // assert.strictEqual(results.length, 1)
+      const results = await db_.getRangeAllStartsWith('')
+
+      assert.deepStrictEqual(results, [
+        ['1', val1],
+        ['2', val2],
+        ['3', val3],
+      ])
+    })
   })
 
   describe('watch', () => {

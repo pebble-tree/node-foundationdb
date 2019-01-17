@@ -14,7 +14,7 @@ export type Transformer<In, Out> = {
 
   // These are hooks for the tuple type to support unset versionstamps
   packUnboundStamp?(val: In): UnboundStamp,
-  bakeVersion?(val: In, versionStamp: Buffer): void,
+  bakeVersion?(val: In, versionStamp: Buffer, code: Buffer | null): void,
 }
 
 // export const isPackUnbound = (val: Buffer | string | UnboundStamp): val is UnboundStamp => (
