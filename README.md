@@ -416,7 +416,7 @@ tn.getRange(
 )
 ```
 
-> The naming is weird at the end of the range. Remember range queries are always non-inclusive of the end of their range. In the above example FDB will find the next key greater than `end`, then *not include this key in the results*.
+> **Note ⛑** The naming is weird at the end of the range. Remember range queries are always non-inclusive of the end of their range. In the above example FDB will find the next key greater than `end`, then *not include this key in the results*.
 
 You can add or subtract an offset from a key selector using `fdb.keySelector.add(sel, offset)`. This counts *in keys*. For example, to find the key thats exactly 10 keys from key `'a'`:
 
