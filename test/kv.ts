@@ -155,9 +155,9 @@ withEachDb(db => describe('key value functionality', () => {
       const key3: TupleItem[] = [1,2,3, {type: 'unbound versionstamp', code: 321}] // code 321
 
       const actualStamp = await (await db_.doTn(async tn => {
-        await tn.setVersionstampedKey(key1, '1')
-        await tn.setVersionstampedKey(key2, '2')
-        await tn.setVersionstampedKey(key3, '3')
+        tn.setVersionstampedKey(key1, '1')
+        tn.setVersionstampedKey(key2, '2')
+        tn.setVersionstampedKey(key3, '3')
         return tn.getVersionStamp()
       })).promise
 
@@ -192,7 +192,7 @@ withEachDb(db => describe('key value functionality', () => {
       const key: any[] = [1,[2, {type: 'unbound versionstamp'}]]
 
       const actualStamp = await (await db_.doTn(async tn => {
-        await tn.setVersionstampedKey(key, 'hi there')
+        tn.setVersionstampedKey(key, 'hi there')
         return tn.getVersionStamp()
       })).promise
 
@@ -212,9 +212,9 @@ withEachDb(db => describe('key value functionality', () => {
       const val3: TupleItem[] = [1,2,3, {type: 'unbound versionstamp', code: 321}] // code 321
 
       const actualStamp = await (await db_.doTn(async tn => {
-        await tn.setVersionstampedValue('1', val1)
-        await tn.setVersionstampedValue('2', val2)
-        await tn.setVersionstampedValue('3', val3)
+        tn.setVersionstampedValue('1', val1)
+        tn.setVersionstampedValue('2', val2)
+        tn.setVersionstampedValue('3', val3)
         return tn.getVersionStamp()
       })).promise
 
