@@ -1,4 +1,6 @@
 import {NativeValue} from './native'
+import {Transformer} from './transformer'
+
 export interface KeySelector<Key> {
   key: Key,
   orEqual: boolean
@@ -34,8 +36,8 @@ const from = <Key>(valOrKS: Key | KeySelector<Key>): KeySelector<Key> => (
   isKeySelector(valOrKS) ? valOrKS : firstGreaterOrEqual(valOrKS)
 )
 
-const toNative = <Key>(sel: KeySelector<Key>, txn: {packBoundKey(key: Key): string | Buffer}): KeySelector<NativeValue> => (
-  keySelector(txn.packBoundKey(sel.key), sel.orEqual, sel.offset)
+const toNative = <Key>(sel: KeySelector<Key>, xf: Transformer<Key, any>): KeySelector<NativeValue> => (
+  keySelector(xf.pack(sel.key), sel.orEqual, sel.offset)
 )
 
 export default Object.assign(keySelector, {

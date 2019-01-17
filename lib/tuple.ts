@@ -26,7 +26,7 @@
 // final argument to decode.
 
 import assert = require('assert')
-import {ValWithUnboundVersionStamp, isPackUnbound, asBound} from './transformer'
+import {UnboundStamp} from './versionStamp'
 
 const UNSET_TR_VERSION = Buffer.alloc(10).fill(0xff)
 
@@ -297,13 +297,14 @@ const encode = (into: BufferBuilder, item: TupleItem, versionStampPos: VersionSt
   }
 }
 
-export function pack(arr: TupleItem[]): Buffer | ValWithUnboundVersionStamp {
+function packRaw(arr: TupleItem[]): Buffer | UnboundStamp {
   if (!Array.isArray(arr)) throw new TypeError('fdb.tuple.pack must be called with an array')
 
   let versionStampPos: VersionStampPos = {}
   const builder = new BufferBuilder()
   for (let i = 0; i < arr.length; i++) {
     encode(builder, arr[i], versionStampPos)
+    // console.log('pack', arr[i], builder.storage)
   }
 
   const data = builder.make()
@@ -312,7 +313,16 @@ export function pack(arr: TupleItem[]): Buffer | ValWithUnboundVersionStamp {
     : {data, stampPos: versionStampPos.stamp, codePos: versionStampPos.code}
 }
 
-export const packBound = (arr: TupleItemBound[]): Buffer => asBound(pack(arr))
+export const pack = (arr: TupleItemBound[]): Buffer => {
+  const pack = packRaw(arr)
+  if (!Buffer.isBuffer(pack)) throw new TypeError('Incomplete versionstamp included in vanilla tuple pack')
+  return pack
+}
+export const packUnboundStamp = (arr: TupleItem[]): UnboundStamp => {
+  const pack = packRaw(arr)
+  if (Buffer.isBuffer(pack)) throw new TypeError('No incomplete versionstamp included in tuple pack with versionstamp')
+  return pack
+}
 
 
 // *** Decode
@@ -418,24 +428,24 @@ function decode(buf: Buffer, pos: {p: number}, vsAt: number, noCanonicalize: boo
     }
     case Code.Versionstamp: {
       pos.p += 12
-      if (vsAt === p /*|| !buf.compare(UNSET_TR_VERSION, 0, 10, p, p+10)*/) {
+      if (vsAt === p || !buf.compare(UNSET_TR_VERSION, 0, 10, p, p+10)) {
         // Its unbound. Decode as-is. I'm not sure when this will come up in
         // practice, but it means pack and unpack are absolute inverses of one
         // another.
 
         // This logic is copied from the python bindings. But I'm
         // confused why they still keep the code even when its unbound.
-        // return {type: 'unbound versionstamp', code: buf.readUInt16BE(p+10)}
-        return {type: 'unbound versionstamp'}
+        return {type: 'unbound versionstamp', code: buf.readUInt16BE(p+10)}
+        // return {type: 'unbound versionstamp'}
       }
       else {
         const value = Buffer.alloc(12)
         buf.copy(value, 0, p, p+12)
-        // return {type: 'versionstamp', value}
+        return {type: 'versionstamp', value}
 
-        return value.compare(UNSET_TR_VERSION, 0, 10, 0, 10)
-          ? {type: 'versionstamp', value}
-          : {type: 'unbound versionstamp', code: value.readUInt16BE(10)}
+        // return value.compare(UNSET_TR_VERSION, 0, 10, 0, 10)
+        //   ? {type: 'versionstamp', value}
+        //   : {type: 'unbound versionstamp', code: value.readUInt16BE(10)}
       }
     }
     default: {
@@ -451,24 +461,35 @@ function decode(buf: Buffer, pos: {p: number}, vsAt: number, noCanonicalize: boo
   }
 }
 
-export function unpack(key: Buffer | ValWithUnboundVersionStamp, noCanonicalize: boolean = false) {
+// TODO: Consider a bound version of this method.
+export function unpack(key: Buffer, noCanonicalize: boolean = false) {
   const pos = {p: 0}
   const arr: TupleItem[] = []
 
-  const isUnbound = isPackUnbound(key)
-  const buf: Buffer = isUnbound ? (key as ValWithUnboundVersionStamp).data : (key as Buffer)
-  const vsAt = isUnbound ? (key as ValWithUnboundVersionStamp).stampPos : -1
-
-  while(pos.p < buf.length) {
-    arr.push(decode(buf, pos, vsAt, noCanonicalize))
+  while(pos.p < key.length) {
+    arr.push(decode(key, pos, -1, noCanonicalize))
   }
 
   return arr
 }
+// export function unpack(key: Buffer | UnboundStamp, noCanonicalize: boolean = false) {
+//   const pos = {p: 0}
+//   const arr: TupleItem[] = []
 
-export function range(arr: TupleItem[]) {
+//   const isUnbound = isPackUnbound(key)
+//   const buf: Buffer = isUnbound ? (key as UnboundStamp).data : (key as Buffer)
+//   const vsAt = isUnbound ? (key as UnboundStamp).stampPos : -1
+
+//   while(pos.p < buf.length) {
+//     arr.push(decode(buf, pos, vsAt, noCanonicalize))
+//   }
+
+//   return arr
+// }
+
+export function range(arr: TupleItemBound[]) {
   var packed = pack(arr)
-  if (isPackUnbound(packed)) throw TypeError('tuple.range() cannot be called with an unset versionstamp field')
+
   return {
     begin: Buffer.concat([packed, nullByte]),
     end: Buffer.concat([packed, Buffer.from('ff', 'hex')])

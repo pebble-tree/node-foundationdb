@@ -19,7 +19,6 @@ import {
 } from '../lib'
 
 // TODO: Expose these in lib
-import {ValWithUnboundVersionStamp, asBound, isPackUnbound} from '../lib/transformer'
 import {packPrefixedVersionStamp} from '../lib/versionStamp'
 
 import assert = require('assert')
@@ -60,8 +59,8 @@ const makeMachine = (db: Database, initialName: Buffer) => {
   const catchFdbErr = (e: Error) => {
     if (e instanceof fdb.FDBError) {
       // This encoding is silly. Also note that these errors are normal & part of the test.
-      // console.error('xxx', instrId, e.code, e.message)
-      return asBound(fdb.tuple.pack([Buffer.from('ERROR'), Buffer.from(e.code.toString())]))
+      if (verbose) console.log(chalk.red('output error'), instrId, e)
+      return fdb.tuple.pack([Buffer.from('ERROR'), Buffer.from(e.code.toString())])
     } else throw e
   }
 
@@ -150,13 +149,13 @@ const makeMachine = (db: Database, initialName: Buffer) => {
         await db.doTransaction(async tn => {
           for (let k = 0; k < 100 && i < stack.length; k++) {
             const {instrId, data} = stack[i]
-            let packedData = fdb.tuple.packBound([
+            let packedData = fdb.tuple.pack([
               await wrapP<TupleItemBound>(data)
             ])
             if (packedData.length > 40000) packedData = packedData.slice(0, 40000)
 
             // TODO: Would be way better here to use a tuple transaction.
-            tn.set(Buffer.concat([prefix, fdb.tuple.packBound([i, instrId])]), packedData)
+            tn.set(Buffer.concat([prefix, fdb.tuple.pack([i, instrId])]), packedData)
             i++
           }
         })
@@ -219,7 +218,7 @@ const makeMachine = (db: Database, initialName: Buffer) => {
         {streamingMode, limit, reverse}
       )
       // console.log('get range result', results)
-      pushTupleItem(tuple.packBound(Array.prototype.concat.apply([], results)))
+      pushTupleItem(tuple.pack(Array.prototype.concat.apply([], results)))
     },
     async get_range_starts_with(oper) {
       const prefix = await popBuffer()
@@ -227,7 +226,7 @@ const makeMachine = (db: Database, initialName: Buffer) => {
       const reverse = await popBool()
       const streamingMode = await popInt() as StreamingMode
       const results = await oper.getRangeAllStartsWith(prefix, {streamingMode, limit, reverse})
-      pushValue(tuple.packBound(Array.prototype.concat.apply([], results)))
+      pushValue(tuple.pack(Array.prototype.concat.apply([], results)))
     },
     async get_range_selector(oper) {
       const beginSel = await popSelector()
@@ -240,7 +239,7 @@ const makeMachine = (db: Database, initialName: Buffer) => {
       const results = (await oper.getRangeAll(beginSel, endSel, {streamingMode, limit, reverse}))
         .filter(([k]) => bufBeginsWith(k as Buffer, prefix))
 
-      pushValue(tuple.packBound(Array.prototype.concat.apply([], results)))
+      pushValue(tuple.pack(Array.prototype.concat.apply([], results)))
     },
     async get_read_version(oper) {
       try {
@@ -328,31 +327,30 @@ const makeMachine = (db: Database, initialName: Buffer) => {
       const prefix = await popBuffer()
       // console.log('prefix', prefix.toString('hex'), prefix.length)
       try {
-        const value = tuple.pack(await popNValues())
+        const value = tuple.packUnboundStamp(await popNValues())
         // console.log('a', value)
-        if (Buffer.isBuffer(value)) pushLiteral('ERROR: NONE')
-        else {
-          const _value = value as ValWithUnboundVersionStamp
-          // console.log('_', _value.data.toString('hex'), _value.data.length)
-          // console.log('b', packPrefixedVersionStamp(prefix, _value, true).toString('hex'))
-          pushLiteral('OK')
-          // pushValue(Buffer.concat([]))
-          // pushValue(Buffer.concat([prefix, (value as ValWithUnboundVersionStamp).data, ]))
-          // const pack = packVersionStamp({data: Buffer.concat([prefix, _value.data]), _value.stampPos + prefix.length, true, false)
-          const pack = packPrefixedVersionStamp(prefix, _value, true)
-          // console.log('packed', pack.toString('hex'))
-          pushValue(pack)
-        }
+        // console.log('_', value.data.toString('hex'), value.data.length)
+        // console.log('b', packPrefixedVersionStamp(prefix, value, true).toString('hex'))
+        pushLiteral('OK')
+        // pushValue(Buffer.concat([]))
+        // pushValue(Buffer.concat([prefix, (value as UnboundStamp).data, ]))
+        // const pack = packVersionStamp({data: Buffer.concat([prefix, value.data]), value.stampPos + prefix.length, true, false)
+        const pack = packPrefixedVersionStamp(prefix, value, true)
+        // console.log('packed', pack.toString('hex'))
+        pushValue(pack)
       } catch (e) {
         // console.log('c', e)
-        if (e.message === 'Tuples may only contain 1 unset versionstamp') {
+        // TODO: Add userspace error codes to these.
+        if (e.message === 'No incomplete versionstamp included in tuple pack with versionstamp') {
+          pushLiteral('ERROR: NONE')
+        } else if (e.message === 'Tuples may only contain 1 unset versionstamp') {
           pushLiteral('ERROR: MULTIPLE')
         } else throw e
       }
     },
     async tuple_unpack() {
       const packed = await popBuffer()
-      for (const item of tuple.unpack(packed, true)) {
+      for (const item of tuple.unpack(packed, true) as TupleItemBound[]) {
         // const pack = tuple.pack([item])
         // pushValue(isPackUnbound(pack) ? null : pack)
         pushValue(tuple.pack([item]))
@@ -367,8 +365,8 @@ const makeMachine = (db: Database, initialName: Buffer) => {
       // Look I'll be honest. I could put a compare function into the tuple
       // type, but it doesn't do anything you can't trivially do yourself.
       const items = (await popNValues())
-        .map(buf => tuple.unpack(buf as Buffer, true))
-        .sort((a: TupleItem[], b: TupleItem[]) => asBound(tuple.pack(a)).compare(asBound(tuple.pack(b))))
+        .map(buf => tuple.unpack(buf as Buffer, true) as TupleItemBound[])
+        .sort((a: TupleItemBound[], b: TupleItemBound[]) => tuple.pack(a).compare(tuple.pack(b)))
 
       for (const item of items) pushValue(tuple.pack(item))
     },
@@ -472,7 +470,7 @@ const makeMachine = (db: Database, initialName: Buffer) => {
         operand = db
       }
 
-      // verbose = (instrId > 45100 && instrId < 45760)
+      // verbose = (instrId > 27234-10) && (instrId < 27234+10)
       // verbose = (instrId > 12700 && instrId < 12710) || (instrId > 12770 && instrId < 12788)
 
       try {

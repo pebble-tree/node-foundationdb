@@ -57,10 +57,10 @@ import {strInc} from './util'
 export const util = {strInc}
 
 // TODO: Remove tuple from the root API. Tuples should be in a separate module.
-import {pack, unpack, range, packBound, TupleItem, TupleItemBound} from './tuple'
+import {pack, packUnboundStamp, unpack, range, TupleItem, TupleItemBound} from './tuple'
 
 export {TupleItem, TupleItemBound}
-export const tuple = {pack, unpack, range, packBound}
+export const tuple = {pack, unpack, range, packUnboundStamp}
 
 const id = (x: any) => x
 export const encoders = {
@@ -71,27 +71,29 @@ export const encoders = {
       return b
     },
     unpack(buf) { return buf.readInt32BE(0) }
-  } as Transformer<number>,
+  } as Transformer<number, number>,
 
   json: {
     pack(obj) { return JSON.stringify(obj) },
     unpack(buf) { return JSON.parse(buf.toString('utf8')) }
-  } as Transformer<any>,
+  } as Transformer<any, any>,
 
   string: {
     pack(str) { return Buffer.from(str, 'utf8') },
     unpack(buf) { return buf.toString('utf8') }
-  } as Transformer<string>,
+  } as Transformer<string, string>,
 
   buf: {
     pack: id,
     unpack: id
-  } as Transformer<Buffer>,
+  } as Transformer<Buffer, Buffer>,
 
   tuple: { // TODO: Move this into a separate library
     pack,
     unpack,
-  } as Transformer<TupleItem[]>
+    packUnboundStamp,
+    bakeVersion: () => {throw Error('not implemented')}
+  } as Transformer<TupleItem[], TupleItem[]>,
 }
 
 const wrapCluster = (cluster: fdb.NativeCluster) => ({

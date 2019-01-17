@@ -53,3 +53,11 @@ export const strNext = (val: string | Buffer): Buffer => {
 export const asBuf = (val: Buffer | string): Buffer => (
   typeof val === 'string' ? Buffer.from(val, 'utf8') : val
 )
+
+// Marginally faster than Buffer.concat
+export const concat2 = (a: Buffer, b: Buffer) => {
+  const result = Buffer.alloc(a.length + b.length)
+  a.copy(result, 0)
+  b.copy(result, a.length)
+  return result
+}

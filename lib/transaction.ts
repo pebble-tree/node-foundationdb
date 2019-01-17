@@ -25,13 +25,11 @@ import {
 import Database from './database'
 
 import {
-  ValWithUnboundVersionStamp,
   Transformer,
-  isPackUnbound,
-  asBound,
 } from './transformer'
 
 import {
+  UnboundStamp,
   packVersionStamp,
   packPrefixedVersionStamp,
   packVersionStampPrefixSuffix
@@ -68,15 +66,15 @@ if ((<any>Symbol).asyncIterator == null) (<any>Symbol).asyncIterator = Symbol.fo
 
 // NativeValue is string | Buffer because the C code accepts either format.
 // But all values returned from methods will actually just be Buffer.
-export default class Transaction<Key = NativeValue, Value = NativeValue> {
+export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = NativeValue, ValOut = Buffer> {
   _tn: NativeTransaction
   isSnapshot: boolean
-  _keyEncoding: Transformer<Key>
-  _valueEncoding: Transformer<Value>
+  _keyEncoding: Transformer<KeyIn, KeyOut>
+  _valueEncoding: Transformer<ValIn, ValOut>
   code: number = 0
 
   constructor(tn: NativeTransaction, snapshot: boolean,
-      keyEncoding: Transformer<Key>, valueEncoding: Transformer<Value>,
+      keyEncoding: Transformer<KeyIn, KeyOut>, valueEncoding: Transformer<ValIn, ValOut>,
       opts?: TransactionOptions) {
     this._tn = tn
     this._keyEncoding = keyEncoding
@@ -85,12 +83,8 @@ export default class Transaction<Key = NativeValue, Value = NativeValue> {
     this.isSnapshot = snapshot
   }
 
-  // Most methods need the key and value to be known. Unbound versionstamps in
-  // key / values only works for a few methods (like set).
-  packBoundKey(key: Key): string | Buffer { return asBound(this._keyEncoding.pack(key)) }
-  packBoundVal(val: Value): string | Buffer { return asBound(this._valueEncoding.pack(val)) }
-
-  bakeCode(into: ValWithUnboundVersionStamp) {
+  bakeCode(into: UnboundStamp) {
+    if (this.isSnapshot) throw new Error('Cannot use this method in a snapshot transaction')
     if (into.codePos != null) {
       // We edit the buffer in-place but leave the codepos as is so if the txn
       // retries it'll overwrite the code.
@@ -109,7 +103,7 @@ export default class Transaction<Key = NativeValue, Value = NativeValue> {
   }
 
   // Returns a mirror transaction which does snapshot reads.
-  snapshot(): Transaction<Key, Value> {
+  snapshot(): Transaction<KeyIn, KeyOut, ValIn, ValOut> {
     return new Transaction(this._tn, true, this._keyEncoding, this._valueEncoding)
   }
 
@@ -138,10 +132,10 @@ export default class Transaction<Key = NativeValue, Value = NativeValue> {
       : this._tn.onError(code)
   }
 
-  get(key: Key): Promise<Value | null>
-  get(key: Key, cb: Callback<Value | null>): void
-  get(key: Key, cb?: Callback<Value | null>) {
-    const keyBuf = this.packBoundKey(key)
+  get(key: KeyIn): Promise<ValOut | null>
+  get(key: KeyIn, cb: Callback<ValOut | null>): void
+  get(key: KeyIn, cb?: Callback<ValOut | null>) {
+    const keyBuf = this._keyEncoding.pack(key)
     return cb
       ? this._tn.get(keyBuf, this.isSnapshot, (err, val) => {
         cb(err, val == null ? null : this._valueEncoding.unpack(val))
@@ -150,47 +144,32 @@ export default class Transaction<Key = NativeValue, Value = NativeValue> {
         .then(val => val == null ? null : this._valueEncoding.unpack(val))
   }
 
-  getKey(_sel: Key | KeySelector<Key>): Promise<Key | null> {
+  getKey(_sel: KeyIn | KeySelector<KeyIn>): Promise<KeyOut | null> {
     const sel = keySelector.from(_sel)
-    return this._tn.getKey(this.packBoundKey(sel.key), sel.orEqual, sel.offset, this.isSnapshot)
+    return this._tn.getKey(this._keyEncoding.pack(sel.key), sel.orEqual, sel.offset, this.isSnapshot)
       .then(keyOrNull => (
         keyOrNull != null ? this._keyEncoding.unpack(keyOrNull) : null
       ))
   }
 
-  set(key: Key, val: Value) {
-    // console.log('key', key)
-    const keyPack = this._keyEncoding.pack(key)
-    const valPack = this._valueEncoding.pack(val)
 
-    // If the key or value contains an unbound versionstamp we need to use special methods.
-    // TODO: In this case, it'd be nice to automatically bake the committed versionstamp back into the tuple.
-    if (isPackUnbound(keyPack)) {
-      if (isPackUnbound(valPack)) throw new TypeError('Cannot set a key/value pair where both key and value have undefined versionstamp fields')
-      this.bakeCode(keyPack)
-      // console.log('unbound key pack', keyPack)
-      this._tn.atomicOp(MutationType.SetVersionstampedKey, packVersionStamp(keyPack, true), valPack)
-    } else if (isPackUnbound(valPack)) {
-      this.bakeCode(valPack)
-      // console.log('unbound val pack', keyPack)
-      this._tn.atomicOp(MutationType.SetVersionstampedValue, keyPack, packVersionStamp(valPack, false))
-    } else {
-      this._tn.set(keyPack, valPack)
-    }
+  set(key: KeyIn, val: ValIn) {
+    this._tn.set(this._keyEncoding.pack(key), this._valueEncoding.pack(val))
   }
-  clear(key: Key) {
-    const pack = asBound(this._keyEncoding.pack(key))
+
+  clear(key: KeyIn) {
+    const pack = this._keyEncoding.pack(key)
     this._tn.clear(pack)
   }
 
   // This just destructively edits the result in-place.
-  _encodeRangeResult(r: [Buffer, Buffer][]): [Key, Value][] {
+  _encodeRangeResult(r: [Buffer, Buffer][]): [KeyOut, ValOut][] {
     // This is slightly faster but I have to throw away the TS checks in the process. :/
     for (let i = 0; i < r.length; i++) {
       ;(r as any)[i][0] = this._keyEncoding.unpack(r[i][0])
       ;(r as any)[i][1] = this._valueEncoding.unpack(r[i][1])
     }
-    return r as any as [Key, Value][]
+    return r as any as [KeyOut, ValOut][]
   }
 
   getRangeNative(start: KeySelector<NativeValue>,
@@ -205,24 +184,24 @@ export default class Transaction<Key = NativeValue, Value = NativeValue> {
       iter, this.isSnapshot, reverse)
   }
 
-  getRangeRaw(start: KeySelector<Key>, end: KeySelector<Key> | null,
+  getRangeRaw(start: KeySelector<KeyIn>, end: KeySelector<KeyIn> | null,
       limit: number, targetBytes: number, streamingMode: StreamingMode,
-      iter: number, reverse: boolean): Promise<KVList<Key, Value>> {
+      iter: number, reverse: boolean): Promise<KVList<KeyOut, ValOut>> {
     return this.getRangeNative(
-      keySelector.toNative(start, this),
-      end != null ? keySelector.toNative(end, this) : null,
+      keySelector.toNative(start, this._keyEncoding),
+      end != null ? keySelector.toNative(end, this._keyEncoding) : null,
       limit, targetBytes, streamingMode, iter, reverse)
     .then(r => ({more: r.more, results: this._encodeRangeResult(r.results)}))
   }
 
   async *getRangeBatch(
-      _start: Key | KeySelector<Key>, // Consider also supporting string / buffers for these.
-      _end?: Key | KeySelector<Key>, // If not specified, start is used as a prefix.
+      _start: KeyIn | KeySelector<KeyIn>, // Consider also supporting string / buffers for these.
+      _end?: KeyIn | KeySelector<KeyIn>, // If not specified, start is used as a prefix.
       opts: RangeOptions = {}) {
-    let start = keySelector.toNative(keySelector.from(_start), this)
+    let start = keySelector.toNative(keySelector.from(_start), this._keyEncoding)
     let end = _end == null
       ? keySelector.firstGreaterOrEqual(strInc(start.key))
-      : keySelector.toNative(keySelector.from(_end), this)
+      : keySelector.toNative(keySelector.from(_end), this._keyEncoding)
     let limit = opts.limit || 0
     const streamingMode = opts.streamingMode == null ? StreamingMode.Iterator : opts.streamingMode
 
@@ -250,8 +229,8 @@ export default class Transaction<Key = NativeValue, Value = NativeValue> {
   // TODO: getRangeBatchStartsWith
 
   async *getRange(
-      start: Key | KeySelector<Key>, // Consider also supporting string / buffers for these.
-      end?: Key | KeySelector<Key>,
+      start: KeyIn | KeySelector<KeyIn>, // Consider also supporting string / buffers for these.
+      end?: KeyIn | KeySelector<KeyIn>,
       opts?: RangeOptions) {
     for await (const batch of this.getRangeBatch(start, end, opts)) {
       for (const pair of batch) yield pair
@@ -261,52 +240,52 @@ export default class Transaction<Key = NativeValue, Value = NativeValue> {
   // TODO: getRangeStartsWtih
 
   async getRangeAll(
-      start: Key | KeySelector<Key>,
-      end?: Key | KeySelector<Key>, // if undefined, start is used as a prefix.
+      start: KeyIn | KeySelector<KeyIn>,
+      end?: KeyIn | KeySelector<KeyIn>, // if undefined, start is used as a prefix.
       opts: RangeOptions = {}) {
     const childOpts: RangeOptions = {...opts}
     if (childOpts.streamingMode == null) childOpts.streamingMode = StreamingMode.WantAll
 
-    const result: [Key, Value][] = []
+    const result: [KeyOut, ValOut][] = []
     for await (const batch of this.getRangeBatch(start, end, childOpts)) {
       result.push.apply(result, batch)
     }
     return result
   }
 
-  getRangeAllStartsWith(prefix: Key | KeySelector<Key>, opts?: RangeOptions) {
+  getRangeAllStartsWith(prefix: KeyIn | KeySelector<KeyIn>, opts?: RangeOptions) {
     return this.getRangeAll(prefix, undefined, opts)
   }
   
   // If end is not specified, clears entire range starting with prefix.
-  clearRange(start: Key, end?: Key) {
-    const _start = this.packBoundKey(start)
-    const _end = end == null ? strInc(_start) : this.packBoundKey(end)
+  clearRange(start: KeyIn, end?: KeyIn) {
+    const _start = this._keyEncoding.pack(start)
+    const _end = end == null ? strInc(_start) : this._keyEncoding.pack(end)
     this._tn.clearRange(_start, _end)
   }
   // Just an alias for unary clearRange.
-  clearRangeStartsWith(prefix: Key) {
+  clearRangeStartsWith(prefix: KeyIn) {
     this.clearRange(prefix)
   }
 
-  watch(key: Key, opts?: WatchOptions): Watch {
+  watch(key: KeyIn, opts?: WatchOptions): Watch {
     const throwAll = opts && opts.throwAllErrors
-    return this._tn.watch(this.packBoundKey(key), !throwAll)
+    return this._tn.watch(this._keyEncoding.pack(key), !throwAll)
   }
 
-  addReadConflictRange(start: Key, end: Key) {
-    this._tn.addReadConflictRange(this.packBoundKey(start), this.packBoundKey(end))
+  addReadConflictRange(start: KeyIn, end: KeyIn) {
+    this._tn.addReadConflictRange(this._keyEncoding.pack(start), this._keyEncoding.pack(end))
   }
-  addReadConflictKey(key: Key) {
-    const keyBuf = this.packBoundKey(key)
+  addReadConflictKey(key: KeyIn) {
+    const keyBuf = this._keyEncoding.pack(key)
     this._tn.addReadConflictRange(keyBuf, strNext(keyBuf))
   }
 
-  addWriteConflictRange(start: Key, end: Key) {
-    this._tn.addWriteConflictRange(this.packBoundKey(start), this.packBoundKey(end))
+  addWriteConflictRange(start: KeyIn, end: KeyIn) {
+    this._tn.addWriteConflictRange(this._keyEncoding.pack(start), this._keyEncoding.pack(end))
   }
-  addWriteConflictKey(key: Key) {
-    const keyBuf = this.packBoundKey(key)
+  addWriteConflictKey(key: KeyIn) {
+    const keyBuf = this._keyEncoding.pack(key)
     this._tn.addWriteConflictRange(keyBuf, strNext(keyBuf))
   }
 
@@ -327,8 +306,8 @@ export default class Transaction<Key = NativeValue, Value = NativeValue> {
     return cb ? this._tn.getVersionStamp(cb) : {promise: this._tn.getVersionStamp()}
   }
 
-  getAddressesForKey(key: Key): string[] {
-    return this._tn.getAddressesForKey(this.packBoundKey(key))
+  getAddressesForKey(key: KeyIn): string[] {
+    return this._tn.getAddressesForKey(this._keyEncoding.pack(key))
   }
 
   // **** Atomic operations
@@ -336,50 +315,56 @@ export default class Transaction<Key = NativeValue, Value = NativeValue> {
   atomicOpNative(opType: MutationType, key: NativeValue, oper: NativeValue) {
     this._tn.atomicOp(opType, key, oper)
   }
-  atomicOpKB(opType: MutationType, key: Key, oper: Buffer) {
-    this._tn.atomicOp(opType, this.packBoundKey(key), oper)
+  atomicOpKB(opType: MutationType, key: KeyIn, oper: Buffer) {
+    this._tn.atomicOp(opType, this._keyEncoding.pack(key), oper)
   }
-  atomicOp(opType: MutationType, key: Key, oper: Value) {
-    this._tn.atomicOp(opType, this.packBoundKey(key), this.packBoundVal(oper))
+  atomicOp(opType: MutationType, key: KeyIn, oper: ValIn) {
+    this._tn.atomicOp(opType, this._keyEncoding.pack(key), this._valueEncoding.pack(oper))
   }
 
   // Does little-endian addition on encoded values. Value transformer should encode to some
   // little endian type.
-  add(key: Key, oper: Value) { this.atomicOp(MutationType.Add, key, oper) }
-  max(key: Key, oper: Value) { this.atomicOp(MutationType.Max, key, oper) }
-  min(key: Key, oper: Value) { this.atomicOp(MutationType.Min, key, oper) }
+  add(key: KeyIn, oper: ValIn) { this.atomicOp(MutationType.Add, key, oper) }
+  max(key: KeyIn, oper: ValIn) { this.atomicOp(MutationType.Max, key, oper) }
+  min(key: KeyIn, oper: ValIn) { this.atomicOp(MutationType.Min, key, oper) }
 
   // Raw buffer variants are provided here to support fancy bit packing semantics.
-  bitAnd(key: Key, oper: Value) { this.atomicOp(MutationType.BitAnd, key, oper) }
-  bitOr(key: Key, oper: Value) { this.atomicOp(MutationType.BitOr, key, oper) }
-  bitXor(key: Key, oper: Value) { this.atomicOp(MutationType.BitXor, key, oper) }
-  bitAndBuf(key: Key, oper: Buffer) { this.atomicOpKB(MutationType.BitAnd, key, oper) }
-  bitOrBuf(key: Key, oper: Buffer) { this.atomicOpKB(MutationType.BitOr, key, oper) }
-  bitXorBuf(key: Key, oper: Buffer) { this.atomicOpKB(MutationType.BitXor, key, oper) }
+  bitAnd(key: KeyIn, oper: ValIn) { this.atomicOp(MutationType.BitAnd, key, oper) }
+  bitOr(key: KeyIn, oper: ValIn) { this.atomicOp(MutationType.BitOr, key, oper) }
+  bitXor(key: KeyIn, oper: ValIn) { this.atomicOp(MutationType.BitXor, key, oper) }
+  bitAndBuf(key: KeyIn, oper: Buffer) { this.atomicOpKB(MutationType.BitAnd, key, oper) }
+  bitOrBuf(key: KeyIn, oper: Buffer) { this.atomicOpKB(MutationType.BitOr, key, oper) }
+  bitXorBuf(key: KeyIn, oper: Buffer) { this.atomicOpKB(MutationType.BitXor, key, oper) }
 
   // Performs lexicographic comparison of byte strings. Sets the value in the
   // database to the lexographical min / max of its current value and the
   // value supplied as a parameter. If the key does not exist in the database
   // this is the same as set().
-  byteMin(key: Key, val: Value) { this.atomicOp(MutationType.ByteMin, key, val) }
-  byteMax(key: Key, val: Value) { this.atomicOp(MutationType.ByteMax, key, val) }
+  byteMin(key: KeyIn, val: ValIn) { this.atomicOp(MutationType.ByteMin, key, val) }
+  byteMax(key: KeyIn, val: ValIn) { this.atomicOp(MutationType.ByteMax, key, val) }
 
 
-  setVersionstampedKeyRaw(keyBytes: Buffer, value: Value) {
-    this.atomicOpNative(MutationType.SetVersionstampedKey, keyBytes, this.packBoundVal(value))
+  setVersionstampedKeyRaw(keyBytes: Buffer, value: ValIn) {
+    this.atomicOpNative(MutationType.SetVersionstampedKey, keyBytes, this._valueEncoding.pack(value))
   }
 
   // This sets the key [prefix, 10 bytes versionstamp, suffix] to value.
-  setVersionstampedKeyBuf(prefix: Buffer | undefined, suffix: Buffer | undefined, value: Value) {
+  setVersionstampedKeyBuf(prefix: Buffer | undefined, suffix: Buffer | undefined, value: ValIn) {
     const key = packVersionStampPrefixSuffix(prefix, suffix, true)
     // console.log('key', key)
-    this.atomicOpNative(MutationType.SetVersionstampedKey, key, this.packBoundVal(value))
+    this.atomicOpNative(MutationType.SetVersionstampedKey, key, this._valueEncoding.pack(value))
   }
 
-  // TODO: These method names are really confusing.
-  setVersionstampedKey(prefix: Key, suffix: Buffer | undefined, value: Value) {
-    const _prefix = asBuf(this.packBoundKey(prefix))
-    this.setVersionstampedKeyBuf(_prefix, suffix, value)
+  // TODO: These method names are a bit confusing
+  setVersionstampedKey(key: KeyIn, value: ValIn) {
+    const pack = this._keyEncoding.packUnboundStamp!(key)
+    this.bakeCode(pack)
+    this.setVersionstampedKeyRaw(packVersionStamp(pack, true), value)
+  }
+
+  setVersionstampSuffixedKey(key: KeyIn, value: ValIn, suffix?: Buffer) {
+    const prefix = asBuf(this._keyEncoding.pack(key))
+    this.setVersionstampedKeyBuf(prefix, suffix, value)
   }
   // setVersionstampedKeyPrefix(prefix: Key, value: Value) {
   //   this.setVersionstampedKey(prefix, null, value)
@@ -389,8 +374,8 @@ export default class Transaction<Key = NativeValue, Value = NativeValue> {
 
   // Get the specified key and split out the stamp and value pair. This
   // requires that the stamp was put at offset 0 (the start) of the value.
-  async getVersionstampPrefixedValue(key: Key): Promise<{stamp: Buffer, val: Value} | null> {
-    const val = await this._tn.get(this.packBoundKey(key), this.isSnapshot)
+  async getVersionstampPrefixedValue(key: KeyIn): Promise<{stamp: Buffer, val: ValOut} | null> {
+    const val = await this._tn.get(this._keyEncoding.pack(key), this.isSnapshot)
     return val == null ? null
       : {
         stamp: val.slice(0, 10),
@@ -400,10 +385,15 @@ export default class Transaction<Key = NativeValue, Value = NativeValue> {
 
   // Set key = [10 byte versionstamp, value in bytes].
   // This function leans on the value transformer to pack & unpack versionstamps.
-  setVersionstampPrefixedValue(key: Key, value: Value, valPrefix?: Buffer) {
-    const valBuf = asBuf(this.packBoundVal(value))
-    const val = packVersionStampPrefixSuffix(valPrefix, valBuf, false)
+  setVersionstampPrefixedValue(key: KeyIn, value: ValIn, prefix?: Buffer) {
+    const valBuf = asBuf(this._valueEncoding.pack(value))
+    const val = packVersionStampPrefixSuffix(prefix, valBuf, false)
     this.atomicOpKB(MutationType.SetVersionstampedValue, key, val)
+  }
+
+  setVersionstampedValue(key: KeyIn, value: ValIn) {
+    const pack = this._valueEncoding.packUnboundStamp!(value)
+    this.atomicOpKB(MutationType.SetVersionstampedValue, key, packVersionStamp(pack, false))
   }
 
   // This packs the value by prefixing the version stamp to the
@@ -412,7 +402,7 @@ export default class Transaction<Key = NativeValue, Value = NativeValue> {
   //
   // If your key transformer sometimes returns an unbound value for this key
   // (eg using tuples), just call set(key, value).
-  // setVersionstampedValueBuf(key: Key, value: Buffer, pos: number = 0) {
+  // setVersionstampedValueBuf(key: KeyIn, value: Buffer, pos: number = 0) {
   //   // const valPack = packVersionstampedValue(asBuf(this._valueEncoding.pack(value)), pos)
   //   const valPack = packVersionStampRaw(value, pos, true)
   //   this.atomicOpKB(MutationType.SetVersionstampedValue, key, valPack)
