@@ -210,9 +210,8 @@ const makeMachine = (db: Database, initialName: Buffer) => {
       const limit = await popInt()
       const reverse = await popBool()
       const streamingMode = await popInt() as StreamingMode
-      // console.log('get range', instrId, beginKey, endKey, limit, reverse, streamingMode, oper)
+      // console.log('get range', instrId, beginKey, endKey, limit, reverse, 'mode', streamingMode, oper)
       
-      const v = await oper.get(beginKey)
       const results = await oper.getRangeAll(
         keySelector.from(beginKey), keySelector.from(endKey),
         {streamingMode, limit, reverse}
