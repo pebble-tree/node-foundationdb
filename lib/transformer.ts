@@ -17,17 +17,6 @@ export type Transformer<In, Out> = {
   bakeVersionstamp?(val: In, versionstamp: Buffer, code: Buffer | null): void,
 }
 
-// export const isPackUnbound = (val: Buffer | string | UnboundStamp): val is UnboundStamp => (
-//   typeof val === 'object' && !Buffer.isBuffer(val)
-// )
-
-// export function asBound(val: Buffer | UnboundStamp): Buffer;
-// export function asBound(val: Buffer | string | UnboundStamp): Buffer | string;
-// export function asBound(val: any) {
-//   if (isPackUnbound(val)) throw Error('Value with unbound versionstamp not allowed here')
-//   return val
-// }
-
 const id = <T>(x: T) => x
 export const defaultTransformer: Transformer<Buffer | string, Buffer> = {
   pack: id,

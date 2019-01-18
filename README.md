@@ -582,7 +582,7 @@ const students = index.getRangeAll(
 
 Foundationdb allows you to bake the current version number into a key or value in the database. The embedded version is called a *versionstamp*. It is an opaque 10 byte value. These values are monotonically increasing but non-continuous.
 
-> *💣Danger* Although these values are unique to an FDB cluster, if you ever export & re-import your data into a different FDB cluster these keys may be duplicated / reused.
+> *Danger 💣* These values are unique to your FDB cluster. You may run into issues if you ever export your data then re-import it into a different FDB cluster.
 
 During a transaction you can get a promise to read the resulting version with `tn.getVersionstamp() => {promise: Promise<Buffer>}`. Note: 
 

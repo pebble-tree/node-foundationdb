@@ -1,6 +1,10 @@
-# Master
+# 0.8.0
 
-- Dropped official support for node 9. Removed prebuild for node 9 and electron. Added prebuild for node 11
+- Removed prebuild for node 9 and electron.
+- Added prebuild for node 11
+- Added proper versionstamp API
+- Added versionstamp support to tuple
+- Wrapped getVersionstamp in a {promise} object
 
 
 # 0.7.0

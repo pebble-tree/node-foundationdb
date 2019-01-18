@@ -57,7 +57,6 @@ export interface NativeTransaction {
 
   clearRange(start: NativeValue, end: NativeValue): void
 
-  // watch(key: NativeValue): NativeWatchPromise
   watch(key: NativeValue, ignoreStandardErrs: boolean): Watch
 
   addReadConflictRange(start: NativeValue, end: NativeValue): void
