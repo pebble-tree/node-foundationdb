@@ -592,7 +592,7 @@ During a transaction you can get a promise to read the resulting version with `t
 Example:
 
 ```javascript
-const p = await db.doTxn(async tn => {
+const p = await db.doTn(async tn => {
   tn.set('key', 'val')
   return tn.getVersionstamp()
 })
@@ -603,7 +603,7 @@ const versionstamp = await p.promise // 10 byte buffer
 💣💣 This will deadlock:
 
 ```javascript
-await db.doTxn(async tn => {
+await db.doTn(async tn => {
   tn.set('key', 'val')
   await tn.getVersionstamp().promise // DEADLOCK!!!
 })
