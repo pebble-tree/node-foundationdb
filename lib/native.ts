@@ -68,8 +68,8 @@ export interface NativeTransaction {
   getReadVersion(cb: Callback<Version>): void
   getCommittedVersion(): Version
 
-  getVersionStamp(): Promise<Buffer>
-  getVersionStamp(cb: Callback<Buffer>): void
+  getVersionstamp(): Promise<Buffer>
+  getVersionstamp(cb: Callback<Buffer>): void
 
   getAddressesForKey(key: NativeValue): string[]
 }

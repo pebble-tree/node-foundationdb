@@ -26,7 +26,7 @@
 // final argument to decode.
 
 import assert = require('assert')
-import {UnboundStamp} from './versionStamp'
+import {UnboundStamp} from './versionstamp'
 import {concat2} from './util'
 
 const UNSET_TR_VERSION = Buffer.alloc(10).fill(0xff)
@@ -200,8 +200,8 @@ const adjustFloat = (data: Buffer, isEncode: boolean) => {
   return data
 }
 
-type VersionStampPos = {stamp?: number, code?: number}
-const encode = (into: BufferBuilder, item: TupleItem, versionStampPos: VersionStampPos) => {
+type VersionstampPos = {stamp?: number, code?: number}
+const encode = (into: BufferBuilder, item: TupleItem, versionstampPos: VersionstampPos) => {
   if (item === undefined) throw new TypeError('Packed element cannot be undefined')
   else if (item === null) into.appendByte(Code.Null)
   else if (item === false) into.appendByte(Code.False)
@@ -229,7 +229,7 @@ const encode = (into: BufferBuilder, item: TupleItem, versionStampPos: VersionSt
     // Embedded child tuple.
     into.appendByte(Code.Nested)
     for (let i = 0; i < item.length; i++) {
-      encode(into, item[i], versionStampPos)
+      encode(into, item[i], versionstampPos)
       if (item[i] == null) into.appendByte(0xff)
     }
     into.appendByte(0)
@@ -283,13 +283,13 @@ const encode = (into: BufferBuilder, item: TupleItem, versionStampPos: VersionSt
 
   } else if (typeof item === 'object' && item.type === 'unbound versionstamp') {
     into.appendByte(Code.Versionstamp)
-    if (versionStampPos.stamp != null) throw new TypeError('Tuples may only contain 1 unset versionstamp')
-    versionStampPos.stamp = into.used
+    if (versionstampPos.stamp != null) throw new TypeError('Tuples may only contain 1 unset versionstamp')
+    versionstampPos.stamp = into.used
     into.writeInto(10).fill(0xff)
     if (item.code != null) {
       into.writeInto(2).writeUInt16BE(item.code, 0)
     } else {
-      versionStampPos.code = into.used
+      versionstampPos.code = into.used
       into.writeInto(2)
     }
   } else if (typeof item === 'object' && item.type === 'versionstamp') {
@@ -304,17 +304,17 @@ const encode = (into: BufferBuilder, item: TupleItem, versionStampPos: VersionSt
 function packRaw(arr: TupleItem[]): Buffer | UnboundStamp {
   if (!Array.isArray(arr)) throw new TypeError('fdb.tuple.pack must be called with an array')
 
-  let versionStampPos: VersionStampPos = {}
+  let versionstampPos: VersionstampPos = {}
   const builder = new BufferBuilder()
   for (let i = 0; i < arr.length; i++) {
-    encode(builder, arr[i], versionStampPos)
+    encode(builder, arr[i], versionstampPos)
     // console.log('pack', arr[i], builder.storage)
   }
 
   const data = builder.make()
-  return versionStampPos.stamp == null
+  return versionstampPos.stamp == null
     ? data
-    : {data, stampPos: versionStampPos.stamp, codePos: versionStampPos.code}
+    : {data, stampPos: versionstampPos.stamp, codePos: versionstampPos.code}
 }
 
 export const pack = (arr: TupleItemBound[]): Buffer => {
@@ -500,19 +500,19 @@ export function range(arr: TupleItemBound[]) {
   }
 }
 
-const vsFrom = (versionStamp: Buffer, code: number): Buffer => {
+const vsFrom = (versionstamp: Buffer, code: number): Buffer => {
   const result = Buffer.alloc(12)
-  versionStamp.copy(result)
+  versionstamp.copy(result)
   result.writeUInt16BE(code, 10)
   return result
 }
 
-export function bakeVersion(val: TupleItem[], versionStamp: Buffer, codeBytes: Buffer | null) {
+export function bakeVersion(val: TupleItem[], versionstamp: Buffer, codeBytes: Buffer | null) {
   // This is called after a transaction has been committed to bake in the (now
   // known) versionstamp into the tuple.
   for (let i = 0; i < val.length; i++) {
     const v = val[i]
-    if (Array.isArray(v)) bakeVersion(v, versionStamp, codeBytes)
+    if (Array.isArray(v)) bakeVersion(v, versionstamp, codeBytes)
     else if (v != null && typeof v === 'object' && !Buffer.isBuffer(v) && v.type === 'unbound versionstamp') {
       // ^-- thats gross
       if (codeBytes == null && v.code == null) {
@@ -521,7 +521,7 @@ export function bakeVersion(val: TupleItem[], versionStamp: Buffer, codeBytes: B
 
       val[i] = {
         type: 'versionstamp',
-        value: codeBytes ? concat2(versionStamp, codeBytes) : vsFrom(versionStamp, v.code!)
+        value: codeBytes ? concat2(versionstamp, codeBytes) : vsFrom(versionstamp, v.code!)
       }
     }
   }

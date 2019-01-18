@@ -64,7 +64,7 @@ class Transaction: public node::ObjectWrap {
     static void SetReadVersion(const v8::FunctionCallbackInfo<v8::Value>& info);
     static void GetReadVersion(const v8::FunctionCallbackInfo<v8::Value>& info);
     static void GetCommittedVersion(const v8::FunctionCallbackInfo<v8::Value>& info);
-    static void GetVersionStamp(const v8::FunctionCallbackInfo<v8::Value>& info);
+    static void GetVersionstamp(const v8::FunctionCallbackInfo<v8::Value>& info);
 
     static void GetAddressesForKey(const v8::FunctionCallbackInfo<v8::Value>& info);
 

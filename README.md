@@ -764,7 +764,7 @@ The API also entirely depends on node Promises. The C part of the bindings suppo
 - [x] Testing integrated with the harness for the other bindings
 - [x] Subspace support
 - [x] Configure prebuilds so users don't need a local development environment to `npm install` this library
-- [ ] Add proper tuple support for versionstamps
+- [x] Add proper tuple support for versionstamps
 - [ ] Directory layer support
 - [ ] API documentation for options (and TS types for them)
 - [ ] API documentation for all transaction methods (get, set, getKey, etc)

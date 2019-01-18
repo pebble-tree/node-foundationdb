@@ -2,7 +2,7 @@
 // through an encoder and decoder function.
 
 import {asBuf, concat2} from './util'
-import {UnboundStamp} from './versionStamp'
+import {UnboundStamp} from './versionstamp'
 
 export type Transformer<In, Out> = {
   // The tuple type supports embedding versionstamps, but the versionstamp
@@ -14,7 +14,7 @@ export type Transformer<In, Out> = {
 
   // These are hooks for the tuple type to support unset versionstamps
   packUnboundStamp?(val: In): UnboundStamp,
-  bakeVersion?(val: In, versionStamp: Buffer, code: Buffer | null): void,
+  bakeVersion?(val: In, versionstamp: Buffer, code: Buffer | null): void,
 }
 
 // export const isPackUnbound = (val: Buffer | string | UnboundStamp): val is UnboundStamp => (

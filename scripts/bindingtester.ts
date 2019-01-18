@@ -19,7 +19,7 @@ import {
 } from '../lib'
 
 // TODO: Expose these in lib
-import {packPrefixedVersionStamp} from '../lib/versionStamp'
+import {packPrefixedVersionstamp} from '../lib/versionstamp'
 
 import assert = require('assert')
 import nodeUtil = require('util')
@@ -250,7 +250,7 @@ const makeMachine = (db: Database, initialName: Buffer) => {
       }
     },
     async get_versionstamp(oper) {
-      pushValue(wrapP((<Transaction>oper).getVersionStamp().promise))
+      pushValue(wrapP((<Transaction>oper).getVersionstamp().promise))
     },
 
     // Transaction set operations
@@ -335,7 +335,7 @@ const makeMachine = (db: Database, initialName: Buffer) => {
         // pushValue(Buffer.concat([]))
         // pushValue(Buffer.concat([prefix, (value as UnboundStamp).data, ]))
         // const pack = packVersionStamp({data: Buffer.concat([prefix, value.data]), value.stampPos + prefix.length, true, false)
-        const pack = packPrefixedVersionStamp(prefix, value, true)
+        const pack = packPrefixedVersionstamp(prefix, value, true)
         // console.log('packed', pack.toString('hex'))
         pushValue(pack)
       } catch (e) {

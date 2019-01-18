@@ -113,19 +113,19 @@ const versions = async () => {
   tn.setVersionstampPrefixedValue('x', Buffer.from([1,2,3]))
   // await tn.rawCommit()
   // console.log(await tn.getCommittedVersion())
-  const vstn = tn.getVersionStamp()
+  const vstn = tn.getVersionstamp().promise
   await tn.rawCommit()
   console.log(await vstn)
   // setTimeout(() => {}, 1000)
 }
 
 const versions2 = async () => {
-  const stamp = await db.doTransaction(async tn => {
+  const stamp = (await db.doTransaction(async tn => {
     tn.setVersionstampPrefixedValue('x', Buffer.from([1,2,3]))
-    return tn.getVersionStamp()
-  })
+    return tn.getVersionstamp()
+  })).promise
 
-  console.log(await stamp.promise)
+  console.log(await stamp)
   
   console.log(await db.get('x'))
 }
@@ -165,9 +165,21 @@ const crash = async () => {
 //   watch.cancel()
 // }
 
+// const w = async () => {
+
+//   const w = await db.doTn(tn => {
+//     tn.set('x', 'hi')
+//     return tn.getVersionstamp()
+//   })
+//   console.log('ok')
+
+  
+// }
+
 // conflictWrites()
 // rangeTest3()
 // opts()
 // versions2()
 // crash()
 // c2()
+// w()

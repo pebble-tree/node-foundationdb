@@ -31,10 +31,10 @@ import {
 
 import {
   UnboundStamp,
-  packVersionStamp,
-  packPrefixedVersionStamp,
-  packVersionStampPrefixSuffix
-} from './versionStamp'
+  packVersionstamp,
+  packPrefixedVersionstamp,
+  packVersionstampPrefixSuffix
+} from './versionstamp'
 
 const byteZero = Buffer.alloc(1)
 byteZero.writeUInt8(0, 0)
@@ -97,15 +97,16 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
     // https://apple.github.io/foundationdb/api-c.html#c.fdb_transaction_on_error
     do {
       try {
-        const result: T = await body(this)
+        const result = await body(this)
+
         const stampPromise = ((this.keysToBake && this.keysToBake.length)
           || (this.valsToBake && this.valsToBake.length))
-            ? this.getVersionStamp().promise
-            : null
+            ? this.getVersionstamp() : null
+
         await this.rawCommit()
 
         if (stampPromise) {
-          const stamp = await stampPromise
+          const stamp = await stampPromise.promise
 
           if (this.keysToBake) this.keysToBake.forEach(({k, code}) => (
             this._keyEncoding.bakeVersion!(k, stamp, code))
@@ -335,11 +336,12 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
 
   getCommittedVersion() { return this._tn.getCommittedVersion() }
 
-  // We don't return a promise here because doing so makes the API basically impossible to use, just like watch.
-  getVersionStamp(): {promise: Promise<Buffer>}
-  getVersionStamp(cb: Callback<Buffer>): void
-  getVersionStamp(cb?: Callback<Buffer>) {
-    return cb ? this._tn.getVersionStamp(cb) : {promise: this._tn.getVersionStamp()}
+  // Note: This promise can't be directly returned via the return value of a
+  // transaction.
+  getVersionstamp(): {promise: Promise<Buffer>}
+  getVersionstamp(cb: Callback<Buffer>): void
+  getVersionstamp(cb?: Callback<Buffer>) {
+    return cb ? this._tn.getVersionstamp(cb) : {promise: this._tn.getVersionstamp()}
   }
 
   getAddressesForKey(key: KeyIn): string[] {
@@ -399,7 +401,7 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
 
   // This sets the key [prefix, 10 bytes versionstamp, suffix] to value.
   setVersionstampedKeyBuf(prefix: Buffer | undefined, suffix: Buffer | undefined, value: ValIn) {
-    const key = packVersionStampPrefixSuffix(prefix, suffix, true)
+    const key = packVersionstampPrefixSuffix(prefix, suffix, true)
     // console.log('key', key)
     this.atomicOpNative(MutationType.SetVersionstampedKey, key, this._valueEncoding.pack(value))
   }
@@ -417,7 +419,7 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
 
     const pack = this._keyEncoding.packUnboundStamp(key)
     const code = this.bakeCode(pack)
-    this.setVersionstampedKeyRaw(packVersionStamp(pack, true), value)
+    this.setVersionstampedKeyRaw(packVersionstamp(pack, true), value)
 
     if (bakeAfterCommit && this._keyEncoding.bakeVersion) {
       if (this.keysToBake == null) this.keysToBake = []
@@ -444,7 +446,7 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
 
     const pack = this._valueEncoding.packUnboundStamp(value)
     const code = this.bakeCode(pack)
-    this.setVersionstampedValueRaw(key, packVersionStamp(pack, false))
+    this.setVersionstampedValueRaw(key, packVersionstamp(pack, false))
 
     if (bakeAfterCommit && this._valueEncoding.bakeVersion) {
       if (this.valsToBake == null) this.valsToBake = []
@@ -457,7 +459,7 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
   // prefix is only supported on API version 520+.
   setVersionstampPrefixedValue(key: KeyIn, value: ValIn, prefix?: Buffer) {
     const valBuf = asBuf(this._valueEncoding.pack(value))
-    const val = packVersionStampPrefixSuffix(prefix, valBuf, false)
+    const val = packVersionstampPrefixSuffix(prefix, valBuf, false)
     this.atomicOpKB(MutationType.SetVersionstampedValue, key, val)
   }
 
@@ -482,7 +484,7 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
   // (eg using tuples), just call set(key, value).
   // setVersionstampedValueBuf(key: KeyIn, value: Buffer, pos: number = 0) {
   //   // const valPack = packVersionstampedValue(asBuf(this._valueEncoding.pack(value)), pos)
-  //   const valPack = packVersionStampRaw(value, pos, true)
+  //   const valPack = packVersionstampRaw(value, pos, true)
   //   this.atomicOpKB(MutationType.SetVersionstampedValue, key, valPack)
   // }
 }

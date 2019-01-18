@@ -111,16 +111,6 @@ export default class Database<KeyIn = NativeValue, KeyOut = Buffer, ValIn = Nati
     return this.doOneshot(tn => tn.set(key, value))
   }
 
-  // I'm not sure what to call this... this is sort of awkward, but maybe
-  // fine. It'd be nice to have a version of this method which bakes the
-  // versionstamp into the passed key
-  // async setAndGetVersionStamp(key: KeyIn, value: ValIn) {
-  //   return await (await this.doTransaction(async tn => {
-  //     tn.set(key, value)
-  //     return tn.getVersionStamp()
-  //   })).promise
-  // }
-
   clear(key: KeyIn) {
     return this.doOneshot(tn => tn.clear(key))
   }

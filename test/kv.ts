@@ -16,7 +16,7 @@ const codeBuf = (code: number) => {
   b.writeUInt16BE(code, 0)
   return b
 }
-const bakeVersionStamp = (vs: Buffer, code: number): TupleItem => ({
+const bakeVersionstamp = (vs: Buffer, code: number): TupleItem => ({
   type: 'versionstamp', value: Buffer.concat([vs, codeBuf(code)])
 })
 
@@ -160,15 +160,15 @@ withEachDb(db => describe('key value functionality', () => {
         tn.setVersionstampedKey(key1, '1')
         tn.setVersionstampedKey(key2, '2')
         tn.setVersionstampedKey(key3, '3')
-        return tn.getVersionStamp()
+        return tn.getVersionstamp()
       })).promise
 
       // await db_.setVersionstampedKey(key1, 'hi there')
 
       // The versionstamp should have been baked into the object
-      assert.deepStrictEqual(key1[3], bakeVersionStamp(actualStamp, 0))
-      assert.deepStrictEqual(key2[3], bakeVersionStamp(actualStamp, 1))
-      assert.deepStrictEqual(key3[3], bakeVersionStamp(actualStamp, 321))
+      assert.deepStrictEqual(key1[3], bakeVersionstamp(actualStamp, 0))
+      assert.deepStrictEqual(key2[3], bakeVersionstamp(actualStamp, 1))
+      assert.deepStrictEqual(key3[3], bakeVersionstamp(actualStamp, 321))
 
       // const results = await db.getRangeAllStartsWith(tuple.packBound([1,2,3]))
       // assert.strictEqual(results.length, 1)
@@ -195,11 +195,11 @@ withEachDb(db => describe('key value functionality', () => {
 
       const actualStamp = await (await db_.doTn(async tn => {
         tn.setVersionstampedKey(key, 'hi there')
-        return tn.getVersionStamp()
+        return tn.getVersionstamp()
       })).promise
 
       // Check its been baked
-      assert.deepStrictEqual(key, [1,[2, bakeVersionStamp(actualStamp, 0)]])
+      assert.deepStrictEqual(key, [1,[2, bakeVersionstamp(actualStamp, 0)]])
 
       const results = await db_.getRangeAllStartsWith([])
       assert.deepStrictEqual(results, [[key, 'hi there']])
@@ -217,15 +217,15 @@ withEachDb(db => describe('key value functionality', () => {
         tn.setVersionstampedValue('1', val1)
         tn.setVersionstampedValue('2', val2)
         tn.setVersionstampedValue('3', val3)
-        return tn.getVersionStamp()
+        return tn.getVersionstamp()
       })).promise
 
       // await db_.setVersionstampedKey(key1, 'hi there')
 
       // The versionstamp should have been baked into the object
-      assert.deepStrictEqual(val1[3], bakeVersionStamp(actualStamp, 0))
-      assert.deepStrictEqual(val2[3], bakeVersionStamp(actualStamp, 1))
-      assert.deepStrictEqual(val3[3], bakeVersionStamp(actualStamp, 321))
+      assert.deepStrictEqual(val1[3], bakeVersionstamp(actualStamp, 0))
+      assert.deepStrictEqual(val2[3], bakeVersionstamp(actualStamp, 1))
+      assert.deepStrictEqual(val3[3], bakeVersionstamp(actualStamp, 321))
 
       // const results = await db.getRangeAllStartsWith(tuple.packBound([1,2,3]))
       // assert.strictEqual(results.length, 1)

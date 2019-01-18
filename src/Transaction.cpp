@@ -387,7 +387,7 @@ void Transaction::GetCommittedVersion(const FunctionCallbackInfo<Value>& info) {
   info.GetReturnValue().Set(versionToJSBuffer(version));
 }
 
-void Transaction::GetVersionStamp(const FunctionCallbackInfo<Value>& info) {
+void Transaction::GetVersionstamp(const FunctionCallbackInfo<Value>& info) {
   FDBFuture *f = fdb_transaction_get_versionstamp(GetTransactionFromArgs(info));
   info.GetReturnValue().Set(futureToJS(f, info[0], getKey));
 }
@@ -462,7 +462,7 @@ void Transaction::Init() {
   NODE_SET_PROTOTYPE_METHOD(tpl, "getReadVersion", GetReadVersion);
   NODE_SET_PROTOTYPE_METHOD(tpl, "setReadVersion", SetReadVersion);
   NODE_SET_PROTOTYPE_METHOD(tpl, "getCommittedVersion", GetCommittedVersion);
-  NODE_SET_PROTOTYPE_METHOD(tpl, "getVersionStamp", GetVersionStamp);
+  NODE_SET_PROTOTYPE_METHOD(tpl, "getVersionstamp", GetVersionstamp);
 
   NODE_SET_PROTOTYPE_METHOD(tpl, "getAddressesForKey", GetAddressesForKey);
 
