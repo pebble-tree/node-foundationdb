@@ -10,8 +10,6 @@ import {
 import {
   strInc,
   strNext,
-  // packVersionstampedValue,
-  // unpackVersionstampedValue,
   asBuf
 } from './util'
 import keySelector, {KeySelector} from './keySelector'
@@ -109,10 +107,10 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
           const stamp = await stampPromise.promise
 
           if (this.keysToBake) this.keysToBake.forEach(({k, code}) => (
-            this._keyEncoding.bakeVersion!(k, stamp, code))
+            this._keyEncoding.bakeVersionstamp!(k, stamp, code))
           )
           if (this.valsToBake) this.valsToBake.forEach(({v, code}) => (
-            this._valueEncoding.bakeVersion!(v, stamp, code))
+            this._valueEncoding.bakeVersionstamp!(v, stamp, code))
           )
         }
         return result // Ok, success.
@@ -384,12 +382,16 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
 
   // **** Version stamp stuff
 
-  bakeCode(into: UnboundStamp) {
+  getNextTransactionID() { return this.nextCode++ }
+
+  _bakeCode(into: UnboundStamp) {
     if (this.isSnapshot) throw new Error('Cannot use this method in a snapshot transaction')
     if (into.codePos != null) {
       // We edit the buffer in-place but leave the codepos as is so if the txn
       // retries it'll overwrite the code.
-      into.data.writeInt16BE(this.nextCode++, into.codePos)
+      const id = this.getNextTransactionID()
+      if (id > 0xffff) throw new Error('Cannot use more than 65536 unique versionstamps in a single transaction. Either split your writes into multiple transactions or add explicit codes to your unbound versionstamps')
+      into.data.writeInt16BE(id, into.codePos)
       return into.data.slice(into.codePos, into.codePos+2)
     }
     return null
@@ -413,15 +415,15 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
   // key to be baked out with a versionstamp after it, use
   // setVersionstampSuffixedKey.
   setVersionstampedKey(key: KeyIn, value: ValIn, bakeAfterCommit: boolean = true) {
-    if (!this._keyEncoding.packUnboundStamp) {
+    if (!this._keyEncoding.packUnboundVersionstamp) {
       throw TypeError('Key encoding does not support unbound versionstamps. Use setVersionstampPrefixedValue instead')
     }
 
-    const pack = this._keyEncoding.packUnboundStamp(key)
-    const code = this.bakeCode(pack)
+    const pack = this._keyEncoding.packUnboundVersionstamp(key)
+    const code = this._bakeCode(pack)
     this.setVersionstampedKeyRaw(packVersionstamp(pack, true), value)
 
-    if (bakeAfterCommit && this._keyEncoding.bakeVersion) {
+    if (bakeAfterCommit && this._keyEncoding.bakeVersionstamp) {
       if (this.keysToBake == null) this.keysToBake = []
       this.keysToBake.push({k:key, code})
     }
@@ -440,15 +442,15 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
 
   setVersionstampedValue(key: KeyIn, value: ValIn, bakeAfterCommit: boolean = true) {
     // This is super similar to setVersionstampedKey. I wish I could reuse the code.
-    if (!this._valueEncoding.packUnboundStamp) {
+    if (!this._valueEncoding.packUnboundVersionstamp) {
       throw TypeError('Value encoding does not support unbound versionstamps. Use setVersionstampPrefixedValue instead')
     }
 
-    const pack = this._valueEncoding.packUnboundStamp(value)
-    const code = this.bakeCode(pack)
+    const pack = this._valueEncoding.packUnboundVersionstamp(value)
+    const code = this._bakeCode(pack)
     this.setVersionstampedValueRaw(key, packVersionstamp(pack, false))
 
-    if (bakeAfterCommit && this._valueEncoding.bakeVersion) {
+    if (bakeAfterCommit && this._valueEncoding.bakeVersionstamp) {
       if (this.valsToBake == null) this.valsToBake = []
       this.valsToBake.push({v:value, code})
     }
@@ -457,8 +459,8 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
   // Set key = [10 byte versionstamp, value in bytes]. This function leans on
   // the value transformer to pack & unpack versionstamps. An extra value
   // prefix is only supported on API version 520+.
-  setVersionstampPrefixedValue(key: KeyIn, value: ValIn, prefix?: Buffer) {
-    const valBuf = asBuf(this._valueEncoding.pack(value))
+  setVersionstampPrefixedValue(key: KeyIn, value?: ValIn, prefix?: Buffer) {
+    const valBuf = value !== undefined ? asBuf(this._valueEncoding.pack(value)) : undefined
     const val = packVersionstampPrefixSuffix(prefix, valBuf, false)
     this.atomicOpKB(MutationType.SetVersionstampedValue, key, val)
   }
@@ -467,12 +469,12 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
   // This requires that the stamp is at offset 0 (the start) of the value.
   // This is designed to work with setVersionstampPrefixedValue. If you're
   // using setVersionstampedValue with tuples or something, just call get().
-  async getVersionstampPrefixedValue(key: KeyIn): Promise<{stamp: Buffer, val: ValOut} | null> {
+  async getVersionstampPrefixedValue(key: KeyIn): Promise<{stamp: Buffer, value: ValOut} | null> {
     const val = await this._tn.get(this._keyEncoding.pack(key), this.isSnapshot)
     return val == null ? null
       : {
         stamp: val.slice(0, 10),
-        val: this._valueEncoding.unpack(val.slice(10))
+        value: this._valueEncoding.unpack(val.slice(10))
       }
   }
 

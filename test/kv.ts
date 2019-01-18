@@ -138,9 +138,9 @@ withEachDb(db => describe('key value functionality', () => {
       const result = await db_.getVersionstampPrefixedValue('hi there')
       assert(result != null)
 
-      const {stamp, val} = result!
+      const {stamp, value} = result!
       assert.strictEqual(stamp.length, 10) // Opaque.
-      assert.strictEqual(val, 'yooo')
+      assert.strictEqual(value, 'yooo')
     })
 
     it('roundtrips a tuple key', async () => {
@@ -152,9 +152,9 @@ withEachDb(db => describe('key value functionality', () => {
 
     it('commits a tuple with unbound key versionstamps and bakes the vs and code', async () => {
       const db_ = db.withKeyEncoding(encoders.tuple).withValueEncoding(encoders.string)
-      const key1: TupleItem[] = [1,2,3, {type: 'unbound versionstamp'}] // should end up with code 1
-      const key2: TupleItem[] = [1,2,3, {type: 'unbound versionstamp'}] // code 2
-      const key3: TupleItem[] = [1,2,3, {type: 'unbound versionstamp', code: 321}] // code 321
+      const key1: TupleItem[] = [1,2,3, tuple.unboundVersionstamp()] // should end up with code 0
+      const key2: TupleItem[] = [1,2,3, tuple.unboundVersionstamp()] // code 1
+      const key3: TupleItem[] = [1,2,3, tuple.unboundVersionstamp(321)] // code 321
 
       const actualStamp = await (await db_.doTn(async tn => {
         tn.setVersionstampedKey(key1, '1')

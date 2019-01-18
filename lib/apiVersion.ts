@@ -20,13 +20,15 @@ export function set(version: number) {
     if (version < 500) throw Error('FDB Node bindings only support API versions >= 500')
     
     if (version > MAX_VERSION) {
-      // I'm going to allow it to work anyway since API changes seem to be
-      // backwards compatible, but its possible that API-incompatible changes
-      // will break something.
-      console.warn(`Warning: Using foundationdb protocol version ${version} > ${MAX_VERSION}. This version of node-foundationdb only officially supports protocol version ${MAX_VERSION} or earlier.
+      // I'd like allow it to work with newer versions anyway since API
+      // changes seem to be backwards compatible, but nativeMod.setAPIVersion
+      // will throw anyway.
+      throw Error(`Cannot use foundationdb protocol version ${version} > ${MAX_VERSION}. This version of node-foundationdb only supports protocol versions <= ${MAX_VERSION}.
 
 Please update node-foundationdb if you haven't done so then file a ticket:
 https://github.com/josephg/node-foundationdb/issues
+
+Until this is fixed, use FDB API version ${MAX_VERSION}.
 `)
     }
 

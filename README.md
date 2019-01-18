@@ -440,6 +440,179 @@ const students = index.getRangeAll(
 )
 ```
 
+
+## Version stamps
+
+Foundationdb allows you to bake the current version number into a key or value in the database. Note that, though these values are unique inside a FDB cluster, if you ever export & re-import your data into a different FDB cluster these keys may be duplicated / reused.
+
+Versionstamps are opaque 10 byte values. They are are monotonically increasing but non-continuous.
+
+During a transaction you can read the versionstamp with `tn.getVersionstamp() => {promise: Promise<Buffer>}`. Note: 
+
+- `getVersionstamp` may only be called on transactions with write operations
+- The returned promise will not resolve until after the transaction has been committed. Awaiting this promise inside your transaction body will deadlock your program. For this reason, the returned value is wrapped in an object.
+
+Example:
+
+```javascript
+const p = await db.doTxn(async tn => {
+  tn.set('key', 'val')
+  return tn.getVersionstamp()
+})
+
+const versionstamp = await p.promise // 10 byte buffer
+```
+
+💣💣 This will deadlock:
+
+```javascript
+await db.doTxn(async tn => {
+  tn.set('key', 'val')
+  await tn.getVersionstamp().promise // DEADLOCK!!!
+})
+```
+
+---
+
+There are two ways you can insert versionstamps into keys and values:
+
+1. Manually via `setVersionstampSuffixedKey` / `setVersionstampPrefixedValue`
+2. Transparently through the tuple API (or another encoding layer) and `setVersionstampedKey` / `setVersionstampedValue`.
+
+
+### 1. Using manual versionstamps via setVersionstampSuffixedKey / setVersionstampPrefixedValue
+
+Calling `tn.setVersionstampSuffixedKey(key, value, [extraKeySuffix])` or `tn.setVersionstampPrefixedValue(key, value)` will insert a versionstamp into a key or value, respectively. Both of these methods are available on both transactions and on the database object directly.
+
+#### setVersionstampSuffixedKey(key, value, [extraKeySuffix])
+
+Call setVersionstampSuffixedKey to insert a key made up of `concat(key, versionstamp)` or `concat(key, versionstamp, extrakeysuffix)` into the database. This is available in a transaction or on the database directly.
+
+Example:
+
+```javascript
+db.setVersionstampSuffixedKey(Buffer([1,2,3]), 'someval')
+// DB contains key [1,2,3, (10 byte versionstamp)] = 'someval'
+
+// Or using the optional extra key suffix
+db.setVersionstampSuffixedKey(Buffer([1,2,3]), 'someval', Buffer([0xaa, 0xbb]))
+// DB contains key [1,2,3, (10 byte versionstamp), 0xaa, 0xbb] = 'someval'
+```
+
+#### setVersionstampPrefixedValue(key, [value], [extraValuePrefix]) and getVersionstampPrefixedValue(key)
+
+Call setVersionstampPrefixedValue to insert a value into the database with content `concat(versionstamp, key)`.
+
+You can fetch the value stored through setVersionstampPrefixedValue like normal through `tn.get()`, but you will need to manually decode the versionstamp and the value. This may also cause the decoding to fail if you're using a value encoder. Instead we recommend using the helper method `getVersionstampPrefixedValue(key) -> {stamp, value}` which will split the stamp and the value, and decode the value if you're using a value encoder.
+
+Example:
+
+```javascript
+await db.setVersionstampPrefixedValue('key', Buffer([1,2,3]))
+// DB contains 'key' = [(10 byte versionstamp), 1,2,3]
+
+// You can fetch this value using getVersionstampPrefixedValue:
+const {stamp, value} = await db.getVersionstampPrefixedValue('key')
+// stamp is a 10 byte versionstamp and value is Buffer([1,2,3])
+```
+
+Or with a value encoder:
+
+```javascript
+const db = fdb.openSync().withValueEncoding(fdb.encoders.json)
+db.setVersionstampPrefixedValue('key1', {some: 'data'})
+
+// ...
+
+const {stamp, value} = await db.getVersionstampPrefixedValue('somekey')
+assert.deepEqual(value, {some: 'data'})
+```
+
+Because versionstamps are unique to a transaction, you can use the versionstamp as a per-commit key. This can be useful for advanced indexing. For example:
+
+```javascript
+await db.doTxn(async tn => {
+  tn.setVersionstampSuffixedKey('data/', LargeBlobData)
+  tn.setVersionstampPrefixedValue('index/latestBlob') // the value is just the versionstamp.
+})
+```
+
+Using API version 520+, setVersionstampPrefixedValue supports an optional `extravalueprefix` argument, which will be prepended to the start of the inserted value. Its weird that this parameter goes at the end of the arguments list, but 🤷‍♀️.
+
+```javascript
+// setVerionstampPrefixedValue takes an optional extra prefix argument.
+db.setVersionstampPrefixedValue('key2', Buffer([1,2,3]), Buffer([0xaa, 0xbb]))
+// DB contains 'key2' = [0xaa, 0xbb, (10 byte versionstamp), 1,2,3]
+```
+
+There is no helper method to read & decode a value written this way. File a ticket if you want one.
+
+
+### 2. Using versionstamps with the tuple layer
+
+The tuple layer allows unbound versionstamp markers to be embedded inside values. When tuples with these markers are written to the database (via `setVersionstampedKey` and `setVersionstampedValue`), the versionstamp in the tuple is filled with on the versionstamp of the commit.
+
+Unlike normal versionstamps, tuple versionstamps are are 12 bytes long. The first 10 bytes are the commit's versionstamp and the last 2 bytes are a per-transaction unique code (the first value written this way is 0, then 1, etc).
+
+In action:
+
+```javascript
+import * as fdb from 'foundationdb'
+const db = fdb.openSync().withKeyEncoding(fdb.encoders.tuple)
+
+const key = [1, 2, 'hi', fdb.tuple.unboundVersionstamp()]
+await db.setVersionstampedKey(key, 'hi there')
+
+console.log('key', key)
+// Prints [1, 2, 'hi', {type: 'versionstamp', value: Buffer<12 bytes>}]
+```
+
+You can also write versionstamped *values* using tuples, but only in API version 520+:
+
+```javascript
+import * as fdb from 'foundationdb'
+const db = fdb.openSync().withValueEncoding(fdb.encoders.tuple)
+
+const value = ['some', 'data', fdb.tuple.unboundVersionstamp()]
+await db.setVersionstampedValue('somekey', value)
+
+console.log('value', value)
+// ['some', 'data', {type: 'versionstamp', value: Buffer<12 bytes>}]
+```
+
+If you insert multiple versionstamped keys / values in the same transaction, each will have a unique code after the versionstamp:
+
+```javascript
+import * as fdb from 'foundationdb'
+const db = fdb.openSync().withValueEncoding(fdb.encoders.tuple)
+
+const key1 = [1,2,3, tuple.unboundVersionstamp()]
+const key2 = [1,2,3, tuple.unboundVersionstamp()]
+
+await db.doTxn(async tn => {
+  tn.setVersionstampedKey(key1, '1')
+  tn.setVersionstampedKey(key2, '2') // Does not overwrite first insert!
+})
+
+// key1 is [1,2,3, {type: 'versionstamp', value: Buffer<10 bytes followed by 0x00, 0x00>}]
+// key2 is [1,2,3, {type: 'versionstamp', value: Buffer<10 bytes followed by 0x00, 0x01>}]
+```
+
+You can override this behaviour by baking an explicit code into your call to `tuple.unboundVersionstamp`:
+
+```javascript
+const key = [1,2,3, tuple.unboundVersionstamp(321)]
+```
+
+Notes:
+
+- You cannot use tuples with unbound versionstamps in other database or transaction methods.
+- The actual versionstamp is only filled in after the transaction is committed
+- Once the value has been committed, you can use `get` / `set` methods like normal
+- Each tuple may only contain 1 unbound versionstamp
+- If you don't want the tuple to be edited in-place by the transaction, pass an extra `false` argument to `setVersionstampedKey` / `setVersionstampedValue`. Eg, `tn.setVersionstampedKey(['hi', unboundVersionstamp()], 'hi', false)`.
+
+
 ## Watches
 
 Foundationdb lets you watch a key and get notified when the key changes. A watch will only fire once - if you want to find out every time a key is changed, you will need to re-issue the watch once it has fired.

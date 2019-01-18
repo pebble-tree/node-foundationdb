@@ -103,7 +103,7 @@ export default class Database<KeyIn = NativeValue, KeyOut = Buffer, ValIn = Nati
   getKey(selector: KeyIn | KeySelector<KeyIn>): Promise<KeyOut | null> {
     return this.doTransaction(tn => tn.snapshot().getKey(selector))
   }
-  getVersionstampPrefixedValue(key: KeyIn): Promise<{stamp: Buffer, val: ValOut} | null> {
+  getVersionstampPrefixedValue(key: KeyIn): Promise<{stamp: Buffer, value: ValOut} | null> {
     return this.doTransaction(tn => tn.snapshot().getVersionstampPrefixedValue(key))
   }
 
@@ -209,7 +209,7 @@ export default class Database<KeyIn = NativeValue, KeyOut = Buffer, ValIn = Nati
   }
 
   // setVersionstampedValueBuf(key: KeyIn, oper: Buffer) { return this.atomicOpKB(MutationType.SetVersionstampedValue, key, oper) }
-  setVersionstampPrefixedValue(key: KeyIn, value: ValIn, prefix?: Buffer) {
+  setVersionstampPrefixedValue(key: KeyIn, value?: ValIn, prefix?: Buffer) {
     return this.doOneshot(tn => tn.setVersionstampPrefixedValue(key, value, prefix))
   }
 }

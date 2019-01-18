@@ -57,11 +57,12 @@ import {strInc} from './util'
 export const util = {strInc}
 
 // TODO: Remove tuple from the root API. Tuples should be in a separate module.
-import {pack, packUnboundStamp, unpack, range, bakeVersion, TupleItem, TupleItemBound} from './tuple'
+import * as tuple from './tuple'
+import {TupleItem} from './tuple'
 // import * as tuple from './tuple'
 
-export {TupleItem, TupleItemBound}
-export const tuple = {pack, unpack, range, packUnboundStamp, bakeVersion}
+export {TupleItem, tuple}
+
 
 const id = (x: any) => x
 export const encoders = {
@@ -89,12 +90,8 @@ export const encoders = {
     unpack: id
   } as Transformer<Buffer, Buffer>,
 
-  tuple: { // TODO: Move this into a separate library
-    pack,
-    unpack,
-    packUnboundStamp,
-    bakeVersion,
-  } as Transformer<TupleItem[], TupleItem[]>,
+  // TODO: Move this into a separate library
+  tuple: tuple as Transformer<TupleItem[], TupleItem[]>,
 }
 
 const wrapCluster = (cluster: fdb.NativeCluster) => ({

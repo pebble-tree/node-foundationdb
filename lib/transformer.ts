@@ -13,8 +13,8 @@ export type Transformer<In, Out> = {
   unpack(buf: Buffer): Out,
 
   // These are hooks for the tuple type to support unset versionstamps
-  packUnboundStamp?(val: In): UnboundStamp,
-  bakeVersion?(val: In, versionstamp: Buffer, code: Buffer | null): void,
+  packUnboundVersionstamp?(val: In): UnboundStamp,
+  bakeVersionstamp?(val: In, versionstamp: Buffer, code: Buffer | null): void,
 }
 
 // export const isPackUnbound = (val: Buffer | string | UnboundStamp): val is UnboundStamp => (
@@ -47,8 +47,8 @@ export const prefixTransformer = <In, Out>(prefix: string | Buffer, inner: Trans
     },
   }
 
-  if (inner.packUnboundStamp) transformer.packUnboundStamp = (val: In): UnboundStamp => {
-    const innerVal = inner.packUnboundStamp!(val)
+  if (inner.packUnboundVersionstamp) transformer.packUnboundVersionstamp = (val: In): UnboundStamp => {
+    const innerVal = inner.packUnboundVersionstamp!(val)
 
     return {
       data: concat2(_prefix, innerVal.data),
@@ -57,7 +57,7 @@ export const prefixTransformer = <In, Out>(prefix: string | Buffer, inner: Trans
     }
   }
 
-  if (inner.bakeVersion) transformer.bakeVersion = inner.bakeVersion.bind(inner)
+  if (inner.bakeVersionstamp) transformer.bakeVersionstamp = inner.bakeVersionstamp.bind(inner)
 
   return transformer
 }

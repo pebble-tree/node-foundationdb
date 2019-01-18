@@ -1,6 +1,6 @@
 import 'mocha'
 import assert = require('assert')
-import {tuple, TupleItem, TupleItemBound} from '../lib'
+import {tuple, TupleItem} from '../lib'
 
 const floatBytes = (x: number) => {
   const result = Buffer.alloc(4)
@@ -9,13 +9,13 @@ const floatBytes = (x: number) => {
 }
 
 describe('tuple', () => {
-  const assertRoundTrip = (val: TupleItemBound, strict: boolean = false) => {
+  const assertRoundTrip = (val: TupleItem, strict: boolean = false) => {
     const packed = tuple.pack([val])
     const unpacked = tuple.unpack(packed, strict)[0]
     assert.deepStrictEqual(unpacked, val)
   }
   const assertRoundTripBytes = (orig: Buffer, strict: boolean = false) => {
-    const val = tuple.unpack(orig, strict)[0] as TupleItemBound
+    const val = tuple.unpack(orig, strict)[0] as TupleItem
     const packed = tuple.pack([val])
     // console.log(orig.toString('hex'), val, packed.toString('hex'))
     assert.deepStrictEqual(packed, orig)
@@ -55,7 +55,7 @@ describe('tuple', () => {
     // These are from the examples here:
     // https://github.com/apple/foundationdb/blob/master/design/tuple.md
 
-    const testConformance = (name: string, value: TupleItemBound, bytes: Buffer | string) => {
+    const testConformance = (name: string, value: TupleItem, bytes: Buffer | string) => {
       it(name, () => {
         const encoded = tuple.pack([value])
         assert.deepStrictEqual(encoded, Buffer.isBuffer(bytes) ? bytes : Buffer.from(bytes, 'ascii'))

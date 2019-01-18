@@ -61,7 +61,7 @@ enum Code {
 // Supported tuple item types.
 // This awkwardness brougth to you by:
 // https://github.com/unional/typescript-guidelines/blob/master/pages/advance-types/recursive-types.md
-export type TupleItemBound = null | Buffer | string | TupleArr | number | boolean | {
+export type TupleItem = null | Buffer | string | TupleArr | number | boolean | {
   type: 'uuid', value: Buffer
 } | {
   // This is flattened into a double during decoding if noCanonicalize is
@@ -92,16 +92,14 @@ export type TupleItemBound = null | Buffer | string | TupleArr | number | boolea
   // internal version, then 2 byte user version (which is usually the offset
   // within the transaction).
   type: 'versionstamp', value: Buffer
-}
-
-export type TupleItem = TupleItemBound | {
+} | {
   type: 'unbound versionstamp', code?: number
 }
 
-// I only need this helper because {type: 'unbound versionstamp'} is so awful to type ... :/
-export const unboundVStamp = (code?: number) => ({type: 'unbound versionstamp', code})
+interface TupleArr extends Array<TupleItem> {}
 
-export interface TupleArr extends Array<TupleItem> {}
+// I only need this helper because {type: 'unbound versionstamp'} is so awful to type ... :/
+export const unboundVersionstamp = (code?: number): TupleItem => ({type: 'unbound versionstamp', code})
 
 
 const nullByte = Buffer.from([Code.Null])
@@ -317,12 +315,12 @@ function packRaw(arr: TupleItem[]): Buffer | UnboundStamp {
     : {data, stampPos: versionstampPos.stamp, codePos: versionstampPos.code}
 }
 
-export const pack = (arr: TupleItemBound[]): Buffer => {
+export const pack = (arr: TupleItem[]): Buffer => {
   const pack = packRaw(arr)
   if (!Buffer.isBuffer(pack)) throw new TypeError('Incomplete versionstamp included in vanilla tuple pack')
   return pack
 }
-export const packUnboundStamp = (arr: TupleItem[]): UnboundStamp => {
+export const packUnboundVersionstamp = (arr: TupleItem[]): UnboundStamp => {
   const pack = packRaw(arr)
   if (Buffer.isBuffer(pack)) throw new TypeError('No incomplete versionstamp included in tuple pack with versionstamp')
   return pack
@@ -491,7 +489,7 @@ export function unpack(key: Buffer, noCanonicalize: boolean = false) {
 //   return arr
 // }
 
-export function range(arr: TupleItemBound[]) {
+export function range(arr: TupleItem[]) {
   var packed = pack(arr)
 
   return {
@@ -507,12 +505,12 @@ const vsFrom = (versionstamp: Buffer, code: number): Buffer => {
   return result
 }
 
-export function bakeVersion(val: TupleItem[], versionstamp: Buffer, codeBytes: Buffer | null) {
+export function bakeVersionstamp(val: TupleItem[], versionstamp: Buffer, codeBytes: Buffer | null) {
   // This is called after a transaction has been committed to bake in the (now
   // known) versionstamp into the tuple.
   for (let i = 0; i < val.length; i++) {
     const v = val[i]
-    if (Array.isArray(v)) bakeVersion(v, versionstamp, codeBytes)
+    if (Array.isArray(v)) bakeVersionstamp(v, versionstamp, codeBytes)
     else if (v != null && typeof v === 'object' && !Buffer.isBuffer(v) && v.type === 'unbound versionstamp') {
       // ^-- thats gross
       if (codeBytes == null && v.code == null) {

@@ -11,7 +11,7 @@
 import * as fdb from '../lib'
 import {
   Transaction, Database,
-  tuple, TupleItem, TupleItemBound,
+  tuple, TupleItem,
   keySelector,
   StreamingMode, MutationType,
   util,
@@ -150,7 +150,7 @@ const makeMachine = (db: Database, initialName: Buffer) => {
           for (let k = 0; k < 100 && i < stack.length; k++) {
             const {instrId, data} = stack[i]
             let packedData = fdb.tuple.pack([
-              await wrapP<TupleItemBound>(data)
+              await wrapP<TupleItem>(data)
             ])
             if (packedData.length > 40000) packedData = packedData.slice(0, 40000)
 
@@ -327,7 +327,7 @@ const makeMachine = (db: Database, initialName: Buffer) => {
       const prefix = await popBuffer()
       // console.log('prefix', prefix.toString('hex'), prefix.length)
       try {
-        const value = tuple.packUnboundStamp(await popNValues())
+        const value = tuple.packUnboundVersionstamp(await popNValues())
         // console.log('a', value)
         // console.log('_', value.data.toString('hex'), value.data.length)
         // console.log('b', packPrefixedVersionStamp(prefix, value, true).toString('hex'))
@@ -350,7 +350,7 @@ const makeMachine = (db: Database, initialName: Buffer) => {
     },
     async tuple_unpack() {
       const packed = await popBuffer()
-      for (const item of tuple.unpack(packed, true) as TupleItemBound[]) {
+      for (const item of tuple.unpack(packed, true)) {
         // const pack = tuple.pack([item])
         // pushValue(isPackUnbound(pack) ? null : pack)
         pushValue(tuple.pack([item]))
@@ -365,8 +365,8 @@ const makeMachine = (db: Database, initialName: Buffer) => {
       // Look I'll be honest. I could put a compare function into the tuple
       // type, but it doesn't do anything you can't trivially do yourself.
       const items = (await popNValues())
-        .map(buf => tuple.unpack(buf as Buffer, true) as TupleItemBound[])
-        .sort((a: TupleItemBound[], b: TupleItemBound[]) => tuple.pack(a).compare(tuple.pack(b)))
+        .map(buf => tuple.unpack(buf as Buffer, true))
+        .sort((a: TupleItem[], b: TupleItem[]) => tuple.pack(a).compare(tuple.pack(b)))
 
       for (const item of items) pushValue(tuple.pack(item))
     },
