@@ -202,9 +202,144 @@ await db.set(['class', 6], {teacher: 'fred', room: '101a'})
 await db.get(['class', 6]) // returns {teacher: 'fred', room: '101a'}
 ```
 
-### Other transaction methods
 
-#### getKey(selector)
+
+## Scoping & Key / Value transformations
+
+Some areas of your database will contain different data, and might be encoded using different schemes. To make interacting with larger databases easier, this you can create a bunch of aliases of your database object, each configured to interact with a different subset of your data.
+
+Each database and transaction object has a *scope*, which is made up of 3 configuration parameters:
+
+- A *prefix*, prepended to the start of all keys
+- A *key transformer*, which is a `pack` & `unpack` function pair for interacting with keys
+- A *value transformer*, which is a `pack` & `unpack` function pair for interacting with values
+
+The scope is transparent to your application once the database has been configured. Prefixes are automatically prepended to all keys supplied to the API, and automatically removed from all keys returned via the API.
+
+These prefixed database objects are called [subspaces](https://apple.github.io/foundationdb/developer-guide.html#subspaces) in the official documentation & other frontends.
+
+### Prefixes
+
+To add an application-specific prefix:
+
+```javascript
+// Prepend 'myapp' to all keys
+const db = fdb.openSync('fdb.cluster').at('myapp.')
+
+// ... Then use the database as normal
+await db.set('hello', 'there') // Actually sets 'myapp.hello' to 'there'
+await db.get('hello') // returns 'there', encoded as a buffer
+```
+
+They can be nested arbitrarily:
+
+```javascript
+const root = fdb.openSync('fdb.cluster')
+const app = db.at('myapp.')
+const books = app.at('books.') // Equivalent to root.at('myapp.books.')
+```
+
+Beware of prefixes getting too long. The byte size of a prefix is paid during each API call, so you should keep your prefixes short. If you want complex subdivisions, consider using [directories](https://apple.github.io/foundationdb/developer-guide.html#directories) instead. (*Note*: Directories are not yet implemented by this frontend).
+
+
+### Key and Value transformation
+
+By default, the Node FoundationDB library accepts key and value input as either strings or Buffer objects, and always returns Buffers. This is usually not what you actually want in your application.
+
+You can configure a database to always automatically transform keys and values via an *encoder*. An encoder is just a `pack` and `unpack` method pair. The following encoders are built into the library:
+
+- `fdb.encoders.`**int32BE**: Integer encoding using big-endian 32 bit ints. (Big endian is preferred because it preserves lexical ordering)
+- `fdb.encoders.`**string**: UTF-8 string encoding
+- `fdb.encoders.`**buffer**: Buffer encoding. This doesn't actually do anything, but it can be handy to suppress typescript warnings when you're dealing with binary data.
+- `fdb.encoders.`**json**: JSON encoding using the built-in JSON.stringify. This is not suitable for key encoding.
+- `fdb.encoders.`**tuple**: Encode values using the standard FDB [tuple encoding](https://apple.github.io/foundationdb/data-modeling.html#tuples). [Spec here](https://github.com/apple/foundationdb/blob/master/design/tuple.md).
+
+**Beware** JSON encoding is generally unsuitable as a key encoding method because:
+
+- JSON objects have no guaranteed encoding order. Eg `{a:4, b:3}` could be encoded as `{"a":4,"b":3}` or `{"b":3,"a":4}`. FDB compares strings to fetch values, so you might find your data is gone when you go to fetch your data again later.
+- When performing range queries, JSON-encoded values aren't ordered in any sensible way. For example, `2` is lexographically after `10`.
+
+These problems are addressed by using [FDB tuple encoding](https://apple.github.io/foundationdb/data-modeling.html#tuples). Tuple encoding is also supported by all FDB frontends, it formally (and carefully) defines ordering for all objects. It also supports transparent concatenation (tuple.pack(`['a']`) + tuple.pack(`['b']`) === tuple.pack(`['a', 'b']`)), so tuple values can be easily used as key prefixes.
+
+JSON is only troublesome for key encoding. JSON works great for encoding FDB values.
+
+
+Examples:
+
+#### Using a key encoding:
+
+```javascript
+const db = fdb.openSync('fdb.cluster').withKeyEncoding(fdb.encoders.int32BE)
+
+await db.set(123, 'hi')
+await db.get(123) // returns 'hi' as a buffer
+```
+
+
+#### Or a value encoding:
+
+```javascript
+const db = fdb.openSync('fdb.cluster').withValueEncoding(fdb.encoders.json)
+
+await db.set('hi', [1,2,3])
+await db.get('hi') // returns [1,2,3]
+```
+
+#### Custom encodings
+
+You can define your own custom encoding by supplying your own `pack` & `unpack` function pair:
+
+```javascript
+const msgpack = require('msgpack-lite')
+
+const db = fdb.openSync('fdb.cluster').withValueEncoding({
+  pack: msgpack.encode,
+  unpack: msgpack.decode,
+})
+
+await db.set('hi', ['x', 1.2, Buffer.from([1,2,3])])
+await db.get('hi') // returns ['x', 1.2, Buffer.from([1,2,3])]
+```
+
+
+#### Chained prefixes
+
+If you prefix a database which has a key encoding set, the prefix will be transformed by the encoding. This allows you to use the API like this:
+
+```javascript
+const rootDb = fdb.openSync('fdb.cluster').withKeyEncoding(fdb.encoders.tuple)
+
+const appDp = rootDb.at(['myapp'])
+const books = appDb.at(['data', 'books']) // Equivalent to .at(['myapp', 'data', 'books'])
+```
+
+
+#### Multi-scoped transactions
+
+You can update objects in multiple scopes within the same transaction via `tn.scopedTo(db)`. This will to create an alias of the transaction in specified database's scope:
+
+```javascript
+const root = fdb.openSync('fdb.cluster').withKeyEncoding(fdb.encoders.tuple).at(['myapp'])
+const data = root.at(['schools'])
+const index = root.at(['index'])
+
+data.doTransaction(async tn => {
+  // Update the data object itself
+  tn.set('UNSW', 'some data ...')
+
+  // Update the index. This will use the prefix, key and value encoding of index defined above.
+  tn.scopedTo(index)
+  .set(['bycountry', 'australia', 'UNSW'], '... cached index data')
+})
+```
+
+Aliased transactions inherit their `isSnapshot` property from the object they were created from, and the prefix and encoders from the database parameter. They support the complete transaction API, including ranges, watches, etc.
+
+
+
+## Other transaction methods
+
+### getKey(selector)
 
 `tn.getKey` or `db.getKey` is used to get a key in the database via a key or [key selector](#key-selectors). For example:
 
@@ -248,7 +383,7 @@ const highestScore = fdb.tuple.unpack(key)[2]
 ```
 
 
-#### clear(key), clearRange(start, end) and clearRangeStartsWith(prefix)
+### clear(key), clearRange(start, end) and clearRangeStartsWith(prefix)
 
 You can remove individual keys from the database via `clear(key)`. `clear(start, end)` removes all keys *start* ≥ key ≥ *end*. These methods *do not* support key selectors. If you want to use more complex rules to specify the keys to clear range, first call *getKey* to find your specific range boundary.
 
@@ -257,7 +392,7 @@ You can also call `clearRangeStartsWith(prefix)` to clear all keys with the spec
 These methods are available on transaction or database objects. The transaction variants are syncronous, and the database variants return promises.
 
 
-#### Add Conflict Keys and ranges
+### Conflict Keys and ranges
 
 > TODO addReadConflictKey(key), addReadConflictRange(start, end), addWriteConflictKey(key), addWriteConflictRange.
 
@@ -395,7 +530,7 @@ await db.getRange('a', 'z', {reverse: true, limit: 10})
 ```
 
 
-## Key selectors
+### Key selectors
 
 All range read functions and `getKey` let you specify keys using [key selectors](https://apple.github.io/foundationdb/developer-guide.html#key-selectors). Key selectors are created using methods in `fdb.keySelector`:
 
@@ -441,13 +576,15 @@ const students = index.getRangeAll(
 ```
 
 
+
+
 ## Version stamps
 
-Foundationdb allows you to bake the current version number into a key or value in the database. Note that, though these values are unique inside a FDB cluster, if you ever export & re-import your data into a different FDB cluster these keys may be duplicated / reused.
+Foundationdb allows you to bake the current version number into a key or value in the database. The embedded version is called a *versionstamp*. It is an opaque 10 byte value. These values are monotonically increasing but non-continuous.
 
-Versionstamps are opaque 10 byte values. They are are monotonically increasing but non-continuous.
+> *💣Danger* Although these values are unique to an FDB cluster, if you ever export & re-import your data into a different FDB cluster these keys may be duplicated / reused.
 
-During a transaction you can read the versionstamp with `tn.getVersionstamp() => {promise: Promise<Buffer>}`. Note: 
+During a transaction you can get a promise to read the resulting version with `tn.getVersionstamp() => {promise: Promise<Buffer>}`. Note: 
 
 - `getVersionstamp` may only be called on transactions with write operations
 - The returned promise will not resolve until after the transaction has been committed. Awaiting this promise inside your transaction body will deadlock your program. For this reason, the returned value is wrapped in an object.
@@ -474,10 +611,10 @@ await db.doTxn(async tn => {
 
 ---
 
-There are two ways you can insert versionstamps into keys and values:
+There are two ways you can insert the current commit's versionstamp into keys and values in your database:
 
 1. Manually via `setVersionstampSuffixedKey` / `setVersionstampPrefixedValue`
-2. Transparently through the tuple API (or another encoding layer) and `setVersionstampedKey` / `setVersionstampedValue`.
+2. Transparently via the tuple API and `setVersionstampedKey` / `setVersionstampedValue`
 
 
 ### 1. Using manual versionstamps via setVersionstampSuffixedKey / setVersionstampPrefixedValue
@@ -486,7 +623,7 @@ Calling `tn.setVersionstampSuffixedKey(key, value, [extraKeySuffix])` or `tn.set
 
 #### setVersionstampSuffixedKey(key, value, [extraKeySuffix])
 
-Call setVersionstampSuffixedKey to insert a key made up of `concat(key, versionstamp)` or `concat(key, versionstamp, extrakeysuffix)` into the database. This is available in a transaction or on the database directly.
+Call `tn.setVersionstampSuffixedKey` to insert a key made up of `concat(key, versionstamp)` or `concat(key, versionstamp, extrakeysuffix)` into the database.
 
 Example:
 
@@ -503,7 +640,7 @@ db.setVersionstampSuffixedKey(Buffer([1,2,3]), 'someval', Buffer([0xaa, 0xbb]))
 
 Call setVersionstampPrefixedValue to insert a value into the database with content `concat(versionstamp, key)`.
 
-You can fetch the value stored through setVersionstampPrefixedValue like normal through `tn.get()`, but you will need to manually decode the versionstamp and the value. This may also cause the decoding to fail if you're using a value encoder. Instead we recommend using the helper method `getVersionstampPrefixedValue(key) -> {stamp, value}` which will split the stamp and the value, and decode the value if you're using a value encoder.
+You can fetch a value stored with setVersionstampPrefixedValue like normal using `tn.get()`, but if you do so you will need to manually decode the returned versionstamp value. This may also cause the decoding to fail if you're using a value encoder like JSON. Instead we recommend using the helper method `getVersionstampPrefixedValue(key) -> Promise<{stamp, value}>` which will automatically split the stamp and the value, and decode the value if necessary.
 
 Example:
 
@@ -550,9 +687,9 @@ There is no helper method to read & decode a value written this way. File a tick
 
 ### 2. Using versionstamps with the tuple layer
 
-The tuple layer allows unbound versionstamp markers to be embedded inside values. When tuples with these markers are written to the database (via `setVersionstampedKey` and `setVersionstampedValue`), the versionstamp in the tuple is filled with on the versionstamp of the commit.
+The tuple layer allows unbound versionstamp markers to be embedded inside values. When tuples with these markers are written to the database (via `setVersionstampedKey` and `setVersionstampedValue`), the marker is replaced with the commit's versionstamp.
 
-Unlike normal versionstamps, tuple versionstamps are are 12 bytes long. The first 10 bytes are the commit's versionstamp and the last 2 bytes are a per-transaction unique code (the first value written this way is 0, then 1, etc).
+Unlike normal versionstamps, versionstamps in tuples are are 12 bytes long. The first 10 bytes are the commit's versionstamp and the last 2 bytes consist of a per-transaction ID. (The first value written this way has an ID of 0, then 1, etc). This makes each written tuple versionstamp unique, even when they share a transaction.
 
 In action:
 
@@ -563,8 +700,8 @@ const db = fdb.openSync().withKeyEncoding(fdb.encoders.tuple)
 const key = [1, 2, 'hi', fdb.tuple.unboundVersionstamp()]
 await db.setVersionstampedKey(key, 'hi there')
 
-console.log('key', key)
-// Prints [1, 2, 'hi', {type: 'versionstamp', value: Buffer<12 bytes>}]
+console.log(key)
+// [1, 2, 'hi', {type: 'versionstamp', value: Buffer<12 byte versionstamp>}]
 ```
 
 You can also write versionstamped *values* using tuples, but only in API version 520+:
@@ -576,8 +713,8 @@ const db = fdb.openSync().withValueEncoding(fdb.encoders.tuple)
 const value = ['some', 'data', fdb.tuple.unboundVersionstamp()]
 await db.setVersionstampedValue('somekey', value)
 
-console.log('value', value)
-// ['some', 'data', {type: 'versionstamp', value: Buffer<12 bytes>}]
+console.log(value)
+// ['some', 'data', {type: 'versionstamp', value: Buffer<12 byte versionstamp>}]
 ```
 
 If you insert multiple versionstamped keys / values in the same transaction, each will have a unique code after the versionstamp:
@@ -598,7 +735,7 @@ await db.doTxn(async tn => {
 // key2 is [1,2,3, {type: 'versionstamp', value: Buffer<10 bytes followed by 0x00, 0x01>}]
 ```
 
-You can override this behaviour by baking an explicit code into your call to `tuple.unboundVersionstamp`:
+You can override this behaviour by explicitly specifying the versionstamp's ID into your call to `tuple.unboundVersionstamp`:
 
 ```javascript
 const key = [1,2,3, tuple.unboundVersionstamp(321)]
@@ -608,14 +745,16 @@ Notes:
 
 - You cannot use tuples with unbound versionstamps in other database or transaction methods.
 - The actual versionstamp is only filled in after the transaction is committed
-- Once the value has been committed, you can use `get` / `set` methods like normal
+- Once the value has been committed, you can use the tuple with `get` / `set` methods like normal
 - Each tuple may only contain 1 unbound versionstamp
-- If you don't want the tuple to be edited in-place by the transaction, pass an extra `false` argument to `setVersionstampedKey` / `setVersionstampedValue`. Eg, `tn.setVersionstampedKey(['hi', unboundVersionstamp()], 'hi', false)`.
+- If you don't want the versionstamp marker to be replaced by transaction, pass an extra `false` argument to `setVersionstampedKey` / `setVersionstampedValue`. Eg, `tn.setVersionstampedKey([...], 'val', false)`.
+
+
 
 
 ## Watches
 
-Foundationdb lets you watch a key and get notified when the key changes. A watch will only fire once - if you want to find out every time a key is changed, you will need to re-issue the watch once it has fired.
+Foundationdb lets you watch a key and get notified when the key changes. A watch will only fire once - if you want to find out every time a key is changed, you will need to re-issue the watch after it has fired.
 
 You can read more about working with watches in the [FDB developer guide](https://apple.github.io/foundationdb/developer-guide.html#watches).
 
@@ -637,13 +776,14 @@ setTimeout(() => {
 }, 1000)
 ```
 
-Or directly from the database object:
+Alternately, you can watch a value by calling one of three [helper methods](#watch-helpers) on the database object directly:
 
-```javacript
+```javascript
 const watch = db.getAndWatch('somekey')
 console.log('value is currently', watch.value)
 watch.then(() => console.log('and now it has changed'))
 ```
+
 
 Watch objects have two properties:
 
@@ -702,7 +842,7 @@ const [watchFoo, watchBar] = await db.doTn(async tn => {
 
 ### Watch helpers
 
-The easiest way to use watches is via helper functions on the database object:
+The easiest way to use watches is via one of 3 helper methods on the database object:
 
 - `db.`**getAndWatch(key)**: Get a value and watch it for changes. Because `get` is called in the same transaction which created the watch, this is safe from race conditions. Returns a watch with a `value` property containing the key's value.
 - `db.`**setAndWatch(key, value)**: Set a value and watch it for changes within the same transaction.
@@ -713,134 +853,6 @@ const watch = db.setAndWatch('highscore', '1000')
 await watch.promise
 console.log('Your high score has been usurped!')
 ```
-
-
-## Scoping & Key / Value transformations
-
-All database and transaction objects have a scope, which is configured by:
-
-- A *prefix*, prepended to the start of all keys
-- A *key transformer*, which is a `pack` & `unpack` function pair for interacting with keys
-- A *value transformer*, which is a `pack` & `unpack` function pair for interacting with values
-
-The idea is that some areas of your database will contain different data, which may be encoded using different schemes. To facilitate this you can create a bunch of database objects with different configuration. The scope is transparent to the application once the database has been configured - it is automatically prepended to all keys supplied to the API, and automatically removed from all keys returned via the API.
-
-Prefixes are called [subspaces](https://apple.github.io/foundationdb/developer-guide.html#subspaces) in other parts of the documentation & through other frontends.
-
-### Prefixes
-
-To add an application-specific prefix.
-
-```javascript
-// Prepend 'myapp' to all keys
-const db = fdb.openSync('fdb.cluster').at('myapp.')
-
-// ... Then use the database as normal
-await db.set('hello', 'there') // Actually sets 'myapp.hello' to 'there'
-await db.get('hello') // returns 'there', encoded as a buffer
-```
-
-They can be nested arbitrarily:
-
-```javascript
-const root = fdb.openSync('fdb.cluster')
-const app = db.at('myapp.')
-const books = app.at('books.') // Equivalent to root.at('myapp.books.')
-```
-
-But beware of long prefixes. The byte size of prefixes is paid in every API call, so you should keep prefixes short. If you want complex subdivisions, consider using [directories](https://apple.github.io/foundationdb/developer-guide.html#directories) instead. (Note: Directories are not yet implemented in this layer).
-
-
-### Key and Value transformation
-
-By default, the Node FoundationDB library accepts key and value input as either strings or Buffer objects, and always returns Buffers. But this is usually not what you actually want in your application.
-
-You can configure a database to always automatically transform keys and values via an encoder. The following encoders are built into the library:
-
-- `fdb.encoders.`**int32BE**: Integer encoding using big-endian 32 bit ints. (Big endian is preferred because it preserves lexical ordering)
-- `fdb.encoders.`**string**: UTF-8 string encoding
-- `fdb.encoders.`**buffer**: Buffer encoding. This doesn't actually do anything, but it can be handy to suppress typescript warnings when you're dealing with binary data.
-- `fdb.encoders.`**json**: JSON encoding using the built-in JSON.stringify. This is not suitable for key encoding.
-- `fdb.encoders.`**tuple**: Encode values using FDB [tuple encoding](https://apple.github.io/foundationdb/data-modeling.html#tuples). [Spec here](https://github.com/apple/foundationdb/blob/master/design/tuple.md).
-
-**Beware** JSON encoding is generally unsuitable as a key encoding method:
-
-- JSON objects have no guaranteed encoding order. Eg `{a:4, b:3}` could be encoded as `{"a":4,"b":3}` or `{"b":3,"a":4}`. When fetching a key, FDB does an equality check on the encoded value, so you might find your data is gone when you go to fetch it again later.
-- When performing range queries, the lexographical ordering is undefined in innumerable ways. For example, `2` is lexographically after `10`.
-
-These problems are fixed by using [FDB tuple encoding](https://apple.github.io/foundationdb/data-modeling.html#tuples). Tuple encoding is supported by all FDB frontends, it formally (and carefully) defines ordering for all objects and it supports transparent concatenation (tuple.pack(`['a']`) + tuple.pack(`['b']`) === tuple.pack(`['a', 'b']`)).
-
-These problems only apply for key encoding. JSON is fine for encoding values, if a little space-inefficient.
-
-
-Examples:
-
-#### Using a key encoding:
-
-```javascript
-const db = fdb.openSync('fdb.cluster').withKeyEncoding(fdb.encoders.int32BE)
-
-await db.set(123, 'hi')
-await db.get(123) // returns 'hi' as a buffer
-```
-
-
-#### Or a value encoding:
-
-```javascript
-const db = fdb.openSync('fdb.cluster').withValueEncoding(fdb.encoders.json)
-
-await db.set('hi', [1,2,3])
-await db.get('hi') // returns [1,2,3]
-```
-
-#### Custom encodings
-
-You can define your own custom encoding by supplying your own `pack` & `unpack` function pair:
-
-```javascript
-const msgpack = require('msgpack-lite')
-
-const db = fdb.openSync('fdb.cluster').withValueEncoding({
-  pack: msgpack.encode,
-  unpack: msgpack.decode,
-})
-
-await db.set('hi', ['x', 1.2, Buffer.from([1,2,3])])
-await db.get('hi') // returns ['x', 1.2, Buffer.from([1,2,3])]
-```
-
-
-#### Chained prefixes
-
-If you prefix a database which has a key encoding set, the prefix will be transformed by the encoding. This allows you to use the API like this:
-
-```javascript
-const rootDb = fdb.openSync('fdb.cluster').withKeyEncoding(fdb.encoders.tuple).at(['myapp'])
-const books = rootDb.at(['data', 'books']) // Equivalent to .at(['myapp', 'data', 'books'])
-```
-
-
-#### Multi-scoped transactions
-
-To update objects in multiple scopes within the same transaction, use `tn.scopedTo(db)` to create an alias of the transaction in the foreign scope:
-
-```javascript
-const root = fdb.openSync('fdb.cluster').withKeyEncoding(fdb.encoders.tuple).at(['myapp'])
-const data = root.at(['schools'])
-const index = root.at(['index'])
-
-data.doTransaction(async tn => {
-  // Update the data object itself
-  tn.set('UNSW', 'some data ...')
-
-  // Update the index. This will use the prefix, key and value encoding of index defined above.
-  tn.scopedTo(index)
-  .set(['bycountry', 'australia', 'UNSW'], '... cached index data')
-})
-```
-
-Aliased transactions inherit their `isSnapshot` property from the object they were created from, and the prefix and encoders from the database parameter. They support the complete transaction API, including ranges, watches, etc.
 
 
 ## Snapshot Reads
@@ -897,19 +909,17 @@ You should be free to upgrade this library and your foundationdb database indepe
 
 ### Upgrading your cluster
 
-While all of your code should continue to work with new versions of foundationdb without modification, at runtime your application needs access to the dynamic library `libfdb_c_5.1.7.so` / `libfdb_c_5.1.7.dylib` / `libfdb_c_5.1.7.dll` with a major and minor version number matching the version of the database that you are connecting to.
+While all of your code should continue to work with new versions of foundationdb without modification, at runtime your application needs access to the `fdb_c` dynamic library (`libfdb_c_6.0.15.so` / `libfdb_c_6.0.15.dylib` / `libfdb_c_6.0.15.dll`) with a major and minor version number which *exactly matches* the version of the database that you are connecting to. 💣💣 That means you cannot upgrade your database server without also changing files on each of your database clients!
 
 Upgrading your database cluster without any application downtime is possible but tricky. You need to:
 
-1. Deploy your client application with both old and new copies of the `libfdb_c` dynamic library file. You can point your application a directory containing copies of all versions of `libfdb_c` that you want it to support connecting with via the `EXTERNAL_CLIENT_DIRECTORY` environment variable or the `external_client_directory` network option. When the client connects to your database it will try all versions of the fdb library found in this directory. The `libfdb_c` dynamic library files can be downloaded directly from the [FDB Downloads page](https://www.foundationdb.org/download/).
+1. Deploy your client application with both old and new copies of the `libfdb_c` dynamic library file. You can point your application a directory containing copies of all versions of `libfdb_c` that you want it to support connecting with via the `EXTERNAL_CLIENT_DIRECTORY` environment variable or setting the `external_client_directory` network option. When the client connects to your database it will try all versions of the fdb library found in this directory. The `libfdb_c` dynamic library files can be downloaded directly from the [FDB Downloads page](https://www.foundationdb.org/download/).
 2. Upgrade your foundationdb database instances. Your app should automatically reconnect using the new dynamic library version.
 3. Once the database is upgraded, remove old, unused copies of the `libfdb_c` client library from your frontend machines as they may degrade performance.
 
-In practice, you only need to do this complicated process when the FDB network protocol changes.
+Read more about the [multi-versioned client design here](https://apple.github.io/foundationdb/api-general.html#multi-version-client) and check the [the foundationdb forum](https://forums.foundationdb.org/c/using-foundationdb) for help and more information.
 
-Read more about the [multi-versioned client design here](https://apple.github.io/foundationdb/api-general.html#multi-version-client) and consult [the foundationdb forum](https://forums.foundationdb.org/c/using-foundationdb) for help and more information.
-
-The API version number you pass to `fdb.setAPIVersion` is independant of the version of your database cluster. The API version only needs to be changed if you want access to semantics & new features provided in new versions of foundationdb. See FDB [release notes](https://apple.github.io/foundationdb/release-notes.html) for information on what has changed between versions.
+Note that the API version number is different from the version of FDB you have installed. The API version is what you pass to `fdb.setAPIVersion`. This version number can be lower than the supported API version of foundationdb. In practice, The API version only needs to be incremented when you want to use new foundationdb features. See FDB [release notes](https://apple.github.io/foundationdb/release-notes.html) for information on what has changed between versions.
 
 
 ## Caveats
