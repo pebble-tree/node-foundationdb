@@ -551,9 +551,9 @@ tn.getRange(
 )
 ```
 
-> **Note ⛑** The naming is weird at the end of the range. Remember range queries are always non-inclusive of the end of their range. In the above example FDB will find the next key greater than `end`, then *not include this key in the results*.
+> **Note ⛑** The naming is weird at the end of the range. FDB range queries are *always* non-inclusive of the end of their range. In the above example FDB will find the next key greater than `end`, then *not include this key in the results*.
 
-You can add or subtract an offset from a key selector using `fdb.keySelector.add(sel, offset)`. This counts *in keys*. For example, to find the key thats exactly 10 keys from key `'a'`:
+You can add or subtract an offset from a key selector using `fdb.keySelector.add(sel, offset)`. This counts *in keys*. For example, to find the key thats exactly 10 keys after key `'a'`:
 
 ```javascript
 const ks = require('foundationdb').keySelector
@@ -640,7 +640,7 @@ db.setVersionstampSuffixedKey(Buffer([1,2,3]), 'someval', Buffer([0xaa, 0xbb]))
 
 Call setVersionstampPrefixedValue to insert a value into the database with content `concat(versionstamp, key)`.
 
-You can fetch a value stored with setVersionstampPrefixedValue like normal using `tn.get()`, but if you do so you will need to manually decode the returned versionstamp value. This may also cause the decoding to fail if you're using a value encoder like JSON. Instead we recommend using the helper method `getVersionstampPrefixedValue(key) -> Promise<{stamp, value}>` which will automatically split the stamp and the value, and decode the value if necessary.
+You can fetch a value stored with setVersionstampPrefixedValue like normal using `tn.get()`, but if you do so you will need to manually decode the returned versionstamp value. This may also cause the decoding to fail if you're using a value encoder like JSON. Instead we provide a helper method `getVersionstampPrefixedValue(key) -> Promise<{stamp, value}>` which will automatically split the stamp and the value, and decode the value if necessary.
 
 Example:
 
@@ -674,7 +674,7 @@ await db.doTxn(async tn => {
 })
 ```
 
-Using API version 520+, setVersionstampPrefixedValue supports an optional `extravalueprefix` argument, which will be prepended to the start of the inserted value. Its weird that this parameter goes at the end of the arguments list, but 🤷‍♀️.
+Using API version 520+, setVersionstampPrefixedValue supports an optional `extravalueprefix` argument, which will be prepended to the start of the inserted value. Note that this parameter goes at the end of the arguments list.
 
 ```javascript
 // setVerionstampPrefixedValue takes an optional extra prefix argument.
