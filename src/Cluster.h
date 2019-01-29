@@ -40,7 +40,7 @@ class Cluster : public node::ObjectWrap {
     static void New(const Nan::FunctionCallbackInfo<v8::Value>& info);
     static void OpenDatabaseSync(const Nan::FunctionCallbackInfo<v8::Value>& info);
     static void OpenDatabase(const Nan::FunctionCallbackInfo<v8::Value>& info);
-    static void Destroy(const Nan::FunctionCallbackInfo<v8::Value>& info);
+    static void Close(const Nan::FunctionCallbackInfo<v8::Value>& info);
 
     FDBCluster* GetCluster() { return cluster; }
 

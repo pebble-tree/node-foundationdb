@@ -105,6 +105,7 @@ const wrapCluster = (cluster: fdb.NativeCluster) => ({
     if (opts) db.setNativeOptions(opts)
     return db
   },
+  close() {cluster.close()}
 })
 
 export const createCluster = (clusterFile?: string) => {

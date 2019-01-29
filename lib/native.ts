@@ -74,13 +74,15 @@ export interface NativeTransaction {
 }
 
 export interface NativeDatabase {
-  createTransaction(): NativeTransaction
+  createTransaction(): NativeTransaction // invalid after the database has closed
   setOption(code: number, param: string | number | Buffer | null): void
+  close(): void
 }
 
 export interface NativeCluster {
   openDatabase(dbName: 'DB'): Promise<NativeDatabase>
   openDatabaseSync(dbName: 'DB'): NativeDatabase
+  close(): void
 }
 
 export enum ErrorPredicate {

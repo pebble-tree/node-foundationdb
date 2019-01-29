@@ -24,7 +24,7 @@ These bindings are currently in the process of being revived. [See progress belo
 To connect to a remote cluster you need:
 
 - A copy of the client library with matching major and minor version numbers. You really only need the `libfdb_c` dynamic library file to connect ([available on the fdb downloads page](https://www.foundationdb.org/download/)). But its usually easier to just install the fdb client library for your platform. See [Notes on API versions](#notes-on-api-versions) below for more information.
-- A copy of the `fdb.cluster` file for your database cluster. This is generated when you deploy your cluster. If you don't provide this file, node-fdb connect to localhost instead.
+- A copy of the `fdb.cluster` file for your database cluster. If you have installed foundationdb on your local machine in the default location, a copy of this file will be discovered and used automatically.
 
 #### Step 2
 

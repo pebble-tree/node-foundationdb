@@ -48,6 +48,10 @@ export default class Database<KeyIn = NativeValue, KeyOut = Buffer, ValIn = Nati
     eachOption(databaseOptionData, opts, (code, val) => this._db.setOption(code, val))
   }
 
+  close() {
+    this._db.close()
+  }
+
   // **** Scoping functions
   
   getRoot(): Database {
@@ -103,7 +107,7 @@ export default class Database<KeyIn = NativeValue, KeyOut = Buffer, ValIn = Nati
   getKey(selector: KeyIn | KeySelector<KeyIn>): Promise<KeyOut | null> {
     return this.doTransaction(tn => tn.snapshot().getKey(selector))
   }
-  getVersionstampPrefixedValue(key: KeyIn): Promise<{stamp: Buffer, value: ValOut} | null> {
+  getVersionstampPrefixedValue(key: KeyIn): Promise<{stamp: Buffer, value?: ValOut} | null> {
     return this.doTransaction(tn => tn.snapshot().getVersionstampPrefixedValue(key))
   }
 

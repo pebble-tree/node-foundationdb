@@ -36,7 +36,7 @@ using namespace std;
 Database::Database() { };
 
 Database::~Database() {
-  fdb_database_destroy(db);
+  if (db != nullptr) fdb_database_destroy(db);
 };
 
 Nan::Persistent<Function> Database::constructor;
@@ -48,15 +48,28 @@ void Database::Init() {
   tpl->SetClassName(Nan::New<String>("Database").ToLocalChecked());
   tpl->InstanceTemplate()->SetInternalFieldCount(1);
 
+  NODE_SET_PROTOTYPE_METHOD(tpl, "close", Close);
   NODE_SET_PROTOTYPE_METHOD(tpl, "createTransaction", CreateTransaction);
   NODE_SET_PROTOTYPE_METHOD(tpl, "setOption", SetOption);
 
   constructor.Reset(tpl->GetFunction());
 }
 
+void Database::Close(const FunctionCallbackInfo<Value>& info) {
+  Database *dbPtr = node::ObjectWrap::Unwrap<Database>(info.Holder());
+  if (dbPtr->db) {
+    fdb_database_destroy(dbPtr->db);
+    dbPtr->db = nullptr;
+  }
+}
+
 void Database::CreateTransaction(const FunctionCallbackInfo<Value>& info) {
   Database *dbPtr = node::ObjectWrap::Unwrap<Database>(info.Holder());
   FDBDatabase *db = dbPtr->db;
+  if (db == nullptr) {
+    Nan::ThrowReferenceError("Cannot create transaction after db closed");
+    return info.GetReturnValue().SetUndefined();
+  }
   FDBTransaction *tr;
   fdb_error_t err = fdb_database_create_transaction(db, &tr);
   if (err) {
@@ -71,8 +84,8 @@ void Database::SetOption(const FunctionCallbackInfo<Value>& args) {
   // database.setOptionStr(opt_id, "value")
   Database *dbPtr = node::ObjectWrap::Unwrap<Database>(args.Holder());
   FDBDatabase *db = dbPtr->db;
-
-  set_option_wrapped(db, OptDatabase, args);
+  // Silently fail if the database is closed.
+  if (db != nullptr) set_option_wrapped(db, OptDatabase, args);
 }
 
 void Database::New(const FunctionCallbackInfo<Value>& info) {

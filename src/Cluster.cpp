@@ -37,7 +37,7 @@ using namespace std;
 
 Cluster::Cluster() { }
 Cluster::~Cluster() {
-  fdb_cluster_destroy(cluster);
+  if (cluster) fdb_cluster_destroy(cluster);
 }
 
 Nan::Persistent<Function> Cluster::constructor;
@@ -50,6 +50,7 @@ void Cluster::Init() {
 
   Nan::SetPrototypeMethod(tpl, "openDatabaseSync", OpenDatabaseSync);
   Nan::SetPrototypeMethod(tpl, "openDatabase", OpenDatabase);
+  Nan::SetPrototypeMethod(tpl, "close", Close);
 
   constructor.Reset(tpl->GetFunction());
 }
@@ -81,6 +82,11 @@ static FDBFuture *createDbFuture(FDBCluster *cluster, Local<Value> name) {
 
 void Cluster::OpenDatabaseSync(const Nan::FunctionCallbackInfo<Value>& info) {
   Cluster *clusterPtr = ObjectWrap::Unwrap<Cluster>(info.Holder());
+  if (clusterPtr->cluster == nullptr) {
+    Nan::ThrowReferenceError("Cannot open database in closed cluster");
+    return info.GetReturnValue().SetUndefined();
+  }
+
   FDBFuture *f = createDbFuture(clusterPtr->cluster, info[0]);
 
   fdb_error_t errorCode = fdb_future_block_until_ready(f);
@@ -97,8 +103,21 @@ void Cluster::OpenDatabaseSync(const Nan::FunctionCallbackInfo<Value>& info) {
   info.GetReturnValue().Set(jsValue);
 }
 
+void Cluster::Close(const Nan::FunctionCallbackInfo<Value>& info) {
+  Cluster *clusterPtr = ObjectWrap::Unwrap<Cluster>(info.Holder());
+  printf("cluster::close\n");
+  if (clusterPtr->cluster != nullptr) {
+    fdb_cluster_destroy(clusterPtr->cluster);
+    clusterPtr->cluster = nullptr;
+  }
+}
+
 void Cluster::OpenDatabase(const Nan::FunctionCallbackInfo<Value>& info) {
   Cluster *clusterPtr = ObjectWrap::Unwrap<Cluster>(info.Holder());
+  if (clusterPtr->cluster == nullptr) {
+    Nan::ThrowReferenceError("Cannot open database in closed cluster");
+    return info.GetReturnValue().SetUndefined();
+  }
   FDBFuture *f = createDbFuture(clusterPtr->cluster, info[0]);
 
   auto promise = futureToJS(f, info[1], [](FDBFuture* f, fdb_error_t* errOut) -> Local<Value> {

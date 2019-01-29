@@ -143,7 +143,7 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
   }
 
   // Creates a shallow copy of the database in a different scope
-  scopedTo<ChildKey, ChildVal>(db: Database<ChildKey, ChildVal>): Transaction<ChildKey, ChildVal> {
+  scopedTo<CKI, CKO, CVI, CVO>(db: Database<CKI, CKO, CVI, CVO>): Transaction<CKI, CKO, CVI, CVO> {
     return new Transaction(this._tn, this.isSnapshot, db._bakedKeyXf, db._valueXf)
   }
 
@@ -469,12 +469,19 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
   // This requires that the stamp is at offset 0 (the start) of the value.
   // This is designed to work with setVersionstampPrefixedValue. If you're
   // using setVersionstampedValue with tuples or something, just call get().
-  async getVersionstampPrefixedValue(key: KeyIn): Promise<{stamp: Buffer, value: ValOut} | null> {
+  async getVersionstampPrefixedValue(key: KeyIn): Promise<{stamp: Buffer, value?: ValOut} | null> {
     const val = await this._tn.get(this._keyEncoding.pack(key), this.isSnapshot)
     return val == null ? null
       : {
         stamp: val.slice(0, 10),
-        value: this._valueEncoding.unpack(val.slice(10))
+
+        // So this is a bit opinionated - if you call
+        // setVersionstampPrefixedValue with no value, the db will just have
+        // the 10 byte versionstamp. So when you get here, we have no bytes
+        // for the decoder and that can cause issues. We'll just return null
+        // in that case - but, yeah, controversial. You might want some other
+        // encoding or something. File an issue if this causes you grief.
+        value: val.length > 10 ? this._valueEncoding.unpack(val.slice(10)) : undefined
       }
   }
 

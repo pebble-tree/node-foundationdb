@@ -42,6 +42,10 @@ using namespace node;
 
 // Transaction Implementation
 Transaction::~Transaction() {
+  // This will automatically be called by the garbage collector. It might make
+  // sense to be a bit more eager about destroying transaction objects,
+  // although if we want to be more efficient about transaction lifecycle we
+  // could instead make a pool of them from nodejs.
   fdb_transaction_destroy(tr);
 };
 

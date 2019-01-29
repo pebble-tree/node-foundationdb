@@ -43,11 +43,15 @@ class Database: public node::ObjectWrap {
     Database();
     ~Database();
 
+    // This closes the database and nulls out the db object locally. Calling
+    // CreateTransaction is invalid on a closed database.
+    static void Close(const v8::FunctionCallbackInfo<v8::Value>& info);
     static void CreateTransaction(const v8::FunctionCallbackInfo<v8::Value>& info);
     static Nan::Persistent<v8::Function> constructor;
 
     static void SetOption(const v8::FunctionCallbackInfo<v8::Value>& info);
 
+    // Set to null after close().
     FDBDatabase *db;
 };
 
