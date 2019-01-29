@@ -1,3 +1,10 @@
+# 0.8.1
+
+- Fixed type information on `tn.scopedTo`
+- Added support for explicit `cluster.close()` / `db.close()` calls
+- Added support for `set/getVersionstampPrefixedValue` with no value
+
+
 # 0.8.0
 
 - Removed prebuild for node 9 and electron.
