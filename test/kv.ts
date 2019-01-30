@@ -237,6 +237,25 @@ withEachDb(db => describe('key value functionality', () => {
         ['3', val3],
       ])
     })
+
+    it('does not crash the program if a getVersionstamp result is aborted due to conflict', async () => {
+      // We're going to artificially generate a transaction conflict
+      const tn1 = db.rawCreateTransaction()
+      const tn2 = db.rawCreateTransaction()
+      await tn1.get('x')
+      tn1.set('x', 'hi')
+
+      await tn2.get('x')
+      tn2.set('x', 'yo')
+
+      await tn1.rawCommit()
+
+      // This will fail, but it shouldn't crash the program.
+      const vs = tn2.getVersionstamp().promise
+
+      // This will throw
+      try { await tn2.rawCommit() } catch (e) {}
+    })
   })
 
   describe('watch', () => {

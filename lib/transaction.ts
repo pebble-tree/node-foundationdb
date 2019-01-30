@@ -63,6 +63,8 @@ export type WatchOptions = {
 // Polyfill for node < 10.0 to make asyncIterators work (getRange / getRangeBatch).
 if ((<any>Symbol).asyncIterator == null) (<any>Symbol).asyncIterator = Symbol.for("Symbol.asyncIterator")
 
+const doNothing = () => {}
+
 // NativeValue is string | Buffer because the C code accepts either format.
 // But all values returned from methods will actually just be Buffer.
 export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = NativeValue, ValOut = Buffer> {
@@ -339,7 +341,21 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
   getVersionstamp(): {promise: Promise<Buffer>}
   getVersionstamp(cb: Callback<Buffer>): void
   getVersionstamp(cb?: Callback<Buffer>) {
-    return cb ? this._tn.getVersionstamp(cb) : {promise: this._tn.getVersionstamp()}
+    if (cb) return this._tn.getVersionstamp(cb)
+    else {
+      // This one is surprisingly tricky:
+      //
+      // - If we return the promise as normal, you'll deadlock if you try to
+      //   return it via your async tn function (since JS automatically
+      //   flatmaps promises)
+      // - Also if the tn conflicts, this promise will also generate an error.
+      //   By default node will crash your program when it sees this error.
+      //   We'll allow the error naturally, but suppress node's default
+      //   response by adding an empty catch function
+      const promise = this._tn.getVersionstamp()
+      promise.catch(doNothing)
+      return {promise}
+    }
   }
 
   getAddressesForKey(key: KeyIn): string[] {
