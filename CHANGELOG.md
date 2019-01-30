@@ -1,3 +1,8 @@
+# 0.8.2
+
+- Fixed a bug where if you called `tn.getVersionstamp` inside a transaction
+  which conflicted, it would crash your whole node process.
+
 # 0.8.1
 
 - Fixed type information on `tn.scopedTo`
