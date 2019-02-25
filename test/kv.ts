@@ -189,6 +189,18 @@ withEachDb(db => describe('key value functionality', () => {
       assert.deepStrictEqual(key, [1,2,3, {type: 'unbound versionstamp'}])
     })
 
+    it('bakes versionstamps in a subspace', async () => {
+      const subspace = db.withValueEncoding(encoders.tuple);
+
+      const value = await db.doTransaction(async tn => {
+        const value = [tuple.unboundVersionstamp()]
+        tn.scopedTo(subspace).setVersionstampedValue('some-key', value)
+        return value
+      })
+
+      assert.strictEqual((value as any)[0].type, 'versionstamp')
+    })
+
     it('encodes versionstamps in child tuples', async () => {
       const db_ = db.withKeyEncoding(encoders.tuple).withValueEncoding(encoders.string)
       const key: any[] = [1,[2, {type: 'unbound versionstamp'}]]

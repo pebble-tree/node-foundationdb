@@ -65,29 +65,46 @@ if ((<any>Symbol).asyncIterator == null) (<any>Symbol).asyncIterator = Symbol.fo
 
 const doNothing = () => {}
 
-// NativeValue is string | Buffer because the C code accepts either format.
-// But all values returned from methods will actually just be Buffer.
-export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = NativeValue, ValOut = Buffer> {
-  _tn: NativeTransaction
-  isSnapshot: boolean
-  _keyEncoding: Transformer<KeyIn, KeyOut>
-  _valueEncoding: Transformer<ValIn, ValOut>
-  nextCode: number = 0
+type BakeItem<T> = {item: T, transformer: Transformer<T, any>, code: Buffer | null}
+
+// This scope object is shared by the family of transaction objects made with .scope().
+interface TxnScope {
+  nextCode: number
 
   // If you call setVersionstampedKey / setVersionstampedValue, we pull out
   // the versionstamp from the txn and bake it back into the tuple (or
   // whatever) after the transaction commits.
-  keysToBake: null | {k:KeyIn, code:Buffer | null}[] = null
-  valsToBake: null | {v:ValIn, code:Buffer | null}[] = null
+  toBake: null | BakeItem<any>[]
+}
+
+// NativeValue is string | Buffer because the C code accepts either format.
+// But all values returned from methods will actually just be Buffer.
+export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = NativeValue, ValOut = Buffer> {
+  _tn: NativeTransaction
+  
+  isSnapshot: boolean
+  _keyEncoding: Transformer<KeyIn, KeyOut>
+  _valueEncoding: Transformer<ValIn, ValOut>
+  
+  _scope: TxnScope
+  
 
   constructor(tn: NativeTransaction, snapshot: boolean,
       keyEncoding: Transformer<KeyIn, KeyOut>, valueEncoding: Transformer<ValIn, ValOut>,
-      opts?: TransactionOptions) {
+      opts?: TransactionOptions, scope?: TxnScope) {
     this._tn = tn
+
+    this.isSnapshot = snapshot
     this._keyEncoding = keyEncoding
     this._valueEncoding = valueEncoding
+
+    // this._root = root || this
     if (opts) eachOption(transactionOptionData, opts, (code, val) => tn.setOption(code, val))
-    this.isSnapshot = snapshot
+
+    this._scope = scope ? scope : {
+      nextCode: 0,
+      toBake: null
+    }
   }
 
   // Internal method to actually run a transaction retry loop. Do not call
@@ -99,20 +116,16 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
       try {
         const result = await body(this)
 
-        const stampPromise = ((this.keysToBake && this.keysToBake.length)
-          || (this.valsToBake && this.valsToBake.length))
-            ? this.getVersionstamp() : null
+        const stampPromise = (this._scope.toBake && this._scope.toBake.length)
+          ? this.getVersionstamp() : null
 
         await this.rawCommit()
 
         if (stampPromise) {
           const stamp = await stampPromise.promise
 
-          if (this.keysToBake) this.keysToBake.forEach(({k, code}) => (
-            this._keyEncoding.bakeVersionstamp!(k, stamp, code))
-          )
-          if (this.valsToBake) this.valsToBake.forEach(({v, code}) => (
-            this._valueEncoding.bakeVersionstamp!(v, stamp, code))
+          this._scope.toBake!.forEach(({item, transformer, code}) => (
+            transformer.bakeVersionstamp!(item, stamp, code))
           )
         }
         return result // Ok, success.
@@ -125,9 +138,8 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
       }
 
       // Reset our local state that will have been filled in by calling the body.
-      this.nextCode = 0
-      if (this.keysToBake) this.keysToBake.length = 0
-      if (this.valsToBake) this.valsToBake.length = 0
+      this._scope.nextCode = 0
+      if (this._scope.toBake) this._scope.toBake.length = 0
     } while (true)
   }
 
@@ -141,12 +153,12 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
 
   // Returns a mirror transaction which does snapshot reads.
   snapshot(): Transaction<KeyIn, KeyOut, ValIn, ValOut> {
-    return new Transaction(this._tn, true, this._keyEncoding, this._valueEncoding)
+    return new Transaction(this._tn, true, this._keyEncoding, this._valueEncoding, undefined, this._scope)
   }
 
   // Creates a shallow copy of the database in a different scope
   scopedTo<CKI, CKO, CVI, CVO>(db: Database<CKI, CKO, CVI, CVO>): Transaction<CKI, CKO, CVI, CVO> {
-    return new Transaction(this._tn, this.isSnapshot, db._bakedKeyXf, db._valueXf)
+    return new Transaction(this._tn, this.isSnapshot, db._bakedKeyXf, db._valueXf, undefined, this._scope)
   }
 
   // You probably don't want to call any of these functions directly. Instead call db.transact(async tn => {...}).
@@ -398,7 +410,7 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
 
   // **** Version stamp stuff
 
-  getNextTransactionID() { return this.nextCode++ }
+  getNextTransactionID() { return this._scope.nextCode++ }
 
   _bakeCode(into: UnboundStamp) {
     if (this.isSnapshot) throw new Error('Cannot use this method in a snapshot transaction')
@@ -424,6 +436,14 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
     this.atomicOpNative(MutationType.SetVersionstampedKey, key, this._valueEncoding.pack(value))
   }
 
+  _addBakeItem<T>(item: T, transformer: Transformer<T, any>, code: Buffer | null) {
+    if (transformer.bakeVersionstamp) {
+      const scope = this._scope
+      if (scope.toBake == null) scope.toBake = []
+      scope.toBake.push({item, transformer, code})
+    }
+  }
+
   // TODO: These method names are a bit confusing.
   // 
   // The short version is, if you're using the tuple type with an unbound
@@ -439,10 +459,7 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
     const code = this._bakeCode(pack)
     this.setVersionstampedKeyRaw(packVersionstamp(pack, true), value)
 
-    if (bakeAfterCommit && this._keyEncoding.bakeVersionstamp) {
-      if (this.keysToBake == null) this.keysToBake = []
-      this.keysToBake.push({k:key, code})
-    }
+    if (bakeAfterCommit) this._addBakeItem(key, this._keyEncoding, code)
   }
 
   setVersionstampSuffixedKey(key: KeyIn, value: ValIn, suffix?: Buffer) {
@@ -466,10 +483,7 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
     const code = this._bakeCode(pack)
     this.setVersionstampedValueRaw(key, packVersionstamp(pack, false))
 
-    if (bakeAfterCommit && this._valueEncoding.bakeVersionstamp) {
-      if (this.valsToBake == null) this.valsToBake = []
-      this.valsToBake.push({v:value, code})
-    }
+    if (bakeAfterCommit) this._addBakeItem(value, this._valueEncoding, code)
   }
 
   // Set key = [10 byte versionstamp, value in bytes]. This function leans on
