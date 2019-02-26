@@ -93,6 +93,7 @@ export enum ErrorPredicate {
 
 export interface NativeModule {
   setAPIVersion(v: number): void
+  setAPIVersionImpl(v: number, h: number): void
 
   startNetwork(): void
   stopNetwork(): void

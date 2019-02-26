@@ -8,7 +8,7 @@ export const MAX_VERSION = 600
 let apiVersion: number | null = null
 export const get = () => apiVersion
 
-export function set(version: number) {
+export function set(version: number, headerVersion?: number) {
   if (typeof version !== 'number') throw TypeError('version must be a number')
 
   if (apiVersion != null) {
@@ -32,7 +32,9 @@ Until this is fixed, use FDB API version ${MAX_VERSION}.
 `)
     }
 
-    nativeMod.setAPIVersion(version)
+    if (headerVersion == null) nativeMod.setAPIVersion(version)
+    else nativeMod.setAPIVersionImpl(version, headerVersion)
+
     apiVersion = version
   }
 }
