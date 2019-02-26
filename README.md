@@ -887,9 +887,9 @@ Since the very first release, FoundationDB has kept full backwards compatibility
 
 From the point of view of a nodejs fdb client application, there are effectively three semi-independant versions your app consumes:
 
-1. **Cluster version**: The version of fdb you are running on your database cluster. Eg *5.1.7*
+1. **Cluster version**: The version of fdb you are running on your database cluster. Eg *6.0.8*
 2. **API version**: The semantics of the FDB client API (which change sometimes between versions of FDB). This affects supported FDB options and whether or not transactions read-your-writes is enabled by default. Eg *600*. Must be ≤ cluster version.
-3. **binding version**: The semver version of this library in npm. Eg *0.6.1*.
+3. **binding version**: The semver version of this library in npm. Eg *0.9.0*.
 
 I considered tying this library's version to the API version. Then with every new release of FoundationDB we would need to increment the major version number in npm. Unfortunately, new API versions depend on new versions of the database itself. Tying the latest version of `node-foundationdb` to the latest version of the FDB API would require users to either:
 
@@ -901,7 +901,7 @@ Both of these options would be annoying.
 So to deal with this, you need to manage all API versions:
 
 1. This library needs access to a copy of `libfdb_c` which is compatible with the fdb cluster it is connecting to. Usually this means major & minor versions should match.
-2. The API version of foundationdb is managed via a call at startup to `fdb.setAPIVersion`. This must be ≤ the version of the db cluster you are connecting to.
+2. The API version of foundationdb is managed via a call at startup to `fdb.setAPIVersion`. This must be ≤ the version of the db cluster you are connecting to, but ≥ the C API version which the bindings depend on (currently `600`). (This can be overridden by also passing a header version to `setAPIVersion` - eg `fdb.setAPIVersion(520, 520)`).
 3. This package is versioned normally via npm & package.json.
 
 You should be free to upgrade this library and your foundationdb database independantly. However, this library will only maintain support for API versions within a recent range. This is simply a constraint of development time & testing.
