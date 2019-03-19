@@ -338,6 +338,7 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
     this._tn.addWriteConflictRange(keyBuf, strNext(keyBuf))
   }
 
+  // version must be 8 bytes
   setReadVersion(v: Version) { this._tn.setReadVersion(v) }
 
   getReadVersion(): Promise<Version>

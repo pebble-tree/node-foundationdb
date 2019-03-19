@@ -29,11 +29,18 @@ export const testApiVersion = 600
 
 export const withEachDb = (fn: (db: fdb.Database) => void) => {
   fdb.setAPIVersion(testApiVersion)
-  
+
   // These tests just use a single shared database cluster instance which is
   // reset between tests. It would be cleaner if we used beforeEach to close &
   // reopen the database but its probably fine like this.
-  const db = fdb.openSync().at(prefix)
+  const cluster = fdb.createClusterSync()
+  const db = cluster.openDatabaseSync().at(prefix)
+
+  after(() => {
+    db.close()
+    cluster.close()
+    // fdb.stopNetworkSync()
+  })
 
   // We need to do this both before and after tests run to clean up any mess
   // that a previously aborted test left behind. This is safe - it only clears

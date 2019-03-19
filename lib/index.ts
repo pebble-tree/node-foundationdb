@@ -31,6 +31,9 @@ const init = () => {
   process.on('exit', () => nativeMod.stopNetwork())
 }
 
+// Destroy the network thread. This is not needed under normal circumstances;
+// but can be used to de-init FDB.
+export const stopNetworkSync = nativeMod.stopNetwork
 
 export {default as FDBError} from './error'
 export {default as keySelector, KeySelector} from './keySelector'
@@ -95,12 +98,12 @@ export const encoders = {
 }
 
 const wrapCluster = (cluster: fdb.NativeCluster) => ({
-  async openDatabase(dbName: 'DB', opts?: DatabaseOptions) {
+  async openDatabase(dbName: 'DB' = 'DB', opts?: DatabaseOptions) {
     const db = createDatabase(await cluster.openDatabase(dbName))
     if (opts) db.setNativeOptions(opts)
     return db
   },
-  openDatabaseSync(dbName: 'DB', opts?: DatabaseOptions) {
+  openDatabaseSync(dbName: 'DB' = 'DB', opts?: DatabaseOptions) {
     const db = createDatabase(cluster.openDatabaseSync(dbName))
     if (opts) db.setNativeOptions(opts)
     return db
