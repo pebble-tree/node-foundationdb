@@ -38,7 +38,7 @@ export {default as keySelector, KeySelector} from './keySelector'
 // These are exported to give consumers access to the type. Databases must
 // always be constructed using open or via a cluster object.
 export {default as Database} from './database'
-export {default as Transaction} from './transaction'
+export {default as Transaction, Watch} from './transaction'
 
 export {
   NetworkOptions,

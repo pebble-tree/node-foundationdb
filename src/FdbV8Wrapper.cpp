@@ -136,12 +136,17 @@ void StartNetwork(const FunctionCallbackInfo<Value>& info) {
 }
 
 void StopNetwork(const FunctionCallbackInfo<Value>& info) {
+  if (!networkStarted) return;
+
   fdb_error_t errorCode = fdb_stop_network();
 
-  if(errorCode != 0)
+  if(errorCode != 0) {
     return Nan::ThrowError(FdbError::NewInstance(errorCode));
+  }
 
   uv_thread_join(&fdbThread);
+
+  networkStarted = false;
 
   //This line forces garbage collection.  Useful for doing valgrind tests
   //while(!V8::IdleNotification());

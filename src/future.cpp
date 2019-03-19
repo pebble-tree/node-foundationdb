@@ -217,8 +217,8 @@ Local<Object> watchFuture(FDBFuture *f, bool ignoreStandardErrors) {
     // The promise will resolve (true) normally, or (false) if it was aborted.
     if (err && ctx->ignoreStandardErrors && (
         err == 1101 // operation_cancelled
-        || err != 1025 // transaction_cancelled
-        || err != 1020)) { // not_committed (tn conflict)
+        || err == 1025 // transaction_cancelled
+        || err == 1020)) { // not_committed (tn conflict)
       success = false;
       err = 0;
     }

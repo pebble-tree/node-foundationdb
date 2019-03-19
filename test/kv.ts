@@ -6,7 +6,7 @@ import {
   bufToNum,
   withEachDb,
 } from './util'
-import {MutationType, tuple, TupleItem, encoders} from '../lib'
+import {MutationType, tuple, TupleItem, encoders, Watch} from '../lib'
 
 process.on('unhandledRejection', err => { throw err })
 
@@ -287,7 +287,7 @@ withEachDb(db => describe('key value functionality', () => {
       // await new Promise(resolve => setTimeout(resolve, 200))
     })
 
-    it('watch resolves false if the transaction conflicts', async () => {
+    it('resolves false if the transaction conflicts', async () => {
       // Artificially creating a conflict to see what happens.
       const tn1 = db.rawCreateTransaction()
       tn1.addReadConflictKey('conflict')
@@ -304,6 +304,26 @@ withEachDb(db => describe('key value functionality', () => {
 
       // Should resolve with false.
       assert.strictEqual(false, await watch.promise)
+    })
+    
+    it('resolves false if the transaction is cancelled', async () => {
+      const tn = db.rawCreateTransaction()
+      const watch = tn.watch('x')
+      tn.rawCancel()
+      assert.strictEqual(false, await watch.promise)
+    })
+    
+    it('errors if a real error happens', async () => {
+      // This is a regression. And this is a bit of an ugly test
+      
+      let watch: Watch
+      await assert.rejects(db.doTn(async tn => {
+        tn.setReadVersion(Buffer.alloc(8)) // All zeros. This should be too old
+        watch = tn.watch('x')
+        await tn.get('x') // this will fail and throw.
+      }))
+
+      await assert.rejects(watch!.promise)
     })
   })
 }))

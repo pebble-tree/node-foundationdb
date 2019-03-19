@@ -105,7 +105,7 @@ void Cluster::OpenDatabaseSync(const Nan::FunctionCallbackInfo<Value>& info) {
 
 void Cluster::Close(const Nan::FunctionCallbackInfo<Value>& info) {
   Cluster *clusterPtr = ObjectWrap::Unwrap<Cluster>(info.Holder());
-  printf("cluster::close\n");
+  // printf("cluster::close\n");
   if (clusterPtr->cluster != nullptr) {
     fdb_cluster_destroy(clusterPtr->cluster);
     clusterPtr->cluster = nullptr;
