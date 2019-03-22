@@ -319,7 +319,10 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
 
   watch(key: KeyIn, opts?: WatchOptions): Watch {
     const throwAll = opts && opts.throwAllErrors
-    return this._tn.watch(this._keyEncoding.pack(key), !throwAll)
+    const watch = this._tn.watch(this._keyEncoding.pack(key), !throwAll)
+    // Suppress the global unhandledRejection handler when a watch errors
+    watch.promise.catch(doNothing)
+    return watch
   }
 
   addReadConflictRange(start: KeyIn, end: KeyIn) {
