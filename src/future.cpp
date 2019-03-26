@@ -1,3 +1,5 @@
+#include <atomic>
+#include <thread>
 #include <cstdio>
 #include <cassert>
 
@@ -17,12 +19,17 @@ template<class T> struct CtxBase {
   FDBFuture *future;
   void (*fn)(FDBFuture*, T*);
   uv_async_t async;
+
+  // This is to work around a concurrency bug I still haven't figured out.
+  // https://github.com/josephg/node-foundationdb/issues/28
+  std::atomic_bool close_ready;
 };
 
 template<class T> void resolveFutureInMainLoop(FDBFuture *f, T* ctx, void (*fn)(FDBFuture *f, T*)) {
   // printf("resolveFutureInMainLoop called\n");
   ctx->future = f;
   ctx->fn = fn;
+  ctx->close_ready.store(false, std::memory_order_relaxed);
 
   // TODO: Handle error on async_init failing. Probably just assert.
   assert(0 == uv_async_init(uv_default_loop(), &ctx->async, [](uv_async_t *async) {
@@ -31,6 +38,13 @@ template<class T> void resolveFutureInMainLoop(FDBFuture *f, T* ctx, void (*fn)(
     ctx->fn(ctx->future, ctx);
 
     fdb_future_destroy(ctx->future);
+
+    // Simple spinlock. This works around this bug in libuv:
+    // https://github.com/libuv/libuv/issues/2226
+    while (ctx->close_ready.load(std::memory_order_acquire) == false) {
+      std::this_thread::yield();
+    }
+
     uv_close((uv_handle_t *)async, [](uv_handle_t *handle) {
       T* ctx = static_cast<T*>(handle->data);
       delete ctx;
@@ -43,6 +57,7 @@ template<class T> void resolveFutureInMainLoop(FDBFuture *f, T* ctx, void (*fn)(
     // raise(SIGTRAP);
     T* ctx = static_cast<T*>(_ctx);
     uv_async_send(&ctx->async);
+    ctx->close_ready.store(true, std::memory_order_release);
   }, ctx));
 }
 
