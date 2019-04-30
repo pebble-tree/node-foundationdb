@@ -2,7 +2,9 @@
 
 Node bindings for [FoundationDB](https://foundationdb.org)!
 
-These bindings are currently in the process of being revived. [See progress below](#revival-progress). Until then this library will work, but there will be small API changes. Treat minor versions as semver breakage points.
+These bindings are stable, but missing some features of the other FDB bindings (in particular, the directory layer). [See progress below](#revival-progress).
+
+> Caveat: This library doesn't currently support node 12 due to [missing node 12 support in nan](https://github.com/nodejs/nan/issues/849). [Local tracking issue](https://github.com/josephg/node-foundationdb/issues/29) / [more commentary](https://github.com/josephg/node-foundationdb/issues/13#issuecomment-487793777).
 
 - [Getting started](#usage)
 - [Connecting to your database cluster](#connecting-to-your-cluster)
