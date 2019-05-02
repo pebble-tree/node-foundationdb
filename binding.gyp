@@ -2,7 +2,7 @@
   'targets': [
     {
       'target_name': 'fdblib',
-      'sources': [ 'src/FdbV8Wrapper.cpp' ],
+      'sources': [ 'src/utils.cpp', 'src/FdbV8Wrapper.cpp' ],
 #'sources': [ 'src/FdbV8Wrapper.cpp', 'src/Database.cpp', 'src/Transaction.cpp', 'src/Cluster.cpp', 'src/FdbError.cpp', 'src/options.cpp', 'src/future.cpp' ],
       'conditions': [
         ['OS=="linux"', {

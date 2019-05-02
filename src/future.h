@@ -3,9 +3,7 @@
 #ifndef _FUTURE_H_
 #define _FUTURE_H_
 
-#include <v8.h>
-#include "Version.h"
-#include <foundationdb/fdb_c.h>
+#include "utils.h"
 
 typedef v8::Local<v8::Value> ExtractValueFn(FDBFuture* f, fdb_error_t* errOut);
 

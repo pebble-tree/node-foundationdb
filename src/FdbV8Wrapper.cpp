@@ -32,8 +32,10 @@
 #include <node_api.h>
 #include <uv.h>
 
-#include "Version.h"
+#include "fdbversion.h"
 #include <foundationdb/fdb_c.h>
+
+#include "utils.h"
 
 
 // #include "Database.h"
@@ -54,63 +56,13 @@ static bool networkStarted = false;
 
 // }
 
-static napi_status throw_if_not_ok(napi_env env, napi_status status) {
-  switch (status) {
-    case napi_ok: case napi_pending_exception:
-      return status;
-    case napi_number_expected:
-      napi_throw_type_error(env, NULL, "Expected number");
-      return napi_pending_exception;
-    case napi_string_expected:
-      napi_throw_type_error(env, NULL, "Expected string");
-      return napi_pending_exception;
-    default:
-      fprintf(stderr, "throw_if_not_ok %d", status);
-      assert(0);
-  }
-}
-
-#define CHECKED_NAPI_VALUE(env, expr) do {\
-  if (throw_if_not_ok(env, expr) != napi_ok) { return NULL; }\
-} while (0)
-#define CHECKED_NAPI_STATUS(env, expr) do {\
-  napi_status status = throw_if_not_ok(env, expr);\
-  if (status != napi_ok) { return status; }\
-} while (0)
-
-static napi_status wrap_fdb_error(napi_env env, fdb_error_t fdbErrCode, napi_value* result) {
-  napi_value errCode;
-  CHECKED_NAPI_STATUS(env, napi_create_int32(env, fdbErrCode, &errCode));
-  napi_value errStr;
-  CHECKED_NAPI_STATUS(env, napi_create_string_utf8(env, fdb_get_error(fdbErrCode), NAPI_AUTO_LENGTH, &errStr));
-  CHECKED_NAPI_STATUS(env, napi_create_error(env, NULL, errStr, result));
-
-  // TODO: This isn't the same as the old code, since it won't allow err instanceof fdbErrCode to work.
-  CHECKED_NAPI_STATUS(env, napi_set_named_property(env, *result, "fdb_errcode", errCode));
-  return napi_ok;
-}
-
-static void throw_fdb_error(napi_env env, fdb_error_t fdbErrCode) {
-  napi_value error;
-  if (throw_if_not_ok(env, wrap_fdb_error(env, fdbErrCode, &error)) == napi_pending_exception) return; 
-  throw_if_not_ok(env, napi_throw(env, error));
-  // There'll be a pending exception after this no matter what. No need to return a status code.
-}
-
-#define CHECKED_FDB(env, expr) do {\
-  fdb_error_t code = expr;\
-  if (code != 0) {\
-    throw_fdb_error(env, code);\
-    return NULL;\
-  }\
-} while (0)
 
 static napi_value setAPIVersion(napi_env env, napi_callback_info info) {
   size_t argc = 1;
   napi_value arg;
-  CHECKED_NAPI_VALUE(env, napi_get_cb_info(env, info, &argc, &arg, NULL, NULL));
+  NAPI_OK_OR_RETURN_NULL(env, napi_get_cb_info(env, info, &argc, &arg, NULL, NULL));
   int32_t apiVersion;
-  CHECKED_NAPI_VALUE(env, napi_get_value_int32(env, arg, &apiVersion));
+  NAPI_OK_OR_RETURN_NULL(env, napi_get_value_int32(env, arg, &apiVersion));
 
   CHECKED_FDB(env, fdb_select_api_version(apiVersion));
   return NULL;
@@ -119,12 +71,12 @@ static napi_value setAPIVersion(napi_env env, napi_callback_info info) {
 static napi_value setAPIVersionImpl(napi_env env, napi_callback_info info) {
   size_t argc = 2;
   napi_value args[2];
-  CHECKED_NAPI_VALUE(env, napi_get_cb_info(env, info, &argc, args, NULL, NULL));
+  NAPI_OK_OR_RETURN_NULL(env, napi_get_cb_info(env, info, &argc, args, NULL, NULL));
 
   int32_t apiVersion;
-  CHECKED_NAPI_VALUE(env, napi_get_value_int32(env, args[0], &apiVersion));
+  NAPI_OK_OR_RETURN_NULL(env, napi_get_value_int32(env, args[0], &apiVersion));
   int32_t headerVersion;
-  CHECKED_NAPI_VALUE(env, napi_get_value_int32(env, args[0], &headerVersion));
+  NAPI_OK_OR_RETURN_NULL(env, napi_get_value_int32(env, args[0], &headerVersion));
 
   CHECKED_FDB(env, fdb_select_api_version_impl(apiVersion, headerVersion));
   return NULL;
@@ -156,7 +108,7 @@ static fdb_error_t runNetwork() {
 static FDBFuture *_createClusterFuture(napi_env env, napi_value filenameOrNull) {
   if (filenameOrNull != NULL) {
     napi_valuetype type;
-    CHECKED_NAPI_VALUE(env, napi_typeof(env, filenameOrNull, &type));
+    NAPI_OK_OR_RETURN_NULL(env, napi_typeof(env, filenameOrNull, &type));
     if (type == napi_null || type == napi_undefined) filenameOrNull = NULL;
   }
 
@@ -166,17 +118,23 @@ static FDBFuture *_createClusterFuture(napi_env env, napi_value filenameOrNull) 
     char path[1024];
     // TODO: Consider adding a warning here if the path is truncated. (We can
     // pull the length back off with the last argument).
-    CHECKED_NAPI_VALUE(env, napi_get_value_string_utf8(env, filenameOrNull, path, sizeof(path), NULL));
+    NAPI_OK_OR_RETURN_NULL(env, napi_get_value_string_utf8(env, filenameOrNull, path, sizeof(path), NULL));
     return fdb_create_cluster(path);
   } else {
     return fdb_create_cluster(NULL);
   }
 }
 
+static void finalizeCluster(napi_env env, void *cluster, void *_unused) {
+  // fprintf(stderr, "finalizeCluster");
+  // fflush(stderr);
+  fdb_cluster_destroy((FDB_cluster *)cluster);
+}
+
 static napi_value createClusterSync(napi_env env, napi_callback_info info) {
   size_t argc = 1;
   napi_value arg;
-  CHECKED_NAPI_VALUE(env, napi_get_cb_info(env, info, &argc, &arg, NULL, NULL));
+  NAPI_OK_OR_RETURN_NULL(env, napi_get_cb_info(env, info, &argc, &arg, NULL, NULL));
 
   FDBFuture *f = _createClusterFuture(env, arg);
   if (f == NULL) return NULL; // A napi error happened.
@@ -193,7 +151,15 @@ static napi_value createClusterSync(napi_env env, napi_callback_info info) {
   // TODO!
   // Local<Value> jsValue = Local<Value>::New(isolate, Cluster::NewInstance(cluster));
   // info.GetReturnValue().Set(jsValue);
-  return NULL;
+
+  napi_value result;
+  napi_status status = napi_create_external(env, (void *)cluster, finalizeCluster, NULL, &result);
+  if (status != napi_ok) {
+    fdb_cluster_destroy(cluster);
+    return NULL;
+  }
+
+  return result;
 }
 
 // void createCluster(const FunctionCallbackInfo<Value>& info) {
@@ -244,18 +210,18 @@ static napi_value stopNetwork(napi_env env, napi_callback_info info) {
 static napi_value errorPredicate(napi_env env, napi_callback_info info) {
   size_t argc = 2;
   napi_value args[2];
-  CHECKED_NAPI_VALUE(env, napi_get_cb_info(env, info, &argc, args, NULL, NULL));
+  NAPI_OK_OR_RETURN_NULL(env, napi_get_cb_info(env, info, &argc, args, NULL, NULL));
   
   int test;
-  CHECKED_NAPI_VALUE(env, napi_get_value_int32(env, args[0], &test));
+  NAPI_OK_OR_RETURN_NULL(env, napi_get_value_int32(env, args[0], &test));
 
   fdb_error_t code;
-  CHECKED_NAPI_VALUE(env, napi_get_value_int32(env, args[1], &code));
+  NAPI_OK_OR_RETURN_NULL(env, napi_get_value_int32(env, args[1], &code));
 
   fdb_bool_t result = fdb_error_predicate(test, code);
 
   napi_value js_result;
-  CHECKED_NAPI_VALUE(env, napi_get_boolean(env, result, &js_result));
+  NAPI_OK_OR_RETURN_NULL(env, napi_get_boolean(env, result, &js_result));
   return js_result;
 }
 
@@ -283,8 +249,6 @@ static napi_value errorPredicate(napi_env env, napi_callback_info info) {
 
 // NODE_MODULE(NODE_GYP_MODULE_NAME, Init);
 
-#define FN_DEF(fn) {#fn, NULL, fn, NULL, NULL, NULL, napi_default, NULL}
-
 static napi_value init(napi_env env, napi_value exports) {
   napi_property_descriptor desc[] = {
     FN_DEF(setAPIVersion),
@@ -299,7 +263,7 @@ static napi_value init(napi_env env, napi_value exports) {
 
     FN_DEF(errorPredicate),
   };
-  CHECKED_NAPI_VALUE(env, napi_define_properties(env, exports, sizeof(desc) / sizeof(desc[0]), desc));
+  NAPI_OK_OR_RETURN_NULL(env, napi_define_properties(env, exports, sizeof(desc) / sizeof(desc[0]), desc));
   return NULL;
 }
 

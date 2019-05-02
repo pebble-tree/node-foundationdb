@@ -24,8 +24,6 @@
 #ifndef FDB_NODE_FDB_ERROR_H
 #define FDB_NODE_FDB_ERROR_H
 
-#include "Version.h"
-
 #include <foundationdb/fdb_c.h>
 #include <node.h>
 

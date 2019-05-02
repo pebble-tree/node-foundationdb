@@ -3,8 +3,8 @@
 #include <cstdio>
 #include <cassert>
 
-#include <node.h>
-#include <nan.h>
+#include "utils.h"
+#include <uv.h>
 // #include <v8.h>
 
 // #include "Version.h"
@@ -25,14 +25,17 @@ template<class T> struct CtxBase {
   std::atomic_bool close_ready;
 };
 
-template<class T> void resolveFutureInMainLoop(FDBFuture *f, T* ctx, void (*fn)(FDBFuture *f, T*)) {
+template<class T> static napi_status resolveFutureInMainLoop(napi_env env, FDBFuture *f, T* ctx, void (*fn)(FDBFuture *f, T*)) {
   // printf("resolveFutureInMainLoop called\n");
   ctx->future = f;
   ctx->fn = fn;
   ctx->close_ready.store(false, std::memory_order_relaxed);
 
+  uv_loop_t *uvloop;
+  NAPI_OK_OR_RETURN_STATUS(env, napi_get_uv_event_loop(env, &loop));
+
   // TODO: Handle error on async_init failing. Probably just assert.
-  assert(0 == uv_async_init(uv_default_loop(), &ctx->async, [](uv_async_t *async) {
+  assert(0 == uv_async_init(uvloop, &ctx->async, [](uv_async_t *async) {
     // raise(SIGTRAP);
     T* ctx = static_cast<T*>(async->data);
     ctx->fn(ctx->future, ctx);
@@ -62,7 +65,7 @@ template<class T> void resolveFutureInMainLoop(FDBFuture *f, T* ctx, void (*fn)(
 }
 
 
-Local<Promise> fdbFutureToJSPromise(FDBFuture *f, ExtractValueFn *extractFn) {
+Local<Promise> fdbFutureToJSPromise(napi_env env, FDBFuture *f, ExtractValueFn *extractFn) {
   // Using inheritance here because Persistent doesn't seem to like being
   // copied, and this avoids another allocation & indirection.
   struct Ctx: CtxBase<Ctx> {
@@ -100,14 +103,14 @@ Local<Promise> fdbFutureToJSPromise(FDBFuture *f, ExtractValueFn *extractFn) {
   return resolver->GetPromise();
 }
 
-void fdbFutureToCallback(FDBFuture *f, Local<Function> cbFunc, ExtractValueFn *extractFn) {
+napi_status fdbFutureToCallback(napi_env env, FDBFuture *f, napi_value cbFunc, ExtractValueFn *extractFn) {
   struct Ctx: CtxBase<Ctx> {
-    Nan::Persistent<Function> cbFunc;
+    napi_ref cbFunc;
     ExtractValueFn *extractFn;
   };
   Ctx *ctx = new Ctx;
 
-  ctx->cbFunc.Reset(cbFunc);
+  NAPI_OK_OR_RETURN_STATUS(env, napi_create_reference(env, cbFunc, 1, &ctx->cbFunc));
   ctx->extractFn = extractFn;
 
   resolveFutureInMainLoop<Ctx>(f, ctx, [](FDBFuture *f, Ctx *ctx) {
@@ -122,14 +125,15 @@ void fdbFutureToCallback(FDBFuture *f, Local<Function> cbFunc, ExtractValueFn *e
     Local<Value> jsError = (errorCode == 0)
       ? jsNull : FdbError::NewInstance(errorCode, fdb_get_error(errorCode));
 
-    Local<Value> args[2] = { jsError, jsValue };
+    napi_value args[2] = { jsError, jsValue };
 
-    Local<Function> callback = Local<Function>::New(isolate, ctx->cbFunc);
+    napi_value callback;
+    napi_get_reference_value(env, ctx->cbFunc, &callback);
 
     // If this throws it'll bubble up to the node uncaught exception handler, which is what we want.
-    callback->Call(isolate->GetCurrentContext()->Global(), 2, args);
+    napi_call_function(env, NULL, callback, 2, args, NULL);
 
-    ctx->cbFunc.Reset();
+    napi_reference_unref(env, ctx->cbFunc, NULL);
   });
 }
 
