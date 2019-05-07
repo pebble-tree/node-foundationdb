@@ -21,7 +21,6 @@
  * THE SOFTWARE.
  */
 
-#include <cstdio>
 #include "FdbError.h"
 
 // This is pretty ugly. We're holding a reference to the exports object. The JS

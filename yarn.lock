@@ -22,10 +22,10 @@
   resolved "https://registry.yarnpkg.com/@types/node/-/node-10.12.19.tgz#ca1018c26be01f07e66ac7fefbeb6407e4490c61"
   integrity sha512-2NVovndCjJQj6fUUn9jCgpP4WSqr+u1SoUZMZyJkhGeBFsm6dE46l31S7lPUYt9uQ28XI+ibrJA1f5XyH5HNtA==
 
-"@types/node@10":
-  version "10.12.18"
-  resolved "https://registry.yarnpkg.com/@types/node/-/node-10.12.18.tgz#1d3ca764718915584fcd9f6344621b7672665c67"
-  integrity sha512-fh+pAqt4xRzPfqA6eh3Z2y6fyZavRIumvjhaCL753+TVkGKGhpPeyrJG2JftD0T9q4GF00KjefsQ+PQNDdWQaQ==
+"@types/node@^12.0.0":
+  version "12.0.0"
+  resolved "https://registry.yarnpkg.com/@types/node/-/node-12.0.0.tgz#d11813b9c0ff8aaca29f04cbc12817f4c7d656e5"
+  integrity sha512-Jrb/x3HT4PTJp6a4avhmJCDEVrPdqLfl3e8GGMbpkGGdwAV5UGlIs4vVEfsHHfylZVOKZWpOqmqFH8CbfOZ6kg==
 
 "@types/xml2js@^0.4.3":
   version "0.4.3"
@@ -676,10 +676,10 @@ node-abi@^2.0.0:
   dependencies:
     semver "^5.4.1"
 
-node-gyp-build@^3.3.0:
-  version "3.7.0"
-  resolved "https://registry.yarnpkg.com/node-gyp-build/-/node-gyp-build-3.7.0.tgz#daa77a4f547b9aed3e2aac779eaf151afd60ec8d"
-  integrity sha512-L/Eg02Epx6Si2NXmedx+Okg+4UHqmaf3TNcxd50SF9NQGcJaON3AtU++kax69XV7YWz4tUspqZSAsVofhFKG2w==
+node-gyp-build@^4.1.0:
+  version "4.1.0"
+  resolved "https://registry.yarnpkg.com/node-gyp-build/-/node-gyp-build-4.1.0.tgz#3bc3dd7dd4aafecaf64a2e3729e785bc3cdea565"
+  integrity sha512-rGLv++nK20BG8gc0MzzcYe1Nl3p3mtwJ74Q2QD0HTEDKZ6NvOFSelY6s2QBPWIHRR8h7hpad0LiwajfClBJfNg==
 
 oauth-sign@~0.9.0:
   version "0.9.0"
@@ -743,10 +743,10 @@ prebuildify-ci@^1.0.1:
     tar-fs "^1.16.0"
     unzip "^0.1.11"
 
-prebuildify@^2.6.0:
-  version "2.10.0"
-  resolved "https://registry.yarnpkg.com/prebuildify/-/prebuildify-2.10.0.tgz#75f42c69d3df7af4f6b1c052effa621a149be15a"
-  integrity sha512-jp9PYLKhIQsJHbWnkTUldvHDMEl1Ntu3XCsr2OMQwpSMKQv0XV4c+E7F7WNPH7cIg0kSdeDNiYi0z72ipkYYtw==
+prebuildify@^3.0.0:
+  version "3.0.0"
+  resolved "https://registry.yarnpkg.com/prebuildify/-/prebuildify-3.0.0.tgz#ed88cc7391bee5feb3313cf48e1fdd4c867e5600"
+  integrity sha512-cEMR47HJZdVfzQ3Y1zBGbNkJBnW8fK553rEUTUv56Q9pDpS+I7bg0QNe1Z9DgXBAckKFSE3BRjEx9MuXDRPWBw==
   dependencies:
     execspawn "^1.0.1"
     minimist "^1.2.0"

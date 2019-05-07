@@ -1,11 +1,8 @@
-#include <cstdio>
-
 #include "fdbversion.h"
 #include <foundationdb/fdb_c.h>
 
 #include "options.h"
 #include "FdbError.h"
-// #include <node.h>
 
 static fdb_error_t set_option(void *target, OptionType type, int code, void const* value, int length) {
   switch (type) {

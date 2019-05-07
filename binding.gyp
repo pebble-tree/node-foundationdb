@@ -5,6 +5,8 @@
   'targets': [
     {
       'target_name': 'fdblib',
+      'cflags': ['-std=c++0x', '-stdlib=libc++'],
+      'cxxflags': ['-std=c++0x', '-stdlib=libc++'],
       'conditions': [
         ['napi_version == 4', {
           'sources': [
@@ -51,7 +53,6 @@
           'link_settings': { 'libraries': ['-lfdb_c', '-L/usr/local/lib'] },
         }],
       ],
-      'cflags': ['-std=c++0x'],
     }
   ]
 }

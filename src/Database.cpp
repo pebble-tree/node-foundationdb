@@ -21,10 +21,6 @@
  * THE SOFTWARE.
  */
 
-#include <iostream>
-#include <string>
-#include <cstring>
-
 #include "utils.h"
 #include "Transaction.h"
 // #include "Database.h"

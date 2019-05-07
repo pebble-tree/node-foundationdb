@@ -1,6 +1,3 @@
-#include <atomic>
-#include <thread>
-#include <cstdio>
 #include <cassert>
 
 #include "utils.h"
@@ -224,7 +221,6 @@ static napi_value empty(napi_env env, napi_callback_info info) {
 }
 
 static void finalize(napi_env env, void* tn, void* finalize_hint) {
-  printf("finalize\n");
   fdb_transaction_destroy((FDB_transaction *)tn);
 }
 

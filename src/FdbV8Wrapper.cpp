@@ -21,13 +21,12 @@
  * THE SOFTWARE.
  */
 
-// #include <string>
-// #include <iostream>
-#include <cstdlib>
-#include <cstring>
 #include <cassert>
 
 #include "utils.h"
+
+// We need a wrapper around pthread / the windows equivalent, and libuv is
+// already packaged.
 #include <uv.h>
 
 #include "fdbversion.h"

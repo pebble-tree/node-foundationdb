@@ -21,12 +21,7 @@
  * THE SOFTWARE.
  */
 
-#include <iostream>
-#include <string>
-#include <cstring>
-#include <vector>
-// #include <node_buffer.h>
-// #include <node_version.h>
+#include <cstdlib>
 
 #include "options.h"
 #include "Transaction.h"
