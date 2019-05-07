@@ -54,6 +54,7 @@ napi_value unused_func;
 // See https://github.com/nodejs/node/issues/27592
 napi_value unused(napi_env, napi_callback_info) {
   assert(0);
+  return NULL;
 }
 
 napi_status initFuture(napi_env env) {
