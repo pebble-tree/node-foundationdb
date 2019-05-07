@@ -21,64 +21,104 @@
  * THE SOFTWARE.
  */
 
-#include <node.h>
 #include <iostream>
 #include <string>
 #include <cstring>
 #include <vector>
-#include <node_buffer.h>
-#include <node_version.h>
+// #include <node_buffer.h>
+// #include <node_version.h>
 
 #include "options.h"
 #include "Transaction.h"
-#include "FdbError.h"
+// #include "FdbError.h"
 
 #include "future.h"
 
-using namespace v8;
+// using namespace v8;
 using namespace std;
-using namespace node;
+// using namespace node;
+
+#define TRY(expr) NAPI_OK_OR_RETURN_MAYBE(env, (expr))
+#define TRY_V(expr) NAPI_OK_OR_RETURN_NULL(env, (expr))
+
+static napi_ref cons_ref;
+
+MaybeValue newTransaction(napi_env env, FDBTransaction *tr);
+napi_status initTransaction(napi_env env);
 
 
-// Transaction Implementation
-Transaction::~Transaction() {
-  // This will automatically be called by the garbage collector. It might make
-  // sense to be a bit more eager about destroying transaction objects,
-  // although if we want to be more efficient about transaction lifecycle we
-  // could instead make a pool of them from nodejs.
-  fdb_transaction_destroy(tr);
-};
+static napi_value empty(napi_env env, napi_callback_info info) {
+  return NULL;
+}
 
-Nan::Persistent<Function> Transaction::constructor;
+static void finalize(napi_env env, void* tn, void* finalize_hint) {
+  fdb_transaction_destroy((FDB_transaction *)tn);
+}
+
+MaybeValue newTransaction(napi_env env, FDBTransaction *transaction) {
+  napi_value ctor;
+  TRY(napi_get_reference_value(env, cons_ref, &ctor));
+
+  napi_value obj;
+  TRY(napi_new_instance(env, ctor, 0, NULL, &obj));
+  TRY(napi_wrap(env, obj, (void *)transaction, finalize, NULL, NULL));
+  return wrap_ok(obj);
+}
 
 
-struct StringParams {
+typedef struct StringParams {
   bool owned;
   uint8_t *str;
-  int len;
+  size_t len;
+} StringParams;
 
-  // String arguments can either be buffers or strings. If they're strings we
-  // need to copy the bytes locally in order to utf8 convert the content.
-  StringParams(Local<Value> keyVal) {
-    if (keyVal->IsString()) {
-      owned = true;
+// This is a small buffer to avoid thrashing the allocator when reading keys and values.
+// Its a very 95% solution, but it improves performance in the average case.
+// TODO: Many functions make 2 string params objects; not 1. Add a second buffer here.
+static bool buf_in_use = false;
+static uint8_t sp_buf[1024];
 
-      auto s = Local<String>::Cast(keyVal);
-      len = s->Utf8Length();
-      str = new uint8_t[len];
-      s->WriteUtf8((char *)str, len);
+// String arguments can either be buffers or strings. If they're strings we
+// need to copy the bytes locally in order to utf8 convert the content.
+static napi_status toStringParams(napi_env env, napi_value value, StringParams *result) {
+  napi_valuetype type;
+  NAPI_OK_OR_RETURN_STATUS(env, napi_typeof(env, value, &type));
+  if (type == napi_string) {
+
+    // First get the length.
+    NAPI_OK_OR_RETURN_STATUS(env, napi_get_value_string_utf8(env, value, NULL, 0, &result->len));
+
+    if (!buf_in_use && result->len <= sizeof(sp_buf)) {
+      result->owned = false;
+      result->str = sp_buf;
+      NAPI_OK_OR_RETURN_STATUS(env, napi_get_value_string_utf8(env, value, (char *)sp_buf, sizeof(sp_buf), NULL));
+      buf_in_use = true; // After fetch function, so the buffer isn't held if an error happens.
     } else {
-      owned = false;
+      result->owned = true;
+      result->str = (uint8_t *)malloc(result->len);
+      NAPI_OK_OR_RETURN_STATUS(env, napi_get_value_string_utf8(env, value, (char *)result->str, result->len, NULL));
+    }
+  } else {
+    result->owned = false;
 
-      auto obj = keyVal->ToObject();
-      str = (uint8_t*)(Buffer::Data(obj));
-      len = (int)Buffer::Length(obj);
+    bool is_buffer;
+    NAPI_OK_OR_RETURN_STATUS(env, is_bufferish(env, value, &is_buffer));
+
+    if (is_buffer) {
+      NAPI_OK_OR_RETURN_STATUS(env, get_buffer_info(env, value, (void **)&result->str, &result->len));
+    } else {
+      throw_if_not_ok(env, napi_throw_error(env, NULL, "Invalid param - must be string, buffer or arraybuffer"));
+      return napi_pending_exception;
     }
   }
-  ~StringParams() {
-    if (owned) delete[] str;
-  }
-};
+  return napi_ok;
+}
+
+static void destroyStringParams(StringParams *params) {
+  if (params->owned) free(params->str);
+  else if (params->str == sp_buf) buf_in_use = false;
+  params->str = NULL;
+}
 
 
 // dataOut must be a ptr to array of 8 items.
@@ -100,197 +140,267 @@ static uint64_t BEBytesToInt64(uint8_t* bytes) {
 }
 
 
-// **** Transaction
+// **** Extraction functions
 
-FDBTransaction* Transaction::GetTransactionFromArgs(const FunctionCallbackInfo<Value>& info) {
-  return node::ObjectWrap::Unwrap<Transaction>(info.Holder())->tr;
-}
-
-
-static Local<Value> ignoreResult(FDBFuture* future, fdb_error_t* errOut) {
+static MaybeValue ignoreResult(napi_env env, FDBFuture* future, fdb_error_t* errOut) {
   *errOut = fdb_future_get_error(future);
-  return Nan::Undefined();
+  return wrap_null();
 }
 
-static Local<Value> getValue(FDBFuture* future, fdb_error_t* errOut) {
-  Isolate *isolate = Isolate::GetCurrent();
-
+static MaybeValue getValue(napi_env env, FDBFuture* future, fdb_error_t* errOut) {
   const uint8_t *value;
-  int valueLength;
+  int len;
   int valuePresent;
 
-  *errOut = fdb_future_get_value(future, &valuePresent, &value, &valueLength);
-  if (*errOut) return Undefined(isolate);
+  *errOut = fdb_future_get_value(future, &valuePresent, &value, &len);
+  if (*errOut || !valuePresent) return wrap_null();
 
-  return valuePresent
-    ? Local<Value>::New(isolate, Nan::CopyBuffer((const char *)value, valueLength).ToLocalChecked())
-    : Local<Value>(Null(isolate));
+  // TODO
+  // Its a bit yuck that we're copying so much memory here. It would be possible
+  // to avoid this copy and add a reference from the returned buffer to the FDB
+  // promise object for GC.
+  napi_value result;
+  TRY(napi_create_buffer_copy(env, (size_t)len, (void *)value, NULL, &result));
+  return wrap_ok(result);
 }
 
-static Local<Value> getKey(FDBFuture* future, fdb_error_t* errOut) {
-  Isolate *isolate = Isolate::GetCurrent();
-
+static MaybeValue getKey(napi_env env, FDBFuture* future, fdb_error_t* errOut) {
   const uint8_t *key;
-  int keyLength;
-  *errOut = fdb_future_get_key(future, &key, &keyLength);
+  int len;
+  *errOut = fdb_future_get_key(future, &key, &len);
+  if (UNLIKELY(*errOut)) return wrap_null();
 
-  if (*errOut) return Undefined(isolate);
-  else return Local<Value>::New(isolate, Nan::CopyBuffer((const char *)key, keyLength).ToLocalChecked());
+  napi_value result;
+  TRY(napi_create_buffer_copy(env, (size_t)len, (void *)key, NULL, &result));
+  return wrap_ok(result);
 }
 
-static Local<Value> getKeyValueList(FDBFuture* future, fdb_error_t* errOut) {
-  Isolate *isolate = Isolate::GetCurrent();
-
+static MaybeValue getKeyValueList(napi_env env, FDBFuture* future, fdb_error_t* errOut) {
   const FDBKeyValue *kv;
   int len;
   fdb_bool_t more;
 
   *errOut = fdb_future_get_keyvalue_array(future, &kv, &len, &more);
-  if (*errOut) return Undefined(isolate);
+  if (UNLIKELY(*errOut)) return wrap_null();
 
   /*
    * Constructing a JavaScript object with:
    * { results: [[key, value], [key, value], ...], more }
    */
-
-  Local<Object> returnObj = Local<Object>::New(isolate, Object::New(isolate));
-  Local<Array> jsValueArray = Array::New(isolate, len);
+  napi_value returnObj;
+  TRY(napi_create_object(env, &returnObj));
+  napi_value jsValueArray;
+  TRY(napi_create_array_with_length(env, (size_t)len, &jsValueArray));
 
   for(int i = 0; i < len; i++) {
-    Local<Object> pair = Array::New(isolate, 2);
+    napi_value pair;
+    TRY(napi_create_array_with_length(env, 2, &pair));
+    
+    // TODO: Again, should be able to avoid this copy with clever use of references.
+    napi_value keyBuf;
+    TRY(napi_create_buffer_copy(env, kv[i].key_length, kv[i].key, NULL, &keyBuf));
+    napi_value valBuf;
+    TRY(napi_create_buffer_copy(env, kv[i].value_length, kv[i].value, NULL, &valBuf));
 
-    Local<Value> jsKeyBuffer = Nan::CopyBuffer((const char*)kv[i].key, kv[i].key_length).ToLocalChecked();
-    Local<Value> jsValueBuffer = Nan::CopyBuffer((const char*)kv[i].value, kv[i].value_length).ToLocalChecked();
-
-    pair->Set(0, jsKeyBuffer);
-    pair->Set(1, jsValueBuffer);
-    jsValueArray->Set(i, pair);
+    TRY(napi_set_element(env, pair, 0, keyBuf));
+    TRY(napi_set_element(env, pair, 1, valBuf));
+    TRY(napi_set_element(env, jsValueArray, i, pair));
   }
 
-  returnObj->Set(String::NewFromUtf8(isolate, "results", String::kInternalizedString), jsValueArray);
-  returnObj->Set(String::NewFromUtf8(isolate, "more", String::kInternalizedString), Boolean::New(isolate, !!more));
+  TRY(napi_set_named_property(env, returnObj, "results", jsValueArray));
+  napi_value jsMore;
+  TRY(napi_get_boolean(env, !!more, &jsMore));
+  TRY(napi_set_named_property(env, returnObj, "more", jsMore));
 
-  return returnObj;
+  return wrap_ok(returnObj);
 }
 
-static Local<Value> getStringArray(FDBFuture* future, fdb_error_t* errOut) {
-  Isolate *isolate = Isolate::GetCurrent();
-
+static MaybeValue getStringArray(napi_env env, FDBFuture* future, fdb_error_t* errOut) {
   const char **strings;
   int stringCount;
 
   *errOut = fdb_future_get_string_array(future, &strings, &stringCount);
-  if (*errOut) return Undefined(isolate);
+  if (UNLIKELY(*errOut)) return wrap_null();
 
-  Local<Array> jsArray = Local<Array>::New(isolate, Array::New(isolate, stringCount));
+  napi_value jsArray;
+  TRY(napi_create_array_with_length(env, stringCount, &jsArray));
   for(int i = 0; i < stringCount; i++) {
-    jsArray->Set(Number::New(isolate, i), Nan::New(strings[i], (int)strlen(strings[i])).ToLocalChecked());
+    napi_value str;
+    TRY(napi_create_string_utf8(env, strings[i], NAPI_AUTO_LENGTH, &str));
+    TRY(napi_set_element(env, jsArray, i, str));
   }
 
-  return jsArray;
+  return wrap_ok(jsArray);
 }
 
-static Local<Value> versionToJSBuffer(int64_t version) {
+
+static MaybeValue versionToJSBuffer(napi_env env, int64_t version) {
   // Versions are stored as an 8 byte buffer. They are stored big-endian so
   // standard lexical comparison functions will do what you expect.
   uint8_t data[8];
   int64ToBEBytes(data, (uint64_t)version);
-  return Nan::CopyBuffer((char *)data, 8).ToLocalChecked();
+  napi_value result;
+  TRY(napi_create_buffer_copy(env, 8, (void *)data, NULL, &result));
+  return wrap_ok(result);
 }
 
-static Local<Value> getVersion(FDBFuture* future, fdb_error_t* errOut) {
-  Isolate *isolate = Isolate::GetCurrent();
-
+static MaybeValue getVersion(napi_env env, FDBFuture* future, fdb_error_t* errOut) {
   int64_t version;
   *errOut = fdb_future_get_version(future, &version);
 
   // See discussion about buffers vs storing the version as a JS number:
   // https://forums.foundationdb.org/t/version-length-is-53-bits-enough/260/6
-  if (*errOut) return Undefined(isolate);
-  else return Local<Value>::New(isolate, versionToJSBuffer(version));
+  return UNLIKELY(*errOut) ? wrap_null() : versionToJSBuffer(env, version);
 }
 
+// ***** End value extraction functions.
 
 
-// setOption(code, value).
-void Transaction::SetOption(const FunctionCallbackInfo<v8::Value>& args) {
-  // database.setOptionStr(opt_id, "value")
-  FDBTransaction *tr = GetTransactionFromArgs(args);
-  set_option_wrapped(tr, OptTransaction, args);
+static napi_value setOption(napi_env env, napi_callback_info info) {
+  FDBTransaction *tr = (FDBTransaction *)getWrapped(env, info);
+  if (UNLIKELY(tr == NULL)) return NULL;
+
+  set_option_wrapped(env, tr, OptTransaction, info);
+  return NULL;
 }
-
 
 // commit()
-void Transaction::Commit(const FunctionCallbackInfo<Value>& info) {
-  FDBFuture *f = fdb_transaction_commit(GetTransactionFromArgs(info));
-  info.GetReturnValue().Set(futureToJS(f, info[0], ignoreResult));
+static napi_value commit(napi_env env, napi_callback_info info) {
+  FDBTransaction *tr = (FDBTransaction *)getWrapped(env, info);
+  if (UNLIKELY(tr == NULL)) return NULL;
+
+  FDBFuture *f = fdb_transaction_commit(tr);
+
+  GET_ARGS(env, info, args, 1);
+  return futureToJS(env, f, args[0], ignoreResult).value;
 }
 
 // Reset the transaction so it can be reused.
-void Transaction::Reset(const FunctionCallbackInfo<Value>& info) {
-  fdb_transaction_reset(GetTransactionFromArgs(info));
+static napi_value reset(napi_env env, napi_callback_info info) {
+  FDBTransaction *tr = (FDBTransaction *)getWrapped(env, info);
+  if (LIKELY(tr != NULL)) fdb_transaction_reset(tr);
+  return NULL;
 }
 
-void Transaction::Cancel(const FunctionCallbackInfo<Value>& info) {
-  fdb_transaction_cancel(GetTransactionFromArgs(info));
+static napi_value cancel(napi_env env, napi_callback_info info) {
+  FDBTransaction *tr = (FDBTransaction *)getWrapped(env, info);
+  if (LIKELY(tr != NULL)) fdb_transaction_cancel(tr);
+  return NULL;
 }
 
 // See fdb_transaction_on_error documentation to see how to handle this.
 // This is all wrapped by JS.
-void Transaction::OnError(const FunctionCallbackInfo<Value>& info) {
-  fdb_error_t errorCode = info[0]->Int32Value();
-  FDBFuture *f = fdb_transaction_on_error(GetTransactionFromArgs(info), errorCode);
-  info.GetReturnValue().Set(futureToJS(f, info[1], ignoreResult));
+static napi_value onError(napi_env env, napi_callback_info info) {
+  FDBTransaction *tr = (FDBTransaction *)getWrapped(env, info);
+  if (UNLIKELY(tr == NULL)) return NULL;
+
+  GET_ARGS(env, info, args, 2);
+
+  fdb_error_t errorCode;
+  TRY_V(napi_get_value_int32(env, args[0], &errorCode));
+  FDBFuture *f = fdb_transaction_on_error(tr, errorCode);
+  return futureToJS(env, f, args[1], ignoreResult).value;
 }
 
 
 
 // Get(key, isSnapshot, [cb])
-void Transaction::Get(const FunctionCallbackInfo<Value>& info) {
-  StringParams key(info[0]);
-  bool snapshot = info[1]->BooleanValue();
+static napi_value get(napi_env env, napi_callback_info info) {
+  FDBTransaction *tr = (FDBTransaction *)getWrapped(env, info);
+  if (UNLIKELY(tr == NULL)) return NULL;
 
-  FDBFuture *f = fdb_transaction_get(GetTransactionFromArgs(info), key.str, key.len, snapshot);
+  GET_ARGS(env, info, args, 3);
 
-  info.GetReturnValue().Set(futureToJS(f, info[2], getValue));
+  StringParams key;
+  TRY_V(toStringParams(env, args[0], &key));
+
+  bool snapshot;
+  TRY_V(napi_get_value_bool(env, args[1], &snapshot));
+
+  FDBFuture *f = fdb_transaction_get(tr, key.str, key.len, snapshot);
+  destroyStringParams(&key);
+  return futureToJS(env, f, args[2], getValue).value;
 }
 
 /*
  * This function takes a KeySelector and returns a future.
  */
 // GetKey(key, selOrEq, offset, isSnapshot, [cb])
-void Transaction::GetKey(const FunctionCallbackInfo<Value>& info) {
-  StringParams key(info[0]);
-  bool selectorOrEqual = info[1]->BooleanValue();
-  int selectorOffset = info[2]->Int32Value();
-  bool snapshot = info[3]->BooleanValue();
+static napi_value getKey(napi_env env, napi_callback_info info) {
+  FDBTransaction *tr = (FDBTransaction *)getWrapped(env, info);
+  if (UNLIKELY(tr == NULL)) return NULL;
 
-  FDBFuture *f = fdb_transaction_get_key(GetTransactionFromArgs(info), key.str, key.len, (fdb_bool_t)selectorOrEqual, selectorOffset, snapshot);
+  GET_ARGS(env, info, args, 5);
 
-  info.GetReturnValue().Set(futureToJS(f, info[4], getKey));
+  StringParams key;
+  TRY_V(toStringParams(env, args[0], &key));
+
+  bool selectorOrEqual;
+  TRY_V(napi_get_value_bool(env, args[1], &selectorOrEqual));
+
+  int32_t selectorOffset;
+  TRY_V(napi_get_value_int32(env, args[2], &selectorOffset));
+
+  bool snapshot;
+  TRY_V(napi_get_value_bool(env, args[3], &snapshot));
+
+  FDBFuture *f = fdb_transaction_get_key(tr, key.str, key.len, (fdb_bool_t)selectorOrEqual, selectorOffset, snapshot);
+  destroyStringParams(&key);
+  return futureToJS(env, f, args[4], getKey).value;
 }
 
 // set(key, val). Syncronous.
-void Transaction::Set(const FunctionCallbackInfo<Value>& info){
-  StringParams key(info[0]);
-  StringParams val(info[1]);
-  fdb_transaction_set(GetTransactionFromArgs(info), key.str, key.len, val.str, val.len);
+static napi_value set(napi_env env, napi_callback_info info) {
+  FDBTransaction *tr = (FDBTransaction *)getWrapped(env, info);
+  if (UNLIKELY(tr == NULL)) return NULL;
+  GET_ARGS(env, info, args, 2);
+
+  StringParams key;
+  TRY_V(toStringParams(env, args[0], &key));
+  StringParams val;
+  TRY_V(toStringParams(env, args[1], &val));
+  fdb_transaction_set(tr, key.str, key.len, val.str, val.len);
+
+  destroyStringParams(&key);
+  destroyStringParams(&val);
+  return NULL;
 }
 
 // Delete value stored for key.
 // clear("somekey")
-void Transaction::Clear(const FunctionCallbackInfo<Value>& info) {
-  StringParams key(info[0]);
-  fdb_transaction_clear(GetTransactionFromArgs(info), key.str, key.len);
+static napi_value clear(napi_env env, napi_callback_info info) {
+  FDBTransaction *tr = (FDBTransaction *)getWrapped(env, info);
+  if (UNLIKELY(tr == NULL)) return NULL;
+  GET_ARGS(env, info, args, 1);
+
+  StringParams key;
+  TRY_V(toStringParams(env, args[0], &key));
+
+  fdb_transaction_clear(tr, key.str, key.len);
+
+  destroyStringParams(&key);
+  return NULL;
 }
 
 // atomicOp(key, operand key, mutationtype)
-void Transaction::AtomicOp(const FunctionCallbackInfo<Value>& info) {
-  FDBMutationType operationType = (FDBMutationType)info[0]->Int32Value();
-  StringParams key(info[1]);
-  StringParams operand(info[2]);
+static napi_value atomicOp(napi_env env, napi_callback_info info) {
+  FDBTransaction *tr = (FDBTransaction *)getWrapped(env, info);
+  if (UNLIKELY(tr == NULL)) return NULL;
+  GET_ARGS(env, info, args, 3);
 
-  fdb_transaction_atomic_op(GetTransactionFromArgs(info), key.str, key.len, operand.str, operand.len, operationType);
+  int32_t operationType; // actually a FDBMutationType, but we'll store an int worth of memory.
+  TRY_V(napi_get_value_int32(env, args[0], &operationType));
+
+  StringParams key;
+  TRY_V(toStringParams(env, args[1], &key));
+  StringParams operand;
+  TRY_V(toStringParams(env, args[2], &operand));
+
+  fdb_transaction_atomic_op(tr, key.str, key.len, operand.str, operand.len, (FDBMutationType)operationType);
+
+  destroyStringParams(&key);
+  destroyStringParams(&operand);
+  return NULL;
 }
 
 // getRange(
@@ -301,174 +411,223 @@ void Transaction::AtomicOp(const FunctionCallbackInfo<Value>& info) {
 //   snapshot, reverse,
 //   [cb]
 // )
-void Transaction::GetRange(const FunctionCallbackInfo<Value>& info) {
-  StringParams start(info[0]);
-  int startOrEqual = info[1]->BooleanValue();
-  int startOffset = info[2]->Int32Value();
+static napi_value getRange(napi_env env, napi_callback_info info) {
+  FDBTransaction *tr = (FDBTransaction *)getWrapped(env, info);
+  if (UNLIKELY(tr == NULL)) return NULL;
 
-  StringParams end(info[3]);
-  int endOrEqual = info[4]->BooleanValue();
-  int endOffset = info[5]->Int32Value();
+  GET_ARGS(env, info, args, 13);
 
-  int limit = info[6]->Int32Value();
-  int target_bytes = info[7]->Int32Value();
-  FDBStreamingMode mode = (FDBStreamingMode)info[8]->Int32Value();
-  int iteration = info[9]->Int32Value();
-  bool snapshot = info[10]->BooleanValue();
-  bool reverse = info[11]->BooleanValue();
+  StringParams start;
+  TRY_V(toStringParams(env, args[0], &start));
 
-  FDBFuture *f = fdb_transaction_get_range(GetTransactionFromArgs(info),
+  int startOrEqual;
+  TRY_V(napi_get_value_bool(env, args[1], (bool *)&startOrEqual));
+  int32_t startOffset;
+  TRY_V(napi_get_value_int32(env, args[2], &startOffset));
+
+  StringParams end;
+  TRY_V(toStringParams(env, args[3], &end));
+  int endOrEqual;
+  TRY_V(napi_get_value_bool(env, args[4], (bool *)&endOrEqual));
+  int32_t endOffset;
+  TRY_V(napi_get_value_int32(env, args[5], &endOffset));
+
+  int32_t limit;
+  TRY_V(napi_get_value_int32(env, args[6], &limit));
+  int32_t target_bytes;
+  TRY_V(napi_get_value_int32(env, args[7], &target_bytes));
+  
+  int32_t modeInt;
+  TRY_V(napi_get_value_int32(env, args[8], &modeInt));
+  FDBStreamingMode mode = (FDBStreamingMode)modeInt;
+
+  int32_t iteration;
+  TRY_V(napi_get_value_int32(env, args[9], &iteration));
+  bool snapshot;
+  TRY_V(napi_get_value_bool(env, args[10], &snapshot));
+  bool reverse;
+  TRY_V(napi_get_value_bool(env, args[11], &reverse));
+
+  FDBFuture *f = fdb_transaction_get_range(tr,
     start.str, start.len, (fdb_bool_t)startOrEqual, startOffset,
     end.str, end.len, (fdb_bool_t)endOrEqual, endOffset,
     limit, target_bytes,
     mode, iteration,
     snapshot, reverse);
 
-  info.GetReturnValue().Set(futureToJS(f, info[12], getKeyValueList));
+  destroyStringParams(&start);
+  destroyStringParams(&end);
+
+  return futureToJS(env, f, args[12], getKeyValueList).value;
 }
 
 // clearRange(start, end). Clears range [start, end).
-void Transaction::ClearRange(const FunctionCallbackInfo<Value>& info) {
-  StringParams begin(info[0]);
-  StringParams end(info[1]);
-  fdb_transaction_clear_range(GetTransactionFromArgs(info), begin.str, begin.len, end.str, end.len);
+static napi_value clearRange(napi_env env, napi_callback_info info) {
+  FDBTransaction *tr = (FDBTransaction *)getWrapped(env, info);
+  if (UNLIKELY(tr == NULL)) return NULL;
+  GET_ARGS(env, info, args, 2);
+
+  StringParams start;
+  TRY_V(toStringParams(env, args[0], &start));
+  StringParams end;
+  TRY_V(toStringParams(env, args[1], &end));
+  fdb_transaction_clear_range(tr, start.str, start.len, end.str, end.len);
+
+  destroyStringParams(&start);
+  destroyStringParams(&end);
+  return NULL;
 }
 
 // watch("somekey", ignoreStandardErrors) -> {cancel(), promise}. This does
 // not return a promise. Due to race conditions the callback may be called
 // even after cancel has been called. The callback callback is *always* called
 // even if the owning txn is cancelled, conflicts, or is discarded.
-void Transaction::Watch(const FunctionCallbackInfo<Value>& info) {
-  StringParams key(info[0]);
-  bool ignoreStandardErrors = info[1]->BooleanValue();
+// void Transaction::Watch(const FunctionCallbackInfo<Value>& info) {
+//   StringParams key(info[0]);
+//   bool ignoreStandardErrors = info[1]->BooleanValue();
 
-  FDBTransaction *tr = GetTransactionFromArgs(info);
-  FDBFuture *f = fdb_transaction_watch(tr, key.str, key.len);
+//   FDBTransaction *tr = GetTransactionFromArgs(info);
+//   FDBFuture *f = fdb_transaction_watch(tr, key.str, key.len);
 
-  info.GetReturnValue().Set(watchFuture(f, ignoreStandardErrors));
+//   info.GetReturnValue().Set(watchFuture(f, ignoreStandardErrors));
+// }
+
+
+// Not exposed to JS. Simple wrapper. Call AddReadConflictRange / AddWriteConflictRange.
+static napi_value addConflictRange(napi_env env, napi_callback_info info, FDBConflictRangeType type) {
+  // Its weird we're returning a value in these cases - we *always* return 0.
+  // Doing it that way because it makes the macros simpler. Hopefully that gets
+  // compiled out.
+  FDBTransaction *tr = (FDBTransaction *)getWrapped(env, info);
+  if (UNLIKELY(tr == NULL)) return NULL;
+  GET_ARGS(env, info, args, 2);
+
+  StringParams start;
+  TRY_V(toStringParams(env, args[0], &start));
+  StringParams end;
+  TRY_V(toStringParams(env, args[1], &end));
+  fdb_error_t errorCode = fdb_transaction_add_conflict_range(tr, start.str, start.len, end.str, end.len, type);
+
+  destroyStringParams(&start);
+  destroyStringParams(&end);
+
+  if (errorCode != 0) throw_fdb_error(env, errorCode);
+  return NULL;
 }
 
 // addConflictRange(start, end)
-void Transaction::AddReadConflictRange(const FunctionCallbackInfo<Value>& info) {
-  AddConflictRange(info, FDB_CONFLICT_RANGE_TYPE_READ);
+static napi_value addReadConflictRange(napi_env env, napi_callback_info info) {
+  return addConflictRange(env, info, FDB_CONFLICT_RANGE_TYPE_READ);
 }
 
 // addConflictRange(start, end)
-void Transaction::AddWriteConflictRange(const FunctionCallbackInfo<Value>& info) {
-  AddConflictRange(info, FDB_CONFLICT_RANGE_TYPE_WRITE);
+static napi_value addWriteConflictRange(napi_env env, napi_callback_info info) {
+  return addConflictRange(env, info, FDB_CONFLICT_RANGE_TYPE_WRITE);
 }
 
+
+static napi_value getReadVersion(napi_env env, napi_callback_info info) {
+  FDBTransaction *tr = (FDBTransaction *)getWrapped(env, info);
+  if (UNLIKELY(tr == NULL)) return NULL;
+  GET_ARGS(env, info, args, 1);
+
+  FDBFuture *f = fdb_transaction_get_read_version(tr);
+  return futureToJS(env, f, args[0], getVersion).value;
+}
 
 // setReadVersion(version)
-void Transaction::SetReadVersion(const FunctionCallbackInfo<Value>& info) {
+static napi_value setReadVersion(napi_env env, napi_callback_info info) {
+  FDBTransaction *tr = (FDBTransaction *)getWrapped(env, info);
+  if (UNLIKELY(tr == NULL)) return NULL;
+  GET_ARGS(env, info, args, 1);
+
   // The version parameter must be an 8 byte buffer.
-  auto obj = info[0]->ToObject();
-  if (Buffer::Length(obj) != 8) {
-    // TODO: Also check that it is a buffer. I have no idea how to check that.
-    Nan::ThrowTypeError("Invalid version buffer - must be 8 bytes");
-    return;
+  uint8_t* data;
+  size_t len;
+  TRY_V(get_buffer_info(env, args[0], (void **)&data, &len));
+
+  if (len != 8) {
+    throw_if_not_ok(env, napi_throw_error(env, NULL, "Invalid version buffer - must be 8 bytes"));
+    return NULL;
   }
 
-  uint8_t* data = (uint8_t*)(Buffer::Data(obj));
   int64_t version = (int64_t)BEBytesToInt64(data);
-  fdb_transaction_set_read_version(GetTransactionFromArgs(info), version);
+  fdb_transaction_set_read_version(tr, version);
+  return NULL;
 }
 
-void Transaction::GetReadVersion(const FunctionCallbackInfo<Value>& info) {
-  FDBFuture *f = fdb_transaction_get_read_version(GetTransactionFromArgs(info));
-  info.GetReturnValue().Set(futureToJS(f, info[0], getVersion));
-}
 
-void Transaction::GetCommittedVersion(const FunctionCallbackInfo<Value>& info) {
+static napi_value getCommittedVersion(napi_env env, napi_callback_info info) {
+  FDBTransaction *tr = (FDBTransaction *)getWrapped(env, info);
+  if (UNLIKELY(tr == NULL)) return NULL;
+
   int64_t version;
-  fdb_error_t errorCode = fdb_transaction_get_committed_version(GetTransactionFromArgs(info), &version);
-
-  if(errorCode != 0) {
-    return Nan::ThrowError(FdbError::NewInstance(errorCode));
-  }
+  FDB_OK_OR_RETURN_NULL(env, fdb_transaction_get_committed_version(tr, &version));
 
   // Again, if we change version to be a byte array this will need to change too.
-  info.GetReturnValue().Set(versionToJSBuffer(version));
+  return versionToJSBuffer(env, version).value;
 }
 
-void Transaction::GetVersionstamp(const FunctionCallbackInfo<Value>& info) {
-  FDBFuture *f = fdb_transaction_get_versionstamp(GetTransactionFromArgs(info));
-  info.GetReturnValue().Set(futureToJS(f, info[0], getKey));
+static napi_value getVersionstamp(napi_env env, napi_callback_info info) {
+  FDBTransaction *tr = (FDBTransaction *)getWrapped(env, info);
+  if (UNLIKELY(tr == NULL)) return NULL;
+  GET_ARGS(env, info, args, 1);
+
+  FDBFuture *f = fdb_transaction_get_versionstamp(tr);
+  return futureToJS(env, f, args[0], getKey).value;
 }
 
 // getAddressesForKey("somekey", [cb])
-void Transaction::GetAddressesForKey(const FunctionCallbackInfo<Value>& info) {
-  StringParams key(info[0]);
+static napi_value getAddressesForKey(napi_env env, napi_callback_info info) {
+  FDBTransaction *tr = (FDBTransaction *)getWrapped(env, info);
+  if (UNLIKELY(tr == NULL)) return NULL;
+  GET_ARGS(env, info, args, 2);
 
-  FDBFuture *f = fdb_transaction_get_addresses_for_key(GetTransactionFromArgs(info), key.str, key.len);
-  info.GetReturnValue().Set(futureToJS(f, info[1], getStringArray));
-}
+  StringParams key;
+  TRY_V(toStringParams(env, args[0], &key));
 
-// Not exposed to JS. Simple wrapper. Call AddReadConflictRange / AddWriteConflictRange.
-void Transaction::AddConflictRange(const FunctionCallbackInfo<Value>& info, FDBConflictRangeType type) {
-  StringParams start(info[0]);
-  StringParams end(info[1]);
-
-  fdb_error_t errorCode = fdb_transaction_add_conflict_range(GetTransactionFromArgs(info), start.str, start.len, end.str, end.len, type);
-
-  if(errorCode) Nan::ThrowError(FdbError::NewInstance(errorCode));
+  FDBFuture *f = fdb_transaction_get_addresses_for_key(tr, key.str, key.len);
+  destroyStringParams(&key);
+  return futureToJS(env, f, args[1], getStringArray).value;
 }
 
 
 
-void Transaction::New(const FunctionCallbackInfo<Value>& info) {
-  Transaction *tr = new Transaction();
-  tr->Wrap(info.Holder());
-}
+napi_status initTransaction(napi_env env) {
+  napi_property_descriptor desc[] = {
+    FN_DEF(setOption),
+    FN_DEF(commit),
+    FN_DEF(reset),
+    FN_DEF(cancel),
+    FN_DEF(onError),
 
-Local<Value> Transaction::NewInstance(FDBTransaction *ptr) {
-  Isolate *isolate = Isolate::GetCurrent();
-  Nan::EscapableHandleScope scope;
+    FN_DEF(get),
+    FN_DEF(getKey),
+    FN_DEF(set),
+    FN_DEF(clear),
 
-  Local<Function> transactionConstructor = Local<Function>::New(isolate, constructor);
-  Local<Object> instance = Nan::NewInstance(transactionConstructor).ToLocalChecked();
+    FN_DEF(atomicOp),
 
-  Transaction *trObj = ObjectWrap::Unwrap<Transaction>(instance);
-  trObj->tr = ptr;
+    FN_DEF(getRange),
+    FN_DEF(clearRange),
 
-  return scope.Escape(instance);
-}
+    // FN_DEF(watch),
 
-void Transaction::Init() {
-  Isolate *isolate = Isolate::GetCurrent();
-  Local<FunctionTemplate> tpl = FunctionTemplate::New(isolate, New);
+    FN_DEF(addReadConflictRange),
+    FN_DEF(addWriteConflictRange),
 
-  tpl->SetClassName(Nan::New<v8::String>("Transaction").ToLocalChecked());
-  tpl->InstanceTemplate()->SetInternalFieldCount(1);
+    FN_DEF(getReadVersion),
+    FN_DEF(setReadVersion),
+    FN_DEF(getCommittedVersion),
+    FN_DEF(getVersionstamp),
 
-  NODE_SET_PROTOTYPE_METHOD(tpl, "setOption", SetOption);
+    FN_DEF(getAddressesForKey),
+  };
 
-  NODE_SET_PROTOTYPE_METHOD(tpl, "commit", Commit);
-  NODE_SET_PROTOTYPE_METHOD(tpl, "reset", Reset);
-  NODE_SET_PROTOTYPE_METHOD(tpl, "cancel", Cancel);
-  NODE_SET_PROTOTYPE_METHOD(tpl, "onError", OnError);
+  napi_value constructor;
+  NAPI_OK_OR_RETURN_STATUS(env, napi_define_class(env, "Transaction", NAPI_AUTO_LENGTH,
+    empty, NULL, sizeof(desc)/sizeof(desc[0]), desc, &constructor));
 
-  NODE_SET_PROTOTYPE_METHOD(tpl, "get", Get);
-  NODE_SET_PROTOTYPE_METHOD(tpl, "getKey", GetKey);
-  NODE_SET_PROTOTYPE_METHOD(tpl, "set", Set);
-  NODE_SET_PROTOTYPE_METHOD(tpl, "clear", Clear);
-
-  NODE_SET_PROTOTYPE_METHOD(tpl, "atomicOp", AtomicOp);
-
-  NODE_SET_PROTOTYPE_METHOD(tpl, "getRange", GetRange);
-  NODE_SET_PROTOTYPE_METHOD(tpl, "clearRange", ClearRange);
-
-  NODE_SET_PROTOTYPE_METHOD(tpl, "watch", Watch);
-
-  NODE_SET_PROTOTYPE_METHOD(tpl, "addReadConflictRange", AddReadConflictRange);
-  NODE_SET_PROTOTYPE_METHOD(tpl, "addWriteConflictRange", AddWriteConflictRange);
-
-  NODE_SET_PROTOTYPE_METHOD(tpl, "getReadVersion", GetReadVersion);
-  NODE_SET_PROTOTYPE_METHOD(tpl, "setReadVersion", SetReadVersion);
-  NODE_SET_PROTOTYPE_METHOD(tpl, "getCommittedVersion", GetCommittedVersion);
-  NODE_SET_PROTOTYPE_METHOD(tpl, "getVersionstamp", GetVersionstamp);
-
-  NODE_SET_PROTOTYPE_METHOD(tpl, "getAddressesForKey", GetAddressesForKey);
-
-  constructor.Reset(tpl->GetFunction());
+  NAPI_OK_OR_RETURN_STATUS(env, napi_create_reference(env, constructor, 1, &cons_ref));
+  return napi_ok;
 }

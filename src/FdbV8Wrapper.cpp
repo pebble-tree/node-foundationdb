@@ -28,21 +28,19 @@
 #include <cstring>
 // #include <node_version.h>
 
-#define NAPI_VERSION 4
-#include <node_api.h>
+#include "utils.h"
 #include <uv.h>
 
 #include "fdbversion.h"
 #include <foundationdb/fdb_c.h>
 
-#include "utils.h"
+#include "Cluster.h"
+#include "Database.h"
 #include "future.h"
+#include "Transaction.h"
 
-// #include "Database.h"
-// #include "Cluster.h"
 // #include "FdbError.h"
-// #include "options.h"
-// #include "future.h"
+#include "options.h"
 
 // using namespace v8;
 using namespace std;
@@ -55,30 +53,26 @@ static bool networkStarted = false;
 // napi_status get_int32_arg(napi_env env, napi_callback_info info) {
 
 // }
-#define GET_ARGS(args, count) \
-  size_t __argc = count;\
-  napi_value args[count];\
-  NAPI_OK_OR_RETURN_NULL(env, napi_get_cb_info(env, info, &__argc, args, NULL, NULL));
 
 static napi_value setAPIVersion(napi_env env, napi_callback_info info) {
-  GET_ARGS(args, 1);
+  GET_ARGS(env, info, args, 1);
 
   int32_t apiVersion;
   NAPI_OK_OR_RETURN_NULL(env, napi_get_value_int32(env, args[0], &apiVersion));
 
-  CHECKED_FDB(env, fdb_select_api_version(apiVersion));
+  FDB_OK_OR_RETURN_NULL(env, fdb_select_api_version(apiVersion));
   return NULL;
 }
 
 static napi_value setAPIVersionImpl(napi_env env, napi_callback_info info) {
-  GET_ARGS(args, 2);
+  GET_ARGS(env, info, args, 2);
 
   int32_t apiVersion;
   NAPI_OK_OR_RETURN_NULL(env, napi_get_value_int32(env, args[0], &apiVersion));
   int32_t headerVersion;
   NAPI_OK_OR_RETURN_NULL(env, napi_get_value_int32(env, args[1], &headerVersion));
 
-  CHECKED_FDB(env, fdb_select_api_version_impl(apiVersion, headerVersion));
+  FDB_OK_OR_RETURN_NULL(env, fdb_select_api_version_impl(apiVersion, headerVersion));
   return NULL;
 }
 
@@ -119,14 +113,14 @@ static FDBFuture *_createClusterFuture(napi_env env, napi_value filenameOrNull) 
   }
 }
 
-static void finalizeCluster(napi_env env, void *cluster, void *_unused) {
-  // fprintf(stderr, "finalizeCluster");
-  // fflush(stderr);
-  fdb_cluster_destroy((FDB_cluster *)cluster);
-}
+// static void finalizeCluster(napi_env env, void *cluster, void *_unused) {
+//   // fprintf(stderr, "finalizeCluster");
+//   // fflush(stderr);
+//   fdb_cluster_destroy((FDB_cluster *)cluster);
+// }
 
 static napi_value createClusterSync(napi_env env, napi_callback_info info) {
-  GET_ARGS(args, 1);
+  GET_ARGS(env, info, args, 1);
 
   FDBFuture *f = _createClusterFuture(env, args[0]);
   if (f == NULL) return NULL; // A napi error happened.
@@ -135,47 +129,41 @@ static napi_value createClusterSync(napi_env env, napi_callback_info info) {
   // Nan::EscapableHandleScope scope;
 
   // FDBFuture *f = _createClusterFuture(info[0]);
-  CHECKED_FDB(env, fdb_future_block_until_ready(f));
+  FDB_OK_OR_RETURN_NULL(env, fdb_future_block_until_ready(f));
 
   FDBCluster *cluster;
-  CHECKED_FDB(env, fdb_future_get_cluster(f, &cluster));
+  FDB_OK_OR_RETURN_NULL(env, fdb_future_get_cluster(f, &cluster));
 
-  // TODO!
-  // Local<Value> jsValue = Local<Value>::New(isolate, Cluster::NewInstance(cluster));
-  // info.GetReturnValue().Set(jsValue);
+  MaybeValue val = newCluster(env, cluster);
+  return val.value;
+  // if (val.status != napi_ok) return NULL;
 
-  napi_value result;
-  napi_status status = napi_create_external(env, (void *)cluster, finalizeCluster, NULL, &result);
-  if (status != napi_ok) {
-    fdb_cluster_destroy(cluster);
-    return NULL;
-  }
+  // napi_value result;
+  // napi_status status = napi_create_external(env, (void *)cluster, finalizeCluster, NULL, &result);
+  // if (status != napi_ok) {
+  //   fdb_cluster_destroy(cluster);
+  //   return NULL;
+  // }
 
-  return result;
+  // return result;
 }
 
 // void createCluster(const FunctionCallbackInfo<Value>& info) {
 static napi_value createCluster(napi_env env, napi_callback_info info) {
-  GET_ARGS(args, 2);
+  GET_ARGS(env, info, args, 2);
 
   FDBFuture *f = _createClusterFuture(env, args[0]);
   return futureToJS(env, f, args[1], [](napi_env env, FDBFuture* f, fdb_error_t* errOut) -> MaybeValue {
     FDBCluster *cluster;
-    auto errorCode = fdb_future_get_cluster(f, &cluster);
-    if (errorCode) {
-      *errOut = errorCode;
-      return wrap_null();
-    }
-
-    MaybeValue maybe;
-    maybe.status = napi_create_external(env, (void *)cluster, finalizeCluster, NULL, &maybe.value);
-    return maybe;
+    if ((*errOut = fdb_future_get_cluster(f, &cluster))) return wrap_null();
+    else return newCluster(env, cluster);
   }).value;
 }
 
-// void SetNetworkOption(const FunctionCallbackInfo<Value>& info) {
-//   set_option_wrapped(NULL, OptNetwork, info);
-// }
+static napi_value setNetworkOption(napi_env env, napi_callback_info info) {
+  set_option_wrapped(env, NULL, OptNetwork, info);
+  return NULL;
+}
 
 static napi_value startNetwork(napi_env env, napi_callback_info info) {
   if(!networkStarted) {
@@ -188,7 +176,7 @@ static napi_value startNetwork(napi_env env, napi_callback_info info) {
 static napi_value stopNetwork(napi_env env, napi_callback_info info) {
   if (!networkStarted) return NULL;
 
-  CHECKED_FDB(env, fdb_stop_network());
+  FDB_OK_OR_RETURN_NULL(env, fdb_stop_network());
 
   assert(0 == uv_thread_join(&fdbThread));
 
@@ -243,7 +231,10 @@ static napi_value errorPredicate(napi_env env, napi_callback_info info) {
 // NODE_MODULE(NODE_GYP_MODULE_NAME, Init);
 
 static napi_value init(napi_env env, napi_value exports) {
-  initFuture(env);
+  NAPI_OK_OR_RETURN_NULL(env, initFuture(env));
+  NAPI_OK_OR_RETURN_NULL(env, initCluster(env));
+  NAPI_OK_OR_RETURN_NULL(env, initDatabase(env));
+  NAPI_OK_OR_RETURN_NULL(env, initTransaction(env));
 
   napi_property_descriptor desc[] = {
     FN_DEF(setAPIVersion),
@@ -252,7 +243,7 @@ static napi_value init(napi_env env, napi_value exports) {
     FN_DEF(createCluster),
     FN_DEF(createClusterSync),
 
-    // FN_DEF(setNetworkOption),
+    FN_DEF(setNetworkOption),
     FN_DEF(startNetwork),
     FN_DEF(stopNetwork),
 

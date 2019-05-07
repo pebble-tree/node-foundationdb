@@ -3,15 +3,15 @@
 #include <cstdio>
 #include <cassert>
 
-#include "future.h"
 #include "utils.h"
-// #include <v8.h>
+#include "future.h"
+
+#include <v8.h>
 
 // #include "Version.h"
 // #include <foundationdb/fdb_c.h>
 
-#include "FdbError.h"
-#include "future.h"
+// #include "FdbError.h"
 
 static napi_threadsafe_function tsf;
 static int num_outstanding = 0;
@@ -20,7 +20,7 @@ static int num_outstanding = 0;
 
 template<class T> struct CtxBase {
   FDBFuture *future;
-  void (*fn)(napi_env, FDBFuture*, T*);
+  napi_status (*fn)(napi_env, FDBFuture*, T*);
 };
 
 static void trigger(napi_env env, napi_value _js_callback, void* _context, void* data) {
@@ -32,7 +32,16 @@ static void trigger(napi_env env, napi_value _js_callback, void* _context, void*
       assert(0 == napi_unref_threadsafe_function(env, tsf));
     }
 
-    ctx->fn(env, ctx->future, ctx);
+    napi_status status = ctx->fn(env, ctx->future, ctx);
+    throw_if_not_ok(env, status);
+    if (status == napi_pending_exception) {
+      // We don't have a stack here. For some reason, if an exception is thrown
+      // here it gets silently dropped.
+      napi_value err;
+      napi_get_and_clear_last_exception(env, &err);
+      napi_fatal_exception(env, err);
+    }
+    // assert(status == napi_ok);
   }
 
   fdb_future_destroy(ctx->future);
@@ -49,11 +58,11 @@ napi_value unused(napi_env, napi_callback_info) {
 
 napi_status initFuture(napi_env env) {
   char name[] = "unused_panic";
-  NAPI_OK_OR_RETURN_STATUS(env, napi_create_function(env, name, sizeof(name), unused, NULL, &unused_func));
+  NAPI_OK_OR_RETURN_STATUS(env, napi_create_function(env, name, sizeof(name)-1, unused, NULL, &unused_func));
 
   char resource_name[] = "fdbfuture";
   napi_value str;
-  NAPI_OK_OR_RETURN_STATUS(env, napi_create_string_utf8(env, resource_name, sizeof(resource_name), &str));
+  NAPI_OK_OR_RETURN_STATUS(env, napi_create_string_utf8(env, resource_name, sizeof(resource_name)-1, &str));
   NAPI_OK_OR_RETURN_STATUS(env,
     napi_create_threadsafe_function(env, unused_func, NULL, str, 16, 1, NULL, NULL, NULL, trigger, &tsf)
   );
@@ -68,8 +77,7 @@ void closeFuture(napi_env env) {
 }
 
 
-template<class T> static napi_status resolveFutureInMainLoop(napi_env env, FDBFuture *f, T* ctx, void (*fn)(napi_env env, FDBFuture *f, T*)) {
-  // printf("resolveFutureInMainLoop called\n");
+template<class T> static napi_status resolveFutureInMainLoop(napi_env env, FDBFuture *f, T* ctx, napi_status (*fn)(napi_env env, FDBFuture *f, T*)) {
   ctx->future = f;
   ctx->fn = fn;
 
@@ -110,18 +118,21 @@ MaybeValue fdbFutureToJSPromise(napi_env env, FDBFuture *f, ExtractValueFn *extr
 
     if (errcode != 0) {
       napi_value err;
-      assert(napi_ok == wrap_fdb_error(env, errcode, &err));
+      NAPI_OK_OR_RETURN_STATUS(env, wrap_fdb_error(env, errcode, &err));
       napi_reject_deferred(env, ctx->deferred, err);
     } else if (value.status != napi_ok) {
       napi_value err;
-      assert(napi_ok == napi_get_and_clear_last_exception(env, &err));
-      assert(napi_ok == napi_reject_deferred(env, ctx->deferred, err));
+      NAPI_OK_OR_RETURN_STATUS(env, napi_get_and_clear_last_exception(env, &err));
+      NAPI_OK_OR_RETURN_STATUS(env, napi_reject_deferred(env, ctx->deferred, err));
     } else {
-      napi_resolve_deferred(env, ctx->deferred, value.value);
+      if (value.value == NULL) NAPI_OK_OR_RETURN_STATUS(env, napi_get_null(env, &value.value));
+      NAPI_OK_OR_RETURN_STATUS(env, napi_resolve_deferred(env, ctx->deferred, value.value));
     }
 
     // Needed to work around a bug where the promise doesn't actually resolve.
+    // v8::Isolate *isolate = v8::Isolate::GetCurrent();
     // isolate->RunMicrotasks();
+    return napi_ok;
   });
 
   if (status != napi_ok) {
@@ -146,17 +157,18 @@ MaybeValue fdbFutureToCallback(napi_env env, FDBFuture *f, napi_value cbFunc, Ex
     MaybeValue value = ctx->extractFn(env, f, &errcode);
 
     napi_value args[2] = {}; // (err, value).
-    if (errcode != 0) assert(napi_ok == wrap_fdb_error(env, errcode, &args[0]));
-    else if (value.status != napi_ok) assert(napi_ok == napi_get_and_clear_last_exception(env, &args[0]));
+    if (errcode != 0) NAPI_OK_OR_RETURN_STATUS(env, wrap_fdb_error(env, errcode, &args[0]));
+    else if (value.status != napi_ok) NAPI_OK_OR_RETURN_STATUS(env, napi_get_and_clear_last_exception(env, &args[0]));
     else args[1] = value.value;
 
     napi_value callback;
-    assert(napi_ok == napi_get_reference_value(env, ctx->cbFunc, &callback));
+    NAPI_OK_OR_RETURN_STATUS(env, napi_get_reference_value(env, ctx->cbFunc, &callback));
 
     // If this throws it'll bubble up to the node uncaught exception handler, which is what we want.
     napi_call_function(env, NULL, callback, 2, args, NULL);
 
     napi_reference_unref(env, ctx->cbFunc, NULL);
+    return napi_ok;
   });
   return wrap_err(status);
 }

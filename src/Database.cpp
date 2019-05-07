@@ -21,91 +21,79 @@
  * THE SOFTWARE.
  */
 
-#include <node.h>
 #include <iostream>
 #include <string>
 #include <cstring>
 
-#include "Database.h"
+#include "utils.h"
+#include "Transaction.h"
+// #include "Database.h"
 #include "options.h"
-#include "FdbError.h"
+// #include "FdbError.h"
 
-using namespace v8;
-using namespace std;
+static napi_ref cons_ref;
 
-Database::Database() { };
-
-Database::~Database() {
-  if (db != nullptr) fdb_database_destroy(db);
-};
-
-Nan::Persistent<Function> Database::constructor;
-
-void Database::Init() {
-  Isolate *isolate = Isolate::GetCurrent();
-  Local<FunctionTemplate> tpl = FunctionTemplate::New(isolate, New);
-
-  tpl->SetClassName(Nan::New<String>("Database").ToLocalChecked());
-  tpl->InstanceTemplate()->SetInternalFieldCount(1);
-
-  NODE_SET_PROTOTYPE_METHOD(tpl, "close", Close);
-  NODE_SET_PROTOTYPE_METHOD(tpl, "createTransaction", CreateTransaction);
-  NODE_SET_PROTOTYPE_METHOD(tpl, "setOption", SetOption);
-
-  constructor.Reset(tpl->GetFunction());
+static void finalize(napi_env env, void* database, void* finalize_hint) {
+  fdb_database_destroy((FDB_database *)database);
 }
 
-void Database::Close(const FunctionCallbackInfo<Value>& info) {
-  Database *dbPtr = node::ObjectWrap::Unwrap<Database>(info.Holder());
-  if (dbPtr->db) {
-    fdb_database_destroy(dbPtr->db);
-    dbPtr->db = nullptr;
-  }
+MaybeValue newDatabase(napi_env env, FDBDatabase *database) {
+  napi_value ctor;
+  NAPI_OK_OR_RETURN_MAYBE(env, napi_get_reference_value(env, cons_ref, &ctor));
+
+  napi_value obj;
+  NAPI_OK_OR_RETURN_MAYBE(env, napi_new_instance(env, ctor, 0, NULL, &obj));
+  NAPI_OK_OR_RETURN_MAYBE(env, napi_wrap(env, obj, (void *)database, finalize, NULL, NULL));
+  return wrap_ok(obj);
 }
 
-void Database::CreateTransaction(const FunctionCallbackInfo<Value>& info) {
-  Database *dbPtr = node::ObjectWrap::Unwrap<Database>(info.Holder());
-  FDBDatabase *db = dbPtr->db;
-  if (db == nullptr) {
-    Nan::ThrowReferenceError("Cannot create transaction after db closed");
-    return info.GetReturnValue().SetUndefined();
-  }
-  FDBTransaction *tr;
-  fdb_error_t err = fdb_database_create_transaction(db, &tr);
-  if (err) {
-    Nan::ThrowError(FdbError::NewInstance(err, fdb_get_error(err)));
-    return info.GetReturnValue().SetUndefined();
-  }
 
-  info.GetReturnValue().Set(Transaction::NewInstance(tr));
-}
-
-void Database::SetOption(const FunctionCallbackInfo<Value>& args) {
-  // database.setOptionStr(opt_id, "value")
-  Database *dbPtr = node::ObjectWrap::Unwrap<Database>(args.Holder());
-  FDBDatabase *db = dbPtr->db;
+static napi_value setOption(napi_env env, napi_callback_info info) {
+  FDBDatabase *db = (FDBDatabase *)getWrapped(env, info);
   // Silently fail if the database is closed.
-  if (db != nullptr) set_option_wrapped(db, OptDatabase, args);
+  if (db != NULL) set_option_wrapped(env, db, OptDatabase, info);
+  return NULL;
 }
 
-void Database::New(const FunctionCallbackInfo<Value>& info) {
-  Database *db = new Database();
-  db->Wrap(info.Holder());
-
-  info.GetReturnValue().Set(info.Holder());
+static napi_value close(napi_env env, napi_callback_info info) {
+  FDBDatabase *database;
+  napi_value obj;
+  NAPI_OK_OR_RETURN_NULL(env, napi_get_cb_info(env, info, 0, NULL, &obj, NULL));
+  // Calls napi_remove_wrap not napi_unwrap.
+  NAPI_OK_OR_RETURN_NULL(env, napi_remove_wrap(env, obj, (void **)&database));
+  fdb_database_destroy(database);
+  return NULL;
 }
 
-Local<Value> Database::NewInstance(FDBDatabase *ptr) {
-  Nan::EscapableHandleScope scope;
+static napi_value createTransaction(napi_env env, napi_callback_info info) {
+  FDBDatabase *db = (FDBDatabase *)getWrapped(env, info);
+  if (db == NULL) {
+    throw_if_not_ok(env, napi_throw_error(env, NULL, "Cannot create transaction after db closed"));
+    return NULL;
+  }
 
-  Local<Function> databaseConstructor = Nan::New<Function>(constructor);
-  Local<Object> instance = Nan::NewInstance(databaseConstructor).ToLocalChecked();
+  FDBTransaction *tr;
+  FDB_OK_OR_RETURN_NULL(env, fdb_database_create_transaction(db, &tr));
 
-  Database *dbObj = ObjectWrap::Unwrap<Database>(instance);
-  dbObj->db = ptr;
+  return newTransaction(env, tr).value;
+}
 
-  // instance->Set(Nan::New<String>("options").ToLocalChecked(),
-  //   FdbOptions::CreateOptions(FdbOptions::DatabaseOption, instance));
 
-  return scope.Escape(instance);
+static napi_value newDatabase(napi_env env, napi_callback_info info) {
+  return NULL;
+}
+
+napi_status initDatabase(napi_env env) {
+  napi_property_descriptor desc[] = {
+    FN_DEF(setOption),
+    FN_DEF(close),
+    FN_DEF(createTransaction),
+  };
+
+  napi_value constructor;
+  NAPI_OK_OR_RETURN_STATUS(env, napi_define_class(env, "Database", NAPI_AUTO_LENGTH,
+    newDatabase, NULL, sizeof(desc)/sizeof(desc[0]), desc, &constructor));
+
+  NAPI_OK_OR_RETURN_STATUS(env, napi_create_reference(env, constructor, 1, &cons_ref));
+  return napi_ok;
 }

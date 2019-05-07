@@ -24,35 +24,11 @@
 #ifndef FDB_NODE_DATABASE_H
 #define FDB_NODE_DATABASE_H
 
-#include "Version.h"
-#include "Transaction.h"
-
+#include "fdbversion.h"
 #include <foundationdb/fdb_c.h>
-#include <node.h>
-#include <nan.h>
+#include "utils.h"
 
-class Database: public node::ObjectWrap {
-  public:
-    static void Init();
-    static v8::Local<v8::Value> NewInstance(FDBDatabase *ptr);
-    static void New(const v8::FunctionCallbackInfo<v8::Value>& info);
-
-    FDBDatabase* GetDatabase() { return db; }
-
-  private:
-    Database();
-    ~Database();
-
-    // This closes the database and nulls out the db object locally. Calling
-    // CreateTransaction is invalid on a closed database.
-    static void Close(const v8::FunctionCallbackInfo<v8::Value>& info);
-    static void CreateTransaction(const v8::FunctionCallbackInfo<v8::Value>& info);
-    static Nan::Persistent<v8::Function> constructor;
-
-    static void SetOption(const v8::FunctionCallbackInfo<v8::Value>& info);
-
-    // Set to null after close().
-    FDBDatabase *db;
-};
+MaybeValue newDatabase(napi_env env, FDBDatabase *database);
+napi_status initDatabase(napi_env env);
 
 #endif

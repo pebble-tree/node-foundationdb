@@ -15,6 +15,9 @@ napi_status throw_if_not_ok(napi_env env, napi_status status) {
     case napi_string_expected:
       napi_throw_type_error(env, NULL, "Expected string");
       return napi_pending_exception;
+    case napi_generic_failure:
+      napi_throw_type_error(env, NULL, "Generic failure");
+      return napi_pending_exception;
     default:
       fprintf(stderr, "throw_if_not_ok %d\n", status);
       assert(0);
@@ -38,4 +41,12 @@ void throw_fdb_error(napi_env env, fdb_error_t fdbErrCode) {
   if (throw_if_not_ok(env, wrap_fdb_error(env, fdbErrCode, &error)) == napi_pending_exception) return; 
   throw_if_not_ok(env, napi_throw(env, error));
   // There'll be a pending exception after this no matter what. No need to return a status code.
+}
+
+void *getWrapped(napi_env env, napi_callback_info info) {
+  void *data;
+  napi_value obj;
+  NAPI_OK_OR_RETURN_NULL(env, napi_get_cb_info(env, info, 0, NULL, &obj, NULL));
+  NAPI_OK_OR_RETURN_NULL(env, napi_unwrap(env, obj, &data));
+  return data;
 }

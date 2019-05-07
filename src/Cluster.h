@@ -24,12 +24,13 @@
 #ifndef FDB_NODE_CLUSTER_H
 #define FDB_NODE_CLUSTER_H
 
-#include "Version.h"
-
+#include "fdbversion.h"
 #include <foundationdb/fdb_c.h>
-#include <node.h>
-#include <node_object_wrap.h>
-#include <nan.h>
+
+#include "util.h"
+
+napi_status initCluster(napi_env env);
+MaybeValue newCluster(napi_env env, FDBCluster *cluster);
 
 // This *holds* a cluster. The cluster itself is created in FdbV8Wrapper.cpp.
 void initCluster();
