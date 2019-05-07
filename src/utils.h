@@ -16,8 +16,8 @@
 #define LIKELY(condition) __builtin_expect(static_cast<bool>(condition), 1)
 #define UNLIKELY(condition) __builtin_expect(static_cast<bool>(condition), 0)
 #else
-#define LIKELY(condition)
-#define UNLIKELY(condition)
+#define LIKELY(condition) (condition)
+#define UNLIKELY(condition) (condition)
 #endif
 
 napi_status throw_if_not_ok(napi_env env, napi_status status);
