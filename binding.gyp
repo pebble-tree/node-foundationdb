@@ -1,6 +1,6 @@
 {
   'variables': {
-    'napi_version': '<!(node -e "console.log(process.versions.napi.split(\'.\')[0])")',
+    'napi_version': '<!(node -e "console.log(process.versions.napi)")',
   },
   'targets': [
     {

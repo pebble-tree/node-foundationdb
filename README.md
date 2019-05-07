@@ -954,7 +954,7 @@ The API also entirely depends on node Promises. The C part of the bindings suppo
 - [ ] API documentation for options (and TS types for them)
 - [ ] API documentation for all transaction methods (get, set, getKey, etc)
 - [ ] Cut 1.0
-- [ ] Move to NAPI
+- [x] Move to NAPI
 - [ ] Figure out a decent way to bundle the native `libfdb_c` code so users don't need to download their own copy
 
 
