@@ -1,7 +1,7 @@
 #ifndef FDB_NODE_OPTIONS_H
 #define FDB_NODE_OPTIONS_H
 
-#include <nan.h>
+#include "utils.h"
 
 enum OptionType {
   OptNetwork,
@@ -9,6 +9,6 @@ enum OptionType {
   OptTransaction,
 };
 
-void set_option_wrapped(void *target, OptionType type, const v8::FunctionCallbackInfo<v8::Value>& args);
+napi_status set_option_wrapped(napi_env env, void *target, OptionType type, napi_callback_info info);
 
 #endif

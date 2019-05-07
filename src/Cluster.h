@@ -24,31 +24,34 @@
 #ifndef FDB_NODE_CLUSTER_H
 #define FDB_NODE_CLUSTER_H
 
-#include "Version.h"
-
+#include "fdbversion.h"
 #include <foundationdb/fdb_c.h>
-#include <node.h>
-#include <node_object_wrap.h>
-#include <nan.h>
+
+#include "utils.h"
+
+napi_status initCluster(napi_env env);
+MaybeValue newCluster(napi_env env, FDBCluster *cluster);
 
 // This *holds* a cluster. The cluster itself is created in FdbV8Wrapper.cpp.
+void initCluster();
+void newCluster();
 
-class Cluster : public node::ObjectWrap {
-  public:
-    static void Init();
-    static v8::Local<v8::Value> NewInstance(FDBCluster *ptr);
-    static void New(const Nan::FunctionCallbackInfo<v8::Value>& info);
-    static void OpenDatabaseSync(const Nan::FunctionCallbackInfo<v8::Value>& info);
-    static void OpenDatabase(const Nan::FunctionCallbackInfo<v8::Value>& info);
-    static void Close(const Nan::FunctionCallbackInfo<v8::Value>& info);
+// class Cluster : public node::ObjectWrap {
+//   public:
+//     static void Init();
+//     static v8::Local<v8::Value> NewInstance(FDBCluster *ptr);
+//     static void New(const Nan::FunctionCallbackInfo<v8::Value>& info);
+//     static void OpenDatabaseSync(const Nan::FunctionCallbackInfo<v8::Value>& info);
+//     static void OpenDatabase(const Nan::FunctionCallbackInfo<v8::Value>& info);
+//     static void Close(const Nan::FunctionCallbackInfo<v8::Value>& info);
 
-    FDBCluster* GetCluster() { return cluster; }
+//     FDBCluster* GetCluster() { return cluster; }
 
-  private:
-    Cluster();
-    ~Cluster();
-    static Nan::Persistent<v8::Function> constructor;
-    FDBCluster *cluster;
-};
+//   private:
+//     Cluster();
+//     ~Cluster();
+//     static Nan::Persistent<v8::Function> constructor;
+//     FDBCluster *cluster;
+// };
 
 #endif

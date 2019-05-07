@@ -24,20 +24,22 @@
 #ifndef FDB_NODE_FDB_ERROR_H
 #define FDB_NODE_FDB_ERROR_H
 
-#include "Version.h"
-
+#include "fdbversion.h"
 #include <foundationdb/fdb_c.h>
-#include <node.h>
+#include "utils.h"
 
-class FdbError {
-  public:
-    static v8::Local<v8::Value> NewInstance(fdb_error_t code);
-    static v8::Local<v8::Value> NewInstance(fdb_error_t code, const char *description);
+napi_status initError(napi_env env, napi_value exports);
+MaybeValue create_error(napi_env env, fdb_error_t code);
 
-    static void Init( v8::Local<v8::Object> module );
+// class FdbError {
+//   public:
+//     static v8::Local<v8::Value> NewInstance(fdb_error_t code);
+//     static v8::Local<v8::Value> NewInstance(fdb_error_t code, const char *description);
 
-  private:
-    FdbError();  // not implemented by design
-};
+//     static void Init( v8::Local<v8::Object> module );
+
+//   private:
+//     FdbError();  // not implemented by design
+// };
 
 #endif

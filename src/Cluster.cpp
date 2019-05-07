@@ -21,111 +21,103 @@
  * THE SOFTWARE.
  */
 
-#include <node.h>
-#include <iostream>
-#include <string>
-#include <cstring>
-#include <node_version.h>
+#include "utils.h"
+// #include <node.h>
+// #include <iostream>
+// #include <string>
+// #include <cstring>
+// #include <node_version.h>
 
-#include "Cluster.h"
+// #include "Cluster.h"
 #include "Database.h"
 #include "future.h"
-#include "FdbError.h"
+// #include "future.h"
+// #include "FdbError.h"
 
-using namespace v8;
 using namespace std;
 
-Cluster::Cluster() { }
-Cluster::~Cluster() {
-  if (cluster) fdb_cluster_destroy(cluster);
+// Cluster::Cluster() { }
+// Cluster::~Cluster() {
+//   if (cluster) fdb_cluster_destroy(cluster);
+// }
+
+// Nan::Persistent<Function> Cluster::constructor;
+
+// static napi_value newCluster(napi_env env, napi_callback_info info) {
+
+// }
+
+static napi_ref cons_ref;
+
+static FDBFuture *createDbFuture(FDBCluster *cluster) {
+  return fdb_cluster_create_database(cluster, (const uint8_t *)"DB", 2);
 }
 
-Nan::Persistent<Function> Cluster::constructor;
+static napi_value openDatabaseSync(napi_env env, napi_callback_info info) {
+  FDBCluster *cluster = (FDBCluster *)getWrapped(env, info);
+  if (cluster == NULL) return NULL;
 
-void Cluster::Init() {
-  Local<FunctionTemplate> tpl = Nan::New<FunctionTemplate>(New);
-
-  tpl->SetClassName(Nan::New<v8::String>("Cluster").ToLocalChecked());
-  tpl->InstanceTemplate()->SetInternalFieldCount(1);
-
-  Nan::SetPrototypeMethod(tpl, "openDatabaseSync", OpenDatabaseSync);
-  Nan::SetPrototypeMethod(tpl, "openDatabase", OpenDatabase);
-  Nan::SetPrototypeMethod(tpl, "close", Close);
-
-  constructor.Reset(tpl->GetFunction());
-}
-
-void Cluster::New(const Nan::FunctionCallbackInfo<Value>& info) {
-  Cluster *c = new Cluster();
-  c->Wrap(info.Holder());
-}
-
-Local<Value> Cluster::NewInstance(FDBCluster *ptr) {
-  Nan::EscapableHandleScope scope;
-
-  Local<Function> clusterConstructor = Nan::New<Function>(constructor);
-  Local<Object> instance = Nan::NewInstance(clusterConstructor, 0, NULL).ToLocalChecked();
-
-  Cluster *clusterObj = ObjectWrap::Unwrap<Cluster>(instance);
-  clusterObj->cluster = ptr;
-
-  // instance->Set(Nan::New<v8::String>("options").ToLocalChecked(),
-  //   FdbOptions::CreateOptions(FdbOptions::ClusterOption, instance));
-
-  return scope.Escape(instance);
-}
-
-static FDBFuture *createDbFuture(FDBCluster *cluster, Local<Value> name) {
-  std::string dbName = *Nan::Utf8String(name->ToString());
-  return fdb_cluster_create_database(cluster, (uint8_t*)dbName.c_str(), (int)strlen(dbName.c_str()));
-}
-
-void Cluster::OpenDatabaseSync(const Nan::FunctionCallbackInfo<Value>& info) {
-  Cluster *clusterPtr = ObjectWrap::Unwrap<Cluster>(info.Holder());
-  if (clusterPtr->cluster == nullptr) {
-    Nan::ThrowReferenceError("Cannot open database in closed cluster");
-    return info.GetReturnValue().SetUndefined();
-  }
-
-  FDBFuture *f = createDbFuture(clusterPtr->cluster, info[0]);
-
-  fdb_error_t errorCode = fdb_future_block_until_ready(f);
+  FDBFuture *f = createDbFuture(cluster);
+  FDB_OK_OR_RETURN_NULL(env, fdb_future_block_until_ready(f));
 
   FDBDatabase *database;
-  if(errorCode == 0)
-    errorCode = fdb_future_get_database(f, &database);
+  FDB_OK_OR_RETURN_NULL(env, fdb_future_get_database(f, &database));
 
-  if(errorCode != 0)
-    return Nan::ThrowError(FdbError::NewInstance(errorCode, fdb_get_error(errorCode)));
-
-  Local<Value> jsValue = Database::NewInstance(database);
-
-  info.GetReturnValue().Set(jsValue);
+  return newDatabase(env, database).value;
 }
 
-void Cluster::Close(const Nan::FunctionCallbackInfo<Value>& info) {
-  Cluster *clusterPtr = ObjectWrap::Unwrap<Cluster>(info.Holder());
-  // printf("cluster::close\n");
-  if (clusterPtr->cluster != nullptr) {
-    fdb_cluster_destroy(clusterPtr->cluster);
-    clusterPtr->cluster = nullptr;
-  }
-}
+static napi_value openDatabase(napi_env env, napi_callback_info info) {
+  GET_ARGS(env, info, args, 2);
+  FDBCluster *cluster = (FDBCluster *)getWrapped(env, info);
+  if (cluster == NULL) return NULL;
 
-void Cluster::OpenDatabase(const Nan::FunctionCallbackInfo<Value>& info) {
-  Cluster *clusterPtr = ObjectWrap::Unwrap<Cluster>(info.Holder());
-  if (clusterPtr->cluster == nullptr) {
-    Nan::ThrowReferenceError("Cannot open database in closed cluster");
-    return info.GetReturnValue().SetUndefined();
-  }
-  FDBFuture *f = createDbFuture(clusterPtr->cluster, info[0]);
-
-  auto promise = futureToJS(f, info[1], [](FDBFuture* f, fdb_error_t* errOut) -> Local<Value> {
+  FDBFuture *f = createDbFuture(cluster);
+  return futureToJS(env, f, args[1], [](napi_env env, FDBFuture* f, fdb_error_t* errOut) -> MaybeValue {
     FDBDatabase *database;
-    *errOut = fdb_future_get_database(f, &database);
+    if ((*errOut = fdb_future_get_database(f, &database))) return wrap_null();
+    else return newDatabase(env, database);
+  }).value;
+}
 
-    if (*errOut == 0) return Database::NewInstance(database);
-    else return Nan::Undefined();
-  });
-  info.GetReturnValue().Set(promise);
+static napi_value close(napi_env env, napi_callback_info info) {
+  FDBCluster *cluster;
+  napi_value obj;
+  NAPI_OK_OR_RETURN_NULL(env, napi_get_cb_info(env, info, 0, NULL, &obj, NULL));
+  // Note that this calls napi_remove_wrap not napi_unwrap like other methods.
+  NAPI_OK_OR_RETURN_NULL(env, napi_remove_wrap(env, obj, (void **)&cluster));
+  fdb_cluster_destroy(cluster);
+  return NULL;
+}
+
+static napi_value newCluster(napi_env env, napi_callback_info info) {
+  return NULL;
+}
+
+static void finalize(napi_env env, void* cluster, void* finalize_hint) {
+  fdb_cluster_destroy((FDBCluster *)cluster);
+}
+
+MaybeValue newCluster(napi_env env, FDBCluster *cluster) {
+  napi_value ctor;
+  NAPI_OK_OR_RETURN_MAYBE(env, napi_get_reference_value(env, cons_ref, &ctor));
+
+  napi_value obj;
+  NAPI_OK_OR_RETURN_MAYBE(env, napi_new_instance(env, ctor, 0, NULL, &obj));
+  NAPI_OK_OR_RETURN_MAYBE(env, napi_wrap(env, obj, (void *)cluster, finalize, NULL, NULL));
+  return wrap_ok(obj);
+}
+
+napi_status initCluster(napi_env env) {
+  napi_property_descriptor desc[] = {
+    FN_DEF(openDatabase),
+    FN_DEF(openDatabaseSync),
+    FN_DEF(close),
+  };
+
+  napi_value constructor;
+  NAPI_OK_OR_RETURN_STATUS(env, napi_define_class(env, "Cluster", NAPI_AUTO_LENGTH,
+    newCluster, NULL, sizeof(desc)/sizeof(desc[0]), desc, &constructor));
+
+  NAPI_OK_OR_RETURN_STATUS(env, napi_create_reference(env, constructor, 1, &cons_ref));
+  return napi_ok;
 }

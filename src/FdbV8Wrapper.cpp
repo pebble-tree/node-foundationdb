@@ -21,21 +21,25 @@
  * THE SOFTWARE.
  */
 
-#include <string>
-#include "node.h"
-#include <iostream>
+// #include <string>
+// #include <iostream>
 #include <cstdlib>
 #include <cstring>
-#include <node_version.h>
+#include <cassert>
 
-#include "Database.h"
+#include "utils.h"
+#include <uv.h>
+
+#include "fdbversion.h"
+#include <foundationdb/fdb_c.h>
+
 #include "Cluster.h"
-#include "Version.h"
+#include "Database.h"
+#include "future.h"
+#include "Transaction.h"
 #include "FdbError.h"
 #include "options.h"
-#include "future.h"
 
-using namespace v8;
 using namespace std;
 
 
@@ -43,146 +47,185 @@ static uv_thread_t fdbThread;
 
 static bool networkStarted = false;
 
+// napi_status get_int32_arg(napi_env env, napi_callback_info info) {
 
-void SetAPIVersion(const FunctionCallbackInfo<Value>& info) {
-  int apiVersion = info[0]->Int32Value();
-  fdb_error_t errorCode = fdb_select_api_version(apiVersion);
+// }
 
-  if(errorCode != 0) {
-    if (errorCode == 2203)
-      return Nan::ThrowError(FdbError::NewInstance(errorCode, "API version not supported by the installed FoundationDB C library"));
-    return Nan::ThrowError(FdbError::NewInstance(errorCode));
-  }
+static napi_value setAPIVersion(napi_env env, napi_callback_info info) {
+  GET_ARGS(env, info, args, 1);
+
+  int32_t apiVersion;
+  NAPI_OK_OR_RETURN_NULL(env, napi_get_value_int32(env, args[0], &apiVersion));
+
+  FDB_OK_OR_RETURN_NULL(env, fdb_select_api_version(apiVersion));
+  return NULL;
 }
 
-void SetAPIVersionImpl(const FunctionCallbackInfo<Value>& info) {
-  int apiVersion = info[0]->Int32Value();
-  int headerVersion = info[1]->Int32Value();
-  fdb_error_t errorCode = fdb_select_api_version_impl(apiVersion, headerVersion);
+static napi_value setAPIVersionImpl(napi_env env, napi_callback_info info) {
+  GET_ARGS(env, info, args, 2);
 
-  if(errorCode != 0) {
-    if (errorCode == 2203)
-      return Nan::ThrowError(FdbError::NewInstance(errorCode, "API version not supported by the installed FoundationDB C library"));
-    return Nan::ThrowError(FdbError::NewInstance(errorCode));
-  }
+  int32_t apiVersion;
+  NAPI_OK_OR_RETURN_NULL(env, napi_get_value_int32(env, args[0], &apiVersion));
+  int32_t headerVersion;
+  NAPI_OK_OR_RETURN_NULL(env, napi_get_value_int32(env, args[1], &headerVersion));
+
+  FDB_OK_OR_RETURN_NULL(env, fdb_select_api_version_impl(apiVersion, headerVersion));
+  return NULL;
 }
-
 
 static void networkThread(void *arg) {
   fdb_error_t errorCode = fdb_run_network();
-  if(errorCode != 0)
+  if(errorCode != 0) {
     fprintf(stderr, "Unhandled error in FoundationDB network thread: %s (%d)\n", fdb_get_error(errorCode), errorCode);
+  }
 }
 
-static void runNetwork() {
+static fdb_error_t runNetwork() {
   fdb_error_t errorCode = fdb_setup_network();
 
-  if(errorCode != 0)
-    return Nan::ThrowError(FdbError::NewInstance(errorCode));
+  if(errorCode != 0) return errorCode;
 
-  uv_thread_create(&fdbThread, networkThread, NULL);  // FIXME: Return code?
+  assert(0 == uv_thread_create(&fdbThread, networkThread, NULL));  // FIXME: Handle errors here gracefully
+  return 0;
 }
 
+// Returns null if the passed value isn't a string or NULL.
+static FDBFuture *_createClusterFuture(napi_env env, napi_value filenameOrNull) {
+  if (filenameOrNull != NULL) {
+    napi_valuetype type;
+    NAPI_OK_OR_RETURN_NULL(env, napi_typeof(env, filenameOrNull, &type));
+    if (type == napi_null || type == napi_undefined) filenameOrNull = NULL;
+  }
 
-static FDBFuture *createClusterFuture(Local<Value> filenameOrNull) {
-  const char *path = (filenameOrNull->IsNull() || filenameOrNull->IsUndefined())
-    ? NULL : *Nan::Utf8String(filenameOrNull->ToString());
-
-  return fdb_create_cluster(path);
+  if (filenameOrNull != NULL) {
+    // This effectively enforces a hardcoded 1024 character limit on cluster file
+    // paths. In practice this should be fine.
+    char path[1024];
+    // TODO: Consider adding a warning here if the path is truncated. (We can
+    // pull the length back off with the last argument).
+    NAPI_OK_OR_RETURN_NULL(env, napi_get_value_string_utf8(env, filenameOrNull, path, sizeof(path), NULL));
+    return fdb_create_cluster(path);
+  } else {
+    return fdb_create_cluster(NULL);
+  }
 }
 
-void CreateClusterSync(const FunctionCallbackInfo<Value>& info) {
-  Isolate *isolate = Isolate::GetCurrent();
-  Nan::EscapableHandleScope scope;
+// static void finalizeCluster(napi_env env, void *cluster, void *_unused) {
+//   // fprintf(stderr, "finalizeCluster");
+//   // fflush(stderr);
+//   fdb_cluster_destroy((FDB_cluster *)cluster);
+// }
 
-  FDBFuture *f = createClusterFuture(info[0]);
-  fdb_error_t errorCode = fdb_future_block_until_ready(f);
+static napi_value createClusterSync(napi_env env, napi_callback_info info) {
+  GET_ARGS(env, info, args, 1);
+
+  FDBFuture *f = _createClusterFuture(env, args[0]);
+  if (f == NULL) return NULL; // A napi error happened.
+
+  // Isolate *isolate = Isolate::GetCurrent();
+  // Nan::EscapableHandleScope scope;
+
+  // FDBFuture *f = _createClusterFuture(info[0]);
+  FDB_OK_OR_RETURN_NULL(env, fdb_future_block_until_ready(f));
 
   FDBCluster *cluster;
-  if(errorCode == 0) errorCode = fdb_future_get_cluster(f, &cluster);
+  FDB_OK_OR_RETURN_NULL(env, fdb_future_get_cluster(f, &cluster));
 
-  if(errorCode) return Nan::ThrowError(FdbError::NewInstance(errorCode));
+  MaybeValue val = newCluster(env, cluster);
+  return val.value;
+  // if (val.status != napi_ok) return NULL;
 
-  Local<Value> jsValue = Local<Value>::New(isolate, Cluster::NewInstance(cluster));
-  info.GetReturnValue().Set(jsValue);
+  // napi_value result;
+  // napi_status status = napi_create_external(env, (void *)cluster, finalizeCluster, NULL, &result);
+  // if (status != napi_ok) {
+  //   fdb_cluster_destroy(cluster);
+  //   return NULL;
+  // }
+
+  // return result;
 }
 
-void CreateCluster(const FunctionCallbackInfo<Value>& info) {
-  FDBFuture *f = createClusterFuture(info[0]);
-  auto promise = futureToJS(f, info[1], [](FDBFuture* f, fdb_error_t* errOut) -> Local<Value> {
-    Isolate *isolate = Isolate::GetCurrent();
+// void createCluster(const FunctionCallbackInfo<Value>& info) {
+static napi_value createCluster(napi_env env, napi_callback_info info) {
+  GET_ARGS(env, info, args, 2);
 
+  FDBFuture *f = _createClusterFuture(env, args[0]);
+  return futureToJS(env, f, args[1], [](napi_env env, FDBFuture* f, fdb_error_t* errOut) -> MaybeValue {
     FDBCluster *cluster;
-    auto errorCode = fdb_future_get_cluster(f, &cluster);
-    if (errorCode) {
-      *errOut = errorCode;
-      return Undefined(isolate);
-    }
-
-    return Local<Value>::New(isolate, Cluster::NewInstance(cluster));
-  });
-  info.GetReturnValue().Set(promise);
+    if ((*errOut = fdb_future_get_cluster(f, &cluster))) return wrap_null();
+    else return newCluster(env, cluster);
+  }).value;
 }
 
-void SetNetworkOption(const FunctionCallbackInfo<Value>& info) {
-  set_option_wrapped(NULL, OptNetwork, info);
+static napi_value setNetworkOption(napi_env env, napi_callback_info info) {
+  set_option_wrapped(env, NULL, OptNetwork, info);
+  return NULL;
 }
 
-void StartNetwork(const FunctionCallbackInfo<Value>& info) {
+static napi_value startNetwork(napi_env env, napi_callback_info info) {
   if(!networkStarted) {
     networkStarted = true;
     runNetwork();
   }
+  return NULL;
 }
 
-void StopNetwork(const FunctionCallbackInfo<Value>& info) {
-  if (!networkStarted) return;
+static napi_value stopNetwork(napi_env env, napi_callback_info info) {
+  if (!networkStarted) return NULL;
 
-  fdb_error_t errorCode = fdb_stop_network();
+  FDB_OK_OR_RETURN_NULL(env, fdb_stop_network());
 
-  if(errorCode != 0) {
-    return Nan::ThrowError(FdbError::NewInstance(errorCode));
-  }
-
-  uv_thread_join(&fdbThread);
+  assert(0 == uv_thread_join(&fdbThread));
 
   networkStarted = false;
 
   //This line forces garbage collection.  Useful for doing valgrind tests
   //while(!V8::IdleNotification());
+  return NULL;
 }
 
 // (test, code) -> bool.
-void ErrorPredicate(const FunctionCallbackInfo<Value>& info) {
-  int test = info[0]->Int32Value();
-  fdb_error_t code = info[1]->Int32Value();
+static napi_value errorPredicate(napi_env env, napi_callback_info info) {
+  size_t argc = 2;
+  napi_value args[2];
+  NAPI_OK_OR_RETURN_NULL(env, napi_get_cb_info(env, info, &argc, args, NULL, NULL));
+  
+  int test;
+  NAPI_OK_OR_RETURN_NULL(env, napi_get_value_int32(env, args[0], &test));
+
+  fdb_error_t code;
+  NAPI_OK_OR_RETURN_NULL(env, napi_get_value_int32(env, args[1], &code));
 
   fdb_bool_t result = fdb_error_predicate(test, code);
 
-  Isolate *isolate = Isolate::GetCurrent();
-  info.GetReturnValue().Set(Boolean::New(isolate, result));
+  napi_value js_result;
+  NAPI_OK_OR_RETURN_NULL(env, napi_get_boolean(env, result, &js_result));
+  return js_result;
 }
 
-void Init(Local<Object> exports, Local<Object> module) {
-  FdbError::Init( exports );
-  Database::Init();
-  Transaction::Init();
-  Cluster::Init();
-  initWatch();
+static napi_value init(napi_env env, napi_value exports) {
+  NAPI_OK_OR_RETURN_NULL(env, initFuture(env));
+  NAPI_OK_OR_RETURN_NULL(env, initCluster(env));
+  NAPI_OK_OR_RETURN_NULL(env, initDatabase(env));
+  NAPI_OK_OR_RETURN_NULL(env, initTransaction(env));
+  NAPI_OK_OR_RETURN_NULL(env, initWatch(env));
+  NAPI_OK_OR_RETURN_NULL(env, initError(env, exports));
 
-// #define FN(name, fn) Nan::Set(exports, Nan::New<v8::String>(name).ToLocalChecked(), Nan::New<v8::FunctionTemplate>(fn)->GetFunction())
-  NODE_SET_METHOD(exports, "setAPIVersion", SetAPIVersion);
-  NODE_SET_METHOD(exports, "setAPIVersionImpl", SetAPIVersionImpl);
+  napi_property_descriptor desc[] = {
+    FN_DEF(setAPIVersion),
+    FN_DEF(setAPIVersionImpl),
 
-  NODE_SET_METHOD(exports, "startNetwork", StartNetwork);
-  NODE_SET_METHOD(exports, "stopNetwork", StopNetwork);
+    FN_DEF(createCluster),
+    FN_DEF(createClusterSync),
 
-  NODE_SET_METHOD(exports, "setNetworkOption", SetNetworkOption);
+    FN_DEF(setNetworkOption),
+    FN_DEF(startNetwork),
+    FN_DEF(stopNetwork),
 
-  NODE_SET_METHOD(exports, "createCluster", CreateCluster);
-  NODE_SET_METHOD(exports, "createClusterSync", CreateClusterSync);
-
-  NODE_SET_METHOD(exports, "errorPredicate", ErrorPredicate);
+    FN_DEF(errorPredicate),
+  };
+  NAPI_OK_OR_RETURN_NULL(env, napi_define_properties(env, exports, sizeof(desc) / sizeof(desc[0]), desc));
+  return NULL;
 }
 
-NODE_MODULE(NODE_GYP_MODULE_NAME, Init);
+NAPI_MODULE(NODE_GYP_MODULE_NAME, init);
