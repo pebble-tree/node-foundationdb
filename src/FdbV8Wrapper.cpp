@@ -28,7 +28,7 @@
 #include <cstring>
 // #include <node_version.h>
 
-#define NAPI_VERSION 3
+#define NAPI_VERSION 4
 #include <node_api.h>
 #include <uv.h>
 
@@ -36,7 +36,7 @@
 #include <foundationdb/fdb_c.h>
 
 #include "utils.h"
-
+#include "future.h"
 
 // #include "Database.h"
 // #include "Cluster.h"
@@ -55,28 +55,28 @@ static bool networkStarted = false;
 // napi_status get_int32_arg(napi_env env, napi_callback_info info) {
 
 // }
-
+#define GET_ARGS(args, count) \
+  size_t __argc = count;\
+  napi_value args[count];\
+  NAPI_OK_OR_RETURN_NULL(env, napi_get_cb_info(env, info, &__argc, args, NULL, NULL));
 
 static napi_value setAPIVersion(napi_env env, napi_callback_info info) {
-  size_t argc = 1;
-  napi_value arg;
-  NAPI_OK_OR_RETURN_NULL(env, napi_get_cb_info(env, info, &argc, &arg, NULL, NULL));
+  GET_ARGS(args, 1);
+
   int32_t apiVersion;
-  NAPI_OK_OR_RETURN_NULL(env, napi_get_value_int32(env, arg, &apiVersion));
+  NAPI_OK_OR_RETURN_NULL(env, napi_get_value_int32(env, args[0], &apiVersion));
 
   CHECKED_FDB(env, fdb_select_api_version(apiVersion));
   return NULL;
 }
 
 static napi_value setAPIVersionImpl(napi_env env, napi_callback_info info) {
-  size_t argc = 2;
-  napi_value args[2];
-  NAPI_OK_OR_RETURN_NULL(env, napi_get_cb_info(env, info, &argc, args, NULL, NULL));
+  GET_ARGS(args, 2);
 
   int32_t apiVersion;
   NAPI_OK_OR_RETURN_NULL(env, napi_get_value_int32(env, args[0], &apiVersion));
   int32_t headerVersion;
-  NAPI_OK_OR_RETURN_NULL(env, napi_get_value_int32(env, args[0], &headerVersion));
+  NAPI_OK_OR_RETURN_NULL(env, napi_get_value_int32(env, args[1], &headerVersion));
 
   CHECKED_FDB(env, fdb_select_api_version_impl(apiVersion, headerVersion));
   return NULL;
@@ -97,12 +97,6 @@ static fdb_error_t runNetwork() {
   assert(0 == uv_thread_create(&fdbThread, networkThread, NULL));  // FIXME: Handle errors here gracefully
   return 0;
 }
-
-// static void valIsNullish(napi_env env, napi_value value, int* result) {
-//   napi_valuetype type;
-//   napi_typeof(env, value, &type)
-  
-// }
 
 // Returns null if the passed value isn't a string or NULL.
 static FDBFuture *_createClusterFuture(napi_env env, napi_value filenameOrNull) {
@@ -132,11 +126,9 @@ static void finalizeCluster(napi_env env, void *cluster, void *_unused) {
 }
 
 static napi_value createClusterSync(napi_env env, napi_callback_info info) {
-  size_t argc = 1;
-  napi_value arg;
-  NAPI_OK_OR_RETURN_NULL(env, napi_get_cb_info(env, info, &argc, &arg, NULL, NULL));
+  GET_ARGS(args, 1);
 
-  FDBFuture *f = _createClusterFuture(env, arg);
+  FDBFuture *f = _createClusterFuture(env, args[0]);
   if (f == NULL) return NULL; // A napi error happened.
 
   // Isolate *isolate = Isolate::GetCurrent();
@@ -163,22 +155,23 @@ static napi_value createClusterSync(napi_env env, napi_callback_info info) {
 }
 
 // void createCluster(const FunctionCallbackInfo<Value>& info) {
-// static napi_value createClusterSync(napi_env env, napi_callback_info info) {
-//   FDBFuture *f = createClusterFuture(info[0]);
-//   auto promise = futureToJS(f, info[1], [](FDBFuture* f, fdb_error_t* errOut) -> Local<Value> {
-//     Isolate *isolate = Isolate::GetCurrent();
+static napi_value createCluster(napi_env env, napi_callback_info info) {
+  GET_ARGS(args, 2);
 
-//     FDBCluster *cluster;
-//     auto errorCode = fdb_future_get_cluster(f, &cluster);
-//     if (errorCode) {
-//       *errOut = errorCode;
-//       return Undefined(isolate);
-//     }
+  FDBFuture *f = _createClusterFuture(env, args[0]);
+  return futureToJS(env, f, args[1], [](napi_env env, FDBFuture* f, fdb_error_t* errOut) -> MaybeValue {
+    FDBCluster *cluster;
+    auto errorCode = fdb_future_get_cluster(f, &cluster);
+    if (errorCode) {
+      *errOut = errorCode;
+      return wrap_null();
+    }
 
-//     return Local<Value>::New(isolate, Cluster::NewInstance(cluster));
-//   });
-//   info.GetReturnValue().Set(promise);
-// }
+    MaybeValue maybe;
+    maybe.status = napi_create_external(env, (void *)cluster, finalizeCluster, NULL, &maybe.value);
+    return maybe;
+  }).value;
+}
 
 // void SetNetworkOption(const FunctionCallbackInfo<Value>& info) {
 //   set_option_wrapped(NULL, OptNetwork, info);
@@ -250,11 +243,13 @@ static napi_value errorPredicate(napi_env env, napi_callback_info info) {
 // NODE_MODULE(NODE_GYP_MODULE_NAME, Init);
 
 static napi_value init(napi_env env, napi_value exports) {
+  initFuture(env);
+
   napi_property_descriptor desc[] = {
     FN_DEF(setAPIVersion),
     FN_DEF(setAPIVersionImpl),
 
-    // FN_DEF(createCluster),
+    FN_DEF(createCluster),
     FN_DEF(createClusterSync),
 
     // FN_DEF(setNetworkOption),

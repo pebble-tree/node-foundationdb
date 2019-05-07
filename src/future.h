@@ -5,14 +5,16 @@
 
 #include "utils.h"
 
-typedef v8::Local<v8::Value> ExtractValueFn(FDBFuture* f, fdb_error_t* errOut);
+napi_status initFuture(napi_env env);
 
-v8::Local<v8::Promise> fdbFutureToJSPromise(FDBFuture* f, ExtractValueFn* extractValueFn);
-void fdbFutureToCallback(FDBFuture *f, v8::Local<v8::Function> cbFunc, ExtractValueFn *extractFn);
+typedef MaybeValue ExtractValueFn(napi_env env, FDBFuture* f, fdb_error_t* errOut);
 
-v8::Local<v8::Value> futureToJS(FDBFuture *f, v8::Local<v8::Value> cbOrNull, ExtractValueFn *extractFn);
+// v8::Local<v8::Promise> fdbFutureToJSPromise(FDBFuture* f, ExtractValueFn* extractValueFn);
+// void fdbFutureToCallback(FDBFuture *f, v8::Local<v8::Function> cbFunc, ExtractValueFn *extractFn);
 
-void initWatch();
-v8::Local<v8::Object> watchFuture(FDBFuture *f, bool ignoreStandardErrors);
+MaybeValue futureToJS(napi_env env, FDBFuture *f, napi_value cbOrNull, ExtractValueFn *extractFn);
+
+// void initWatch();
+// v8::Local<v8::Object> watchFuture(FDBFuture *f, bool ignoreStandardErrors);
 
 #endif

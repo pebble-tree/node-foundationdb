@@ -6,6 +6,9 @@ napi_status throw_if_not_ok(napi_env env, napi_status status) {
   switch (status) {
     case napi_ok: case napi_pending_exception:
       return status;
+    case napi_invalid_arg:
+      napi_throw_error(env, NULL, "Invalid arguments");
+      return napi_pending_exception;
     case napi_number_expected:
       napi_throw_type_error(env, NULL, "Expected number");
       return napi_pending_exception;
@@ -13,7 +16,7 @@ napi_status throw_if_not_ok(napi_env env, napi_status status) {
       napi_throw_type_error(env, NULL, "Expected string");
       return napi_pending_exception;
     default:
-      fprintf(stderr, "throw_if_not_ok %d", status);
+      fprintf(stderr, "throw_if_not_ok %d\n", status);
       assert(0);
   }
 }
