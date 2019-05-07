@@ -43,9 +43,6 @@ using namespace std;
 
 static napi_ref cons_ref;
 
-MaybeValue newTransaction(napi_env env, FDBTransaction *tr);
-napi_status initTransaction(napi_env env);
-
 
 static napi_value empty(napi_env env, napi_callback_info info) {
   return NULL;
@@ -482,15 +479,20 @@ static napi_value clearRange(napi_env env, napi_callback_info info) {
 // not return a promise. Due to race conditions the callback may be called
 // even after cancel has been called. The callback callback is *always* called
 // even if the owning txn is cancelled, conflicts, or is discarded.
-// void Transaction::Watch(const FunctionCallbackInfo<Value>& info) {
-//   StringParams key(info[0]);
-//   bool ignoreStandardErrors = info[1]->BooleanValue();
+static napi_value watch(napi_env env, napi_callback_info info) {
+  FDBTransaction *tr = (FDBTransaction *)getWrapped(env, info);
+  if (UNLIKELY(tr == NULL)) return NULL;
+  GET_ARGS(env, info, args, 2);
 
-//   FDBTransaction *tr = GetTransactionFromArgs(info);
-//   FDBFuture *f = fdb_transaction_watch(tr, key.str, key.len);
+  StringParams key;
+  TRY_V(toStringParams(env, args[0], &key));
 
-//   info.GetReturnValue().Set(watchFuture(f, ignoreStandardErrors));
-// }
+  bool ignoreStandardErrors;
+  TRY_V(napi_get_value_bool(env, args[1], &ignoreStandardErrors));
+
+  FDBFuture *f = fdb_transaction_watch(tr, key.str, key.len);
+  return watchFuture(env, f, ignoreStandardErrors).value;
+}
 
 
 // Not exposed to JS. Simple wrapper. Call AddReadConflictRange / AddWriteConflictRange.
@@ -611,7 +613,7 @@ napi_status initTransaction(napi_env env) {
     FN_DEF(getRange),
     FN_DEF(clearRange),
 
-    // FN_DEF(watch),
+    FN_DEF(watch),
 
     FN_DEF(addReadConflictRange),
     FN_DEF(addWriteConflictRange),

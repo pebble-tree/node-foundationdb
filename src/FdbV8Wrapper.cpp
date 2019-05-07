@@ -236,6 +236,7 @@ static napi_value init(napi_env env, napi_value exports) {
   NAPI_OK_OR_RETURN_NULL(env, initCluster(env));
   NAPI_OK_OR_RETURN_NULL(env, initDatabase(env));
   NAPI_OK_OR_RETURN_NULL(env, initTransaction(env));
+  NAPI_OK_OR_RETURN_NULL(env, initWatch(env));
 
   napi_property_descriptor desc[] = {
     FN_DEF(setAPIVersion),

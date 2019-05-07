@@ -14,7 +14,7 @@ typedef MaybeValue ExtractValueFn(napi_env env, FDBFuture* f, fdb_error_t* errOu
 
 MaybeValue futureToJS(napi_env env, FDBFuture *f, napi_value cbOrNull, ExtractValueFn *extractFn);
 
-// void initWatch();
-// v8::Local<v8::Object> watchFuture(FDBFuture *f, bool ignoreStandardErrors);
+napi_status initWatch(napi_env env);
+MaybeValue watchFuture(napi_env env, FDBFuture *f, bool ignoreStandardErrors);
 
 #endif

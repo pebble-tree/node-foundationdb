@@ -119,7 +119,7 @@ MaybeValue fdbFutureToJSPromise(napi_env env, FDBFuture *f, ExtractValueFn *extr
     if (errcode != 0) {
       napi_value err;
       NAPI_OK_OR_RETURN_STATUS(env, wrap_fdb_error(env, errcode, &err));
-      napi_reject_deferred(env, ctx->deferred, err);
+      NAPI_OK_OR_RETURN_STATUS(env, napi_reject_deferred(env, ctx->deferred, err));
     } else if (value.status != napi_ok) {
       napi_value err;
       NAPI_OK_OR_RETURN_STATUS(env, napi_get_and_clear_last_exception(env, &err));
@@ -156,18 +156,18 @@ MaybeValue fdbFutureToCallback(napi_env env, FDBFuture *f, napi_value cbFunc, Ex
     fdb_error_t errcode = 0;
     MaybeValue value = ctx->extractFn(env, f, &errcode);
 
+    napi_value callback;
+    NAPI_OK_OR_RETURN_STATUS(env, napi_get_reference_value(env, ctx->cbFunc, &callback));
+    NAPI_OK_OR_RETURN_STATUS(env, napi_reference_unref(env, ctx->cbFunc, NULL));
+
     napi_value args[2] = {}; // (err, value).
     if (errcode != 0) NAPI_OK_OR_RETURN_STATUS(env, wrap_fdb_error(env, errcode, &args[0]));
     else if (value.status != napi_ok) NAPI_OK_OR_RETURN_STATUS(env, napi_get_and_clear_last_exception(env, &args[0]));
     else args[1] = value.value;
 
-    napi_value callback;
-    NAPI_OK_OR_RETURN_STATUS(env, napi_get_reference_value(env, ctx->cbFunc, &callback));
-
     // If this throws it'll bubble up to the node uncaught exception handler, which is what we want.
     napi_call_function(env, NULL, callback, 2, args, NULL);
 
-    napi_reference_unref(env, ctx->cbFunc, NULL);
     return napi_ok;
   });
   return wrap_err(status);
@@ -186,108 +186,128 @@ MaybeValue futureToJS(napi_env env, FDBFuture *f, napi_value cbOrNull, ExtractVa
 }
 
 
-// // *** Watch
+// *** Watch
 
-// // This seems overcomplicated, and I'd love to be able to use the functions
-// // above to do all this work. The problem is that fdb_future_cancel causes an
-// // abort() if the future has already resolved. So the JS object needs to
-// // somehow know that the promise has resolved. So I really want to hold a
-// // reference to the JS object. And its hard to strongarm the functions above
-// // into doing that. Doing it the way I am here is fine, but it means the API
-// // we expose to javascript either works with promises or callbacks but not
-// // both. I might end up redesigning some of this once I've benchmarked how
-// // promises perform in JS & C.
-// static Nan::Persistent<v8::Function> watchConstructor;
+// This seems overcomplicated, and I'd love to be able to use the functions
+// above to do all this work. The problem is that fdb_future_cancel causes an
+// abort() if the future has already resolved. So the JS object needs to
+// somehow know that the promise has resolved. So I really want to hold a
+// reference to the JS object. And its hard to strongarm the functions above
+// into doing that. Doing it the way I am here is fine, but it means the API
+// we expose to javascript either works with promises or callbacks but not
+// both. I might end up redesigning some of this once I've benchmarked how
+// promises perform in JS & C.
 
-// static void Cancel(const Nan::FunctionCallbackInfo<v8::Value>& info) {
-//   Local<Object> t = info.This();
-//   FDBFuture *future = (FDBFuture *)(t->GetAlignedPointerFromInternalField(0));
-//   if (future) fdb_future_cancel(future);
-// }
+// TODO: Using classes here is overwraught.
 
-// void initWatch() {
-//   Local<FunctionTemplate> tpl = Nan::New<FunctionTemplate>();
+static napi_ref watch_cons_ref;
 
-//   tpl->SetClassName(Nan::New<v8::String>("Watch").ToLocalChecked());
-//   tpl->InstanceTemplate()->SetInternalFieldCount(1);
+static napi_value cancel(napi_env env, napi_callback_info info) {
+  FDBFuture *future = (FDBFuture *)getWrapped(env, info);
+  if (future) fdb_future_cancel(future);
+  return NULL;
+}
 
-//   Nan::SetPrototypeMethod(tpl, "cancel", Cancel);
+static napi_value empty(napi_env env, napi_callback_info info) {
+  return NULL;
+}
 
-//   watchConstructor.Reset(tpl->GetFunction());
-// }
+static void finalize(napi_env env, void* tn, void* finalize_hint) {
+  printf("finalize\n");
+  fdb_transaction_destroy((FDB_transaction *)tn);
+}
 
-// Local<Object> watchFuture(FDBFuture *f, bool ignoreStandardErrors) {
-//   struct Ctx: CtxBase<Ctx> {
-//     Nan::Persistent<Object> jsWatch;
-//     // I probably don't need to store a persistant reference here since it
-//     // can't be GCed anyway because its stored on jsWatch. But I think this is
-//     // *more* correct..?
-//     Nan::Persistent<Promise::Resolver> resolver;
-//     bool ignoreStandardErrors;
-//   };
-//   Ctx *ctx = new Ctx;
+napi_status initWatch(napi_env env) {
+  napi_property_descriptor desc[] = {
+    FN_DEF(cancel),
+  };
 
-//   v8::Isolate *isolate = v8::Isolate::GetCurrent();
+  napi_value constructor;
+  NAPI_OK_OR_RETURN_STATUS(env, napi_define_class(env, "Watch", NAPI_AUTO_LENGTH,
+    empty, NULL, sizeof(desc)/sizeof(desc[0]), desc, &constructor));
 
-//   auto resolver = Promise::Resolver::New(isolate->GetCurrentContext()).ToLocalChecked();
-//   ctx->resolver.Reset(resolver);
+  NAPI_OK_OR_RETURN_STATUS(env, napi_create_reference(env, constructor, 1, &watch_cons_ref));
+  return napi_ok;
+}
 
-//   Local<Function> localCon = Local<Function>::New(isolate, watchConstructor);
-//   Local<Object> jsWatch = Nan::NewInstance(localCon).ToLocalChecked();
+MaybeValue watchFuture(napi_env env, FDBFuture *f, bool ignoreStandardErrors) {
+  struct Ctx: CtxBase<Ctx> {
+    napi_ref jsWatch;
+    // I probably don't need to store a persistant reference here since it
+    // can't be GCed anyway because its stored on jsWatch. But I think this is
+    // *more* correct..?
+    napi_deferred deferred;
+    bool ignoreStandardErrors;
+  };
+  Ctx *ctx = new Ctx;
 
-//   jsWatch->SetAlignedPointerInInternalField(0, f);
-//   // I'm sure there's a better way to attach this, but I can figure that out when moving to N-API.
-//   jsWatch->Set(String::NewFromUtf8(isolate, "promise", String::kInternalizedString), resolver->GetPromise());
+  napi_value promise;
+  NAPI_OK_OR_RETURN_MAYBE(env, napi_create_promise(env, &ctx->deferred, &promise));
 
-//   ctx->jsWatch.Reset(jsWatch);
-//   ctx->ignoreStandardErrors = ignoreStandardErrors;
+  napi_value ctor;
+  NAPI_OK_OR_RETURN_MAYBE(env, napi_get_reference_value(env, watch_cons_ref, &ctor));
 
-//   resolveFutureInMainLoop<Ctx>(f, ctx, [](FDBFuture *f, Ctx *ctx) {
-//     // This is cribbed from fdbFutureToJSPromise above. Bleh.
-//     Nan::HandleScope scope;
-//     v8::Isolate *isolate = v8::Isolate::GetCurrent();
-//     auto context = isolate->GetCurrentContext();
+  napi_value jsWatch;
+  NAPI_OK_OR_RETURN_MAYBE(env, napi_new_instance(env, ctor, 0, NULL, &jsWatch));
+  NAPI_OK_OR_RETURN_MAYBE(env, napi_wrap(env, jsWatch, (void *)f, finalize, NULL, NULL));
 
-//     fdb_error_t err = fdb_future_get_error(ctx->future);
-//     bool success = true;
+  // I'm sure there's a better way to attach this, but I can figure that out when moving to N-API.
+  NAPI_OK_OR_RETURN_MAYBE(env, napi_set_named_property(env, jsWatch, "promise", promise));
 
-//     auto resolver = Nan::New(ctx->resolver);
+  NAPI_OK_OR_RETURN_MAYBE(env, napi_create_reference(env, jsWatch, 1, &ctx->jsWatch));
+  ctx->ignoreStandardErrors = ignoreStandardErrors;
 
-//     // You can no longer cancel the watcher. Remove the reference to the
-//     // future, which is about to be destroyed.
-//     Local<Object> jsWatch = Local<Object>::New(isolate, ctx->jsWatch);
-//     jsWatch->SetAlignedPointerInInternalField(0, NULL);
+  napi_status status = resolveFutureInMainLoop<Ctx>(env, f, ctx, [](napi_env env, FDBFuture *f, Ctx *ctx) {
+    // This is cribbed from fdbFutureToJSPromise above. Bleh.
+    fdb_error_t errcode = fdb_future_get_error(ctx->future);
+    bool success = true;
 
-//     // By default node promises will crash the whole process. If the
-//     // transaction which created this watch promise is cancelled or conflicts,
-//     // what should we do here? 
-//     // 1 If we reject the promise, the process will crash by default.
-//     //   Preventing this with the current API is really awkward
-//     // 2 If we resolve the promise that doesn't really make a lot of sense
-//     // 3 If we leave the promise dangling.. that sort of violates the idea of a
-//     //   *promise*
-//     // 
-//     // By default I'm going to do option 2 (well, when ignoreStandardErrors is
-//     // passed, which happens by default).
-//     // 
-//     // The promise will resolve (true) normally, or (false) if it was aborted.
-//     if (err && ctx->ignoreStandardErrors && (
-//         err == 1101 // operation_cancelled
-//         || err == 1025 // transaction_cancelled
-//         || err == 1020)) { // not_committed (tn conflict)
-//       success = false;
-//       err = 0;
-//     }
+    // You can no longer cancel the watcher. Remove the reference to the
+    // future, which is about to be destroyed.
+    napi_value jsWatch;
+    NAPI_OK_OR_RETURN_STATUS(env, napi_get_reference_value(env, ctx->jsWatch, &jsWatch));
+    NAPI_OK_OR_RETURN_STATUS(env, napi_reference_unref(env, ctx->jsWatch, NULL));
 
-//     if (err != 0) (void)resolver->Reject(context, FdbError::NewInstance(err));
-//     else (void)resolver->Resolve(context, Boolean::New(isolate, success));
+    // Unlink the handle to the future.
+    NAPI_OK_OR_RETURN_STATUS(env, napi_remove_wrap(env, jsWatch, NULL));
+    // By default node promises will crash the whole process. If the
+    // transaction which created this watch promise is cancelled or conflicts,
+    // what should we do here? 
+    // 1 If we reject the promise, the process will crash by default.
+    //   Preventing this with the current API is really awkward
+    // 2 If we resolve the promise that doesn't really make a lot of sense
+    // 3 If we leave the promise dangling.. that sort of violates the idea of a
+    //   *promise*
+    // 
+    // By default I'm going to do option 2 (well, when ignoreStandardErrors is
+    // passed, which happens by default).
+    // 
+    // The promise will resolve (true) normally, or (false) if it was aborted.
+    if (errcode && ctx->ignoreStandardErrors && (
+        errcode == 1101 // operation_cancelled
+        || errcode == 1025 // transaction_cancelled
+        || errcode == 1020)) { // not_committed (tn conflict)
+      success = false;
+      errcode = 0;
+    }
 
-//     // Needed to kick promises resolved in the callback.
-//     isolate->RunMicrotasks();
+    if (errcode != 0) {
+      napi_value err;
+      NAPI_OK_OR_RETURN_STATUS(env, wrap_fdb_error(env, errcode, &err));
+      NAPI_OK_OR_RETURN_STATUS(env, napi_reject_deferred(env, ctx->deferred, err));
+    } else {
+      napi_value jsSuccess;
+      NAPI_OK_OR_RETURN_STATUS(env, napi_get_boolean(env, success, &jsSuccess));
+      NAPI_OK_OR_RETURN_STATUS(env, napi_resolve_deferred(env, ctx->deferred, jsSuccess));
+    }
 
-//     ctx->jsWatch.Reset();
-//     ctx->resolver.Reset();
-//   });
+    return napi_ok;
+  });
 
-//   return jsWatch;
-// }
+  if (status != napi_ok) {
+    napi_resolve_deferred(env, ctx->deferred, NULL);
+    napi_reference_unref(env, ctx->jsWatch, NULL);
+    delete ctx;
+    return wrap_err(status);
+  } else return wrap_ok(jsWatch);
+}
