@@ -26,6 +26,7 @@
 #include <iostream>
 #include <cstdlib>
 #include <cstring>
+#include <cassert>
 // #include <node_version.h>
 
 #include "utils.h"
