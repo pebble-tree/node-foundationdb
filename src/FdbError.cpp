@@ -21,37 +21,40 @@
  * THE SOFTWARE.
  */
 
-#include <node.h>
-#include <nan.h>
+#include <cstdio>
 #include "FdbError.h"
 
-using namespace v8;
-using namespace node;
+// This is pretty ugly. We're holding a reference to the exports object. The JS
+// code adds a reference to a JS error class after the module is created.
 
-static Nan::Persistent<Object> module;
+static napi_ref module;
 
-void FdbError::Init(Local<Object> module) {
-  ::module.Reset(module);
+napi_status initError(napi_env env, napi_value exports) {
+  return napi_create_reference(env, exports, 1, &module);
 }
 
-Local<Value> FdbError::NewInstance(fdb_error_t code) {
-  return FdbError::NewInstance(code, fdb_get_error(code));
-}
+MaybeValue create_error(napi_env env, fdb_error_t code) {
+  napi_value jsModule;
+  NAPI_OK_OR_RETURN_MAYBE(env, napi_get_reference_value(env, module, &jsModule));
+  napi_value constructor;
+  NAPI_OK_OR_RETURN_MAYBE(env, napi_get_named_property(env, jsModule, "FDBError", &constructor));
 
-Local<Value> FdbError::NewInstance(fdb_error_t code, const char *description) {
-  Isolate *isolate = Isolate::GetCurrent();
-  Nan::EscapableHandleScope scope;
+  napi_valuetype type;
+  NAPI_OK_OR_RETURN_MAYBE(env, napi_typeof(env, constructor, &type));
 
-  Local<Object> moduleObj = Local<Object>::New(isolate, module);
-  Local<Value> constructor = moduleObj->Get( String::NewFromUtf8(isolate, "FDBError", String::kInternalizedString) );
-  Local<Object> instance;
-  if (!constructor.IsEmpty() && constructor->IsFunction()) {
-    Local<Value> constructorArgs[] = { String::NewFromUtf8(isolate, description), Integer::New(isolate, code) };
-    instance = Nan::NewInstance(Local<Function>::Cast(constructor), 2, constructorArgs).ToLocalChecked();
+  napi_value instance;
+
+  if (type == napi_function) {
+    napi_value args[2] = {};
+    NAPI_OK_OR_RETURN_MAYBE(env, napi_create_string_utf8(env, fdb_get_error(code), NAPI_AUTO_LENGTH, &args[0]));
+    NAPI_OK_OR_RETURN_MAYBE(env, napi_create_int32(env, code, &args[1]));
+    NAPI_OK_OR_RETURN_MAYBE(env, napi_new_instance(env, constructor, 2, args, &instance));
   } else {
     // We can't find the (javascript) FDBError class, so construct and throw *something*
-    instance = Exception::Error(String::NewFromUtf8(isolate, "FDBError class not found.  Unable to deliver error."))->ToObject();
+    napi_value errStr;
+    napi_create_string_utf8(env, "FDBError class not found. Unable to deliver error.", NAPI_AUTO_LENGTH, &errStr);
+    napi_create_error(env, NULL, errStr, &instance);
   }
 
-  return scope.Escape(instance);
+  return wrap_ok(instance);
 }

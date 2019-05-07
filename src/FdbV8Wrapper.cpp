@@ -21,13 +21,11 @@
  * THE SOFTWARE.
  */
 
-#include <string>
-// #include "node.h"
-#include <iostream>
+// #include <string>
+// #include <iostream>
 #include <cstdlib>
 #include <cstring>
 #include <cassert>
-// #include <node_version.h>
 
 #include "utils.h"
 #include <uv.h>
@@ -39,11 +37,9 @@
 #include "Database.h"
 #include "future.h"
 #include "Transaction.h"
-
-// #include "FdbError.h"
+#include "FdbError.h"
 #include "options.h"
 
-// using namespace v8;
 using namespace std;
 
 
@@ -207,36 +203,13 @@ static napi_value errorPredicate(napi_env env, napi_callback_info info) {
   return js_result;
 }
 
-// void Init(Local<Object> exports, Local<Object> module) {
-//   FdbError::Init( exports );
-//   Database::Init();
-//   Transaction::Init();
-//   Cluster::Init();
-//   initWatch();
-
-// // #define FN(name, fn) Nan::Set(exports, Nan::New<v8::String>(name).ToLocalChecked(), Nan::New<v8::FunctionTemplate>(fn)->GetFunction())
-//   NODE_SET_METHOD(exports, "setAPIVersion", setAPIVersion);
-//   NODE_SET_METHOD(exports, "setAPIVersionImpl", setAPIVersionImpl);
-
-//   NODE_SET_METHOD(exports, "startNetwork", StartNetwork);
-//   NODE_SET_METHOD(exports, "stopNetwork", StopNetwork);
-
-//   NODE_SET_METHOD(exports, "setNetworkOption", SetNetworkOption);
-
-//   NODE_SET_METHOD(exports, "createCluster", CreateCluster);
-//   NODE_SET_METHOD(exports, "createClusterSync", CreateClusterSync);
-
-//   NODE_SET_METHOD(exports, "errorPredicate", ErrorPredicate);
-// }
-
-// NODE_MODULE(NODE_GYP_MODULE_NAME, Init);
-
 static napi_value init(napi_env env, napi_value exports) {
   NAPI_OK_OR_RETURN_NULL(env, initFuture(env));
   NAPI_OK_OR_RETURN_NULL(env, initCluster(env));
   NAPI_OK_OR_RETURN_NULL(env, initDatabase(env));
   NAPI_OK_OR_RETURN_NULL(env, initTransaction(env));
   NAPI_OK_OR_RETURN_NULL(env, initWatch(env));
+  NAPI_OK_OR_RETURN_NULL(env, initError(env, exports));
 
   napi_property_descriptor desc[] = {
     FN_DEF(setAPIVersion),

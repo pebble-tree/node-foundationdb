@@ -82,9 +82,9 @@ inline MaybeValue fdb_status_to_maybe(napi_env env, fdb_error_t errcode) {
 #define FN_DEF(fn) {#fn, NULL, fn, NULL, NULL, NULL, napi_default, NULL}
 
 #define GET_ARGS(env, info, args, count) \
-  size_t __argc = count;\
+  size_t _argc = count;\
   napi_value args[count];\
-  NAPI_OK_OR_RETURN_NULL(env, napi_get_cb_info(env, info, &__argc, args, NULL, NULL));
+  NAPI_OK_OR_RETURN_NULL(env, napi_get_cb_info(env, info, &_argc, args, NULL, NULL));
 
 
 inline napi_status typeof_wrap(napi_env env, napi_value value, napi_valuetype* result) {

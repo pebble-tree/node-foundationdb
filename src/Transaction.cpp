@@ -417,15 +417,15 @@ static napi_value getRange(napi_env env, napi_callback_info info) {
   StringParams start;
   TRY_V(toStringParams(env, args[0], &start));
 
-  int startOrEqual;
-  TRY_V(napi_get_value_bool(env, args[1], (bool *)&startOrEqual));
+  bool startOrEqual;
+  TRY_V(napi_get_value_bool(env, args[1], &startOrEqual));
   int32_t startOffset;
   TRY_V(napi_get_value_int32(env, args[2], &startOffset));
 
   StringParams end;
   TRY_V(toStringParams(env, args[3], &end));
-  int endOrEqual;
-  TRY_V(napi_get_value_bool(env, args[4], (bool *)&endOrEqual));
+  bool endOrEqual;
+  TRY_V(napi_get_value_bool(env, args[4], &endOrEqual));
   int32_t endOffset;
   TRY_V(napi_get_value_int32(env, args[5], &endOffset));
 

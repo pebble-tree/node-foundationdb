@@ -7,8 +7,6 @@
 #include "FdbError.h"
 // #include <node.h>
 
-using namespace v8;
-
 static fdb_error_t set_option(void *target, OptionType type, int code, void const* value, int length) {
   switch (type) {
     case OptNetwork: return fdb_network_set_option((FDBNetworkOption)code, (const uint8_t *)value, length);

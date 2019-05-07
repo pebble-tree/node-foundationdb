@@ -203,8 +203,18 @@ MaybeValue futureToJS(napi_env env, FDBFuture *f, napi_value cbOrNull, ExtractVa
 static napi_ref watch_cons_ref;
 
 static napi_value cancel(napi_env env, napi_callback_info info) {
-  FDBFuture *future = (FDBFuture *)getWrapped(env, info);
-  if (future) fdb_future_cancel(future);
+  // If the future has already been cancelled, napi_unwrap returns an invalid argument error.
+  napi_value obj;
+  NAPI_OK_OR_RETURN_NULL(env, napi_get_cb_info(env, info, 0, NULL, &obj, NULL));
+  FDBFuture *future;
+  napi_status status = napi_unwrap(env, obj, (void **)&future);
+  if (status == napi_ok && future) fdb_future_cancel(future);
+  else if (status != napi_invalid_arg) {
+    throw_if_not_ok(env, status);
+  }
+
+  // FDBFuture *future = (FDBFuture *)getWrapped(env, info);
+  // if (future) fdb_future_cancel(future);
   return NULL;
 }
 
