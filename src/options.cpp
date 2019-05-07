@@ -22,7 +22,7 @@ napi_status set_option_wrapped(napi_env env, void *target, OptionType type, napi
   // For network options, target is ignored.
   // args should contain code, value.
   size_t argc = 2;
-  napi_value args[argc];
+  napi_value args[2];
   NAPI_OK_OR_RETURN_STATUS(env, napi_get_cb_info(env, info, &argc, args, NULL, NULL));
 
   uint32_t code;
