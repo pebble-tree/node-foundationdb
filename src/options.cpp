@@ -5,7 +5,7 @@
 
 #include "options.h"
 #include "FdbError.h"
-#include <node.h>
+// #include <node.h>
 
 using namespace v8;
 

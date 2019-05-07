@@ -27,7 +27,7 @@
 #include "fdbversion.h"
 #include <foundationdb/fdb_c.h>
 
-#include "util.h"
+#include "utils.h"
 
 napi_status initCluster(napi_env env);
 MaybeValue newCluster(napi_env env, FDBCluster *cluster);
