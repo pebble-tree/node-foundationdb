@@ -12,8 +12,13 @@
 #include "fdbversion.h"
 #include <foundationdb/fdb_c.h>
 
+#if defined(__clang__) || defined(__GNUC__)
 #define LIKELY(condition) __builtin_expect(static_cast<bool>(condition), 1)
 #define UNLIKELY(condition) __builtin_expect(static_cast<bool>(condition), 0)
+#else
+#define LIKELY(condition)
+#define UNLIKELY(condition)
+#endif
 
 napi_status throw_if_not_ok(napi_env env, napi_status status);
 
@@ -23,13 +28,13 @@ typedef struct MaybeValue {
 } MaybeValue;
 
 inline MaybeValue wrap_ok(napi_value value) {
-  return (MaybeValue) { napi_ok, value };
+  return { napi_ok, value };
 }
 inline MaybeValue wrap_err(napi_status status) {
-  return (MaybeValue) { status, NULL };
+  return { status, NULL };
 }
 inline MaybeValue wrap_null() {
-  return (MaybeValue) { napi_ok, NULL };
+  return { napi_ok, NULL };
 }
 
 #define NAPI_OK_OR_RETURN_NULL(env, expr) do {\
