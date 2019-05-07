@@ -5,8 +5,7 @@
   'targets': [
     {
       'target_name': 'fdblib',
-      'cflags': ['-std=c++0x', '-stdlib=libc++'],
-      'cxxflags': ['-std=c++0x', '-stdlib=libc++'],
+      'cflags': ['-std=c++0x'],
       'conditions': [
         ['napi_version == 4', {
           'sources': [
