@@ -22,17 +22,8 @@
  */
 
 #include "utils.h"
-// #include <node.h>
-// #include <iostream>
-// #include <string>
-// #include <cstring>
-// #include <node_version.h>
-
-// #include "Cluster.h"
-#include "Database.h"
+#include "database.h"
 #include "future.h"
-// #include "future.h"
-// #include "FdbError.h"
 
 using namespace std;
 

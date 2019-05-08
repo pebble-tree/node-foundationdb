@@ -21,7 +21,7 @@
  * THE SOFTWARE.
  */
 
-#include "FdbError.h"
+#include "error.h"
 
 // This is pretty ugly. We're holding a reference to the exports object. The JS
 // code adds a reference to a JS error class after the module is created.

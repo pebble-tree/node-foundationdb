@@ -1,6 +1,6 @@
 #include <node_api.h>
 #if defined(NAPI_VERSION) && NAPI_VERSION >= 4
-#include "napi/utils.cpp"
+#include "napi/database.cpp"
+#else
+#include "nan/Database.cpp"
 #endif
-
-// There is no equivalent file in the nan code.

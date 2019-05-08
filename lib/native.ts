@@ -112,6 +112,11 @@ const rootDir = __dirname.endsWith(`dist${path.sep}lib`) // gross.
   ? path.resolve(`${__dirname}/../..`)
   : path.resolve(`${__dirname}/..`)
 
+const napiVersion = (<any>process.versions).napi
+if (napiVersion == null || napiVersion < 4) {
+  console.warn('Deprecation warning: Your version of nodejs does not support native API v4. Foundationdb support will be removed in a future release. Please update to the latest point release of nodejs or move to node 12 or later')
+}
+
 let mod
 try {
   mod = require('node-gyp-build')(rootDir)

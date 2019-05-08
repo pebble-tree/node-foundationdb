@@ -3,9 +3,9 @@
 #ifndef UTILS_H
 #define UTILS_H
 
-// Experimental is needed for threadsafe_function in node 10.
-#define NAPI_EXPERIMENTAL
-#define NAPI_VERSION 4
+// // Experimental is needed for threadsafe_function in node 10.
+// #define NAPI_EXPERIMENTAL
+// #define NAPI_VERSION 4
 
 #include <node_api.h>
 #include <stdbool.h>

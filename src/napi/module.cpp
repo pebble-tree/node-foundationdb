@@ -32,11 +32,11 @@
 #include "fdbversion.h"
 #include <foundationdb/fdb_c.h>
 
-#include "Cluster.h"
-#include "Database.h"
+#include "cluster.h"
+#include "database.h"
 #include "future.h"
-#include "Transaction.h"
-#include "FdbError.h"
+#include "transaction.h"
+#include "error.h"
 #include "options.h"
 
 using namespace std;

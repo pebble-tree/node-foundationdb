@@ -22,10 +22,9 @@
  */
 
 #include "utils.h"
-#include "Transaction.h"
-// #include "Database.h"
+#include "transaction.h"
+#include "database.h"
 #include "options.h"
-// #include "FdbError.h"
 
 static napi_ref cons_ref;
 
