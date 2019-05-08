@@ -29,7 +29,7 @@ test_script:
 
 after_test:
   # NO_WARNINGS is needed to workaround an issue in node 10.1.0
-  - ps: If ($env:nodejs_version -eq "Current") { $Env:NODE_NO_WARNINGS = 1; npm run prebuild }
+  - ps: If ($env:nodejs_version -eq "12") { $Env:NODE_NO_WARNINGS = 1; npm run prebuild }
 
 artifacts:
   - path: prebuilds
@@ -45,4 +45,4 @@ deploy:
       secure: H4WQnwF6tvz1u0DhcIDTWF8GoVkioJFQMle/NiSpXNaLMqp1vkGRFcRIYwUd4jGH
     on:
       appveyor_repo_tag: true
-      nodejs_version: "Current"
+      nodejs_version: "12"
