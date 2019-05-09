@@ -22,6 +22,7 @@
  */
 
 #include <cstdlib>
+#include <cassert>
 
 #include "options.h"
 #include "transaction.h"
@@ -57,11 +58,19 @@ MaybeValue newTransaction(napi_env env, FDBTransaction *transaction) {
   return wrap_ok(obj);
 }
 
-
+// This is a helper struct to move strings out of passed buffers into a format
+// accessible to foundationdb.
 typedef struct StringParams {
   bool owned;
   uint8_t *str;
   size_t len;
+
+  StringParams(): owned(false) {}
+  ~StringParams() {
+    // The object must be cleaned up manually using destroyStringParams, for
+    // symmetry with toStringParams.
+    assert(owned == false);
+  }
 } StringParams;
 
 // This is a small buffer to avoid thrashing the allocator when reading keys and values.

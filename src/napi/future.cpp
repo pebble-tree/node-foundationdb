@@ -64,8 +64,9 @@ napi_status initFuture(napi_env env) {
   NAPI_OK_OR_RETURN_STATUS(env,
     napi_create_threadsafe_function(env, unused_func, NULL, str, 16, 1, NULL, NULL, NULL, trigger, &tsf)
   );
+  // Start the threadsafe function unreferenced, so node can exit cleanly if its never used.
+  NAPI_OK_OR_RETURN_STATUS(env, napi_unref_threadsafe_function(env, tsf));
 
-  // NAPI_OK_OR_RETURN_STATUS(env, napi_ref_threadsafe_function(env, tsf));
   return napi_ok;
 }
 
