@@ -210,6 +210,9 @@ static napi_value init(napi_env env, napi_value exports) {
   NAPI_OK_OR_RETURN_NULL(env, initWatch(env));
   NAPI_OK_OR_RETURN_NULL(env, initError(env, exports));
 
+  napi_value napi;
+  NAPI_OK_OR_RETURN_NULL(env, napi_create_string_utf8(env, "napi", NAPI_AUTO_LENGTH, &napi));
+
   napi_property_descriptor desc[] = {
     FN_DEF(setAPIVersion),
     FN_DEF(setAPIVersionImpl),
@@ -222,6 +225,9 @@ static napi_value init(napi_env env, napi_value exports) {
     FN_DEF(stopNetwork),
 
     FN_DEF(errorPredicate),
+
+    // export type: 'napi' to differentiate it from the nan-based code at runtime.
+    {"type", NULL, NULL, NULL, NULL, napi, napi_default, NULL},
   };
   NAPI_OK_OR_RETURN_NULL(env, napi_define_properties(env, exports, sizeof(desc) / sizeof(desc[0]), desc));
   return NULL;

@@ -15,6 +15,9 @@ import * as apiVersion from './apiVersion'
 // Must be called before fdb is initialized. Eg setAPIVersion(510).
 export {set as setAPIVersion} from './apiVersion'
 
+// 'nan' or 'napi'.
+export const modType = fdb.type
+
 let initCalled = false
 
 // This is called implicitly when the first cluster / db is opened.
