@@ -21,6 +21,8 @@
  * THE SOFTWARE.
  */
 
+#include "napi.h"
+
 #include <cassert>
 
 #include "utils.h"
