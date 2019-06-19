@@ -60,7 +60,7 @@ static napi_value setAPIVersion(napi_env env, napi_callback_info info) {
   if (previousApiVersion != 0) {
     if (apiVersion != previousApiVersion) {
       napi_throw_error(env, NULL, "foundationdb already initialized with another API version");
-      return null;
+      return NULL;
     }
   } else {
     FDB_OK_OR_RETURN_NULL(env, fdb_select_api_version(apiVersion));
@@ -80,7 +80,7 @@ static napi_value setAPIVersionImpl(napi_env env, napi_callback_info info) {
   if (previousApiVersion != 0) {
     if (apiVersion != previousApiVersion) {
       napi_throw_error(env, NULL, "foundationdb already initialized with another API version");
-      return null;
+      return NULL;
     }
   } else {
     FDB_OK_OR_RETURN_NULL(env, fdb_select_api_version_impl(apiVersion, headerVersion));
