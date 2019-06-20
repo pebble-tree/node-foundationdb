@@ -59,7 +59,7 @@ static napi_value setAPIVersion(napi_env env, napi_callback_info info) {
   
   if (previousApiVersion != 0) {
     if (apiVersion != previousApiVersion) {
-      FDB_OK_OR_RETURN_NULL(env, fdb_select_api_version_impl(apiVersion, headerVersion));
+      FDB_OK_OR_RETURN_NULL(env, fdb_select_api_version(apiVersion));
     }
   } else {
     FDB_OK_OR_RETURN_NULL(env, fdb_select_api_version(apiVersion));
