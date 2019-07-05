@@ -42,22 +42,37 @@ using namespace std;
 static uv_thread_t fdbThread;
 
 static bool networkStarted = false;
-
+static int32_t previousApiVersion = 0;
 
 void SetAPIVersion(const FunctionCallbackInfo<Value>& info) {
   int apiVersion = info[0]->Int32Value();
-  fdb_error_t errorCode = fdb_select_api_version(apiVersion);
 
+  if (previousApiVersion != 0) {
+    if (apiVersion == previousApiVersion) {
+      return
+    }
+  }
+  
+  fdb_error_t errorCode = fdb_select_api_version(apiVersion);
   if(errorCode != 0) {
     if (errorCode == 2203)
       return Nan::ThrowError(FdbError::NewInstance(errorCode, "API version not supported by the installed FoundationDB C library"));
     return Nan::ThrowError(FdbError::NewInstance(errorCode));
   }
+  
+  previousApiVersion = apiVersion
 }
 
 void SetAPIVersionImpl(const FunctionCallbackInfo<Value>& info) {
   int apiVersion = info[0]->Int32Value();
   int headerVersion = info[1]->Int32Value();
+  
+  if (previousApiVersion != 0) {
+    if (apiVersion == previousApiVersion) {
+      return
+    }
+  }
+  
   fdb_error_t errorCode = fdb_select_api_version_impl(apiVersion, headerVersion);
 
   if(errorCode != 0) {
@@ -65,6 +80,8 @@ void SetAPIVersionImpl(const FunctionCallbackInfo<Value>& info) {
       return Nan::ThrowError(FdbError::NewInstance(errorCode, "API version not supported by the installed FoundationDB C library"));
     return Nan::ThrowError(FdbError::NewInstance(errorCode));
   }
+  
+  previousApiVersion = apiVersion
 }
 
 
