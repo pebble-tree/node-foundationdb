@@ -49,7 +49,7 @@ void SetAPIVersion(const FunctionCallbackInfo<Value>& info) {
 
   if (previousApiVersion != 0) {
     if (apiVersion == previousApiVersion) {
-      return
+      return;
     }
   }
   
@@ -60,7 +60,7 @@ void SetAPIVersion(const FunctionCallbackInfo<Value>& info) {
     return Nan::ThrowError(FdbError::NewInstance(errorCode));
   }
   
-  previousApiVersion = apiVersion
+  previousApiVersion = apiVersion;
 }
 
 void SetAPIVersionImpl(const FunctionCallbackInfo<Value>& info) {
@@ -69,7 +69,7 @@ void SetAPIVersionImpl(const FunctionCallbackInfo<Value>& info) {
   
   if (previousApiVersion != 0) {
     if (apiVersion == previousApiVersion) {
-      return
+      return;
     }
   }
   
@@ -81,7 +81,7 @@ void SetAPIVersionImpl(const FunctionCallbackInfo<Value>& info) {
     return Nan::ThrowError(FdbError::NewInstance(errorCode));
   }
   
-  previousApiVersion = apiVersion
+  previousApiVersion = apiVersion;
 }
 
 
