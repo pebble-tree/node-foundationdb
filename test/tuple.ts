@@ -15,7 +15,7 @@ describe('tuple', () => {
     assert.deepStrictEqual(unpacked, val)
 
     // Check that numbered int -> bigint has no effect on encoded output.
-    if (typeof val === 'number' && Number.isInteger(val)) {
+    if (typeof val === 'number' && Number.isSafeInteger(val)) {
       const packed2 = tuple.pack([BigInt(val)])
       assert.deepStrictEqual(packed2, packed, 'Value encoded differently with bigint encoder')
     }
@@ -52,6 +52,15 @@ describe('tuple', () => {
     assertRoundTrip(0.75)
     assertRoundTrip(BigInt(12341234123412341234))
     assertRoundTrip(BigInt(-12341234123412341234))
+
+    assertRoundTrip(Number.MAX_SAFE_INTEGER)
+    assertRoundTrip(Number.MAX_SAFE_INTEGER + 1) // Encoded as a double.
+    assertRoundTrip(BigInt(Number.MAX_SAFE_INTEGER) + BigInt(1)) // Encoded as an integer
+
+    assertRoundTrip(-Number.MAX_SAFE_INTEGER)
+    assertRoundTrip(-Number.MAX_SAFE_INTEGER - 1)
+    assertRoundTrip(-BigInt(Number.MAX_SAFE_INTEGER) - BigInt(1))
+
     assertRoundTrip({type: 'float', value: 0.5, rawEncoding:floatBytes(0.5)}, true)
   })
 
