@@ -13,6 +13,12 @@ describe('tuple', () => {
     const packed = tuple.pack([val])
     const unpacked = tuple.unpack(packed, strict)[0]
     assert.deepStrictEqual(unpacked, val)
+
+    // Check that numbered int -> bigint has no effect on encoded output.
+    if (typeof val === 'number' && Number.isInteger(val)) {
+      const packed2 = tuple.pack([BigInt(val)])
+      assert.deepStrictEqual(packed2, packed, 'Value encoded differently with bigint encoder')
+    }
   }
   const assertRoundTripBytes = (orig: Buffer, strict: boolean = false) => {
     const val = tuple.unpack(orig, strict)[0] as TupleItem
@@ -20,13 +26,48 @@ describe('tuple', () => {
     // console.log(orig.toString('hex'), val, packed.toString('hex'))
     assert.deepStrictEqual(packed, orig)
   }
+  const assertEncodesAs = (value: TupleItem, data: Buffer | string | number[]) => {
+    const encoded = tuple.pack([value])
+    let bytes = Buffer.isBuffer(data) ? data
+      : typeof data === 'string' ? Buffer.from(data, 'ascii')
+      : Buffer.from(data)
+    assert.deepStrictEqual(encoded, bytes)
+
+    // Check that numbered int -> bigint has no effect on encoded output.
+    if (typeof value === 'number' && Number.isInteger(value)) {
+      const encoded2 = tuple.pack([BigInt(value)])
+      assert.deepStrictEqual(encoded2, bytes, 'Value encoded differently with bigint encoder')
+    }
+
+    const decoded = tuple.unpack(encoded)
+    // Node 8
+    if (typeof value === 'number' && isNaN(value as number)) assert(isNaN(decoded[0] as number))
+    else assert.deepStrictEqual(decoded, [value])
+  }
 
   it('roundtrips expected values', () => {
     const data = ['hi', null, '👾', 321, 0, -100]
     assertRoundTrip(data)
 
     assertRoundTrip(0.75)
+    assertRoundTrip(BigInt(12341234123412341234))
+    assertRoundTrip(BigInt(-12341234123412341234))
     assertRoundTrip({type: 'float', value: 0.5, rawEncoding:floatBytes(0.5)}, true)
+  })
+
+  it('implements bigint encoding in a way that matches the java bindings', () => {
+    // These are ported from here:
+    // https://github.com/apple/foundationdb/blob/becc01923a30c1bc2ba158b293dbb38de7585c72/bindings/java/src/test/com/apple/foundationdb/test/TupleTest.java#L109-L122
+    assertEncodesAs(BigInt('0x7fffffffffffffff'), [0x1C, 0x7f, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF])
+    assertEncodesAs(BigInt('0x8000000000000000'), [0x1C, 0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00])
+    assertEncodesAs(BigInt('0xffffffffffffffff'), [0x1C, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF])
+    assertEncodesAs(BigInt('0x10000000000000000'), [0x1D, 0x09, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00])
+    assertEncodesAs(-0xffffffff, [0x10, 0x00, 0x00, 0x00, 0x00])
+    assertEncodesAs(-BigInt('0x7ffffffffffffffe'), [0x0C, 0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01])
+    assertEncodesAs(-BigInt('0x7fffffffffffffff'), [0x0C, 0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00])
+    assertEncodesAs(-BigInt('0x8000000000000000'), [0x0C, 0x7f, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF])
+    assertEncodesAs(-BigInt('0x8000000000000001'), [0x0C, 0x7f, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF - 1])
+    assertEncodesAs(-BigInt('0xffffffffffffffff'), [0x0C, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00])
   })
 
   it('preserves encoding of values in strict mode', () => {
@@ -56,15 +97,7 @@ describe('tuple', () => {
     // https://github.com/apple/foundationdb/blob/master/design/tuple.md
 
     const testConformance = (name: string, value: TupleItem, bytes: Buffer | string) => {
-      it(name, () => {
-        const encoded = tuple.pack([value])
-        assert.deepStrictEqual(encoded, Buffer.isBuffer(bytes) ? bytes : Buffer.from(bytes, 'ascii'))
-
-        const decoded = tuple.unpack(encoded)
-        // Node 8
-        if (isNaN(value as number)) assert(isNaN(decoded[0] as number))
-        else assert.deepStrictEqual(decoded, [value])
-      })
+      it(name, () => assertEncodesAs(value, bytes))
     }
 
     testConformance('null', null, '\x00')

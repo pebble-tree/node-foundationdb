@@ -3,7 +3,7 @@
 //
 // And the typecodes are here:
 // https://github.com/apple/foundationdb/blob/master/design/tuple.md
-// 
+//
 // This code supports:
 // - null, true, false
 // - integers
@@ -11,19 +11,34 @@
 // - unicode string
 // - float, double
 // - uuid
-// 
-// It does not support:
-// - arbitrary-precision decimals
-// - 64 bit IDs
-// - versionstamps
-// - user type codes
-// - int values outside the safe zone of 53 bits
 //
-// Note that this library canonicalizes some values by default. All numbers
-// are encoded to / from javascript double precision numbers. If you want to
-// encode a single precision float, wrap it as {type: 'float, value: 123}. If
-// you want to preserve exact byte encodings of inputs, pass `true` as the
-// final argument to decode.
+//
+// It does not support:
+// - 64 bit IDs
+// - user type codes
+//
+// Note the javascript number types don't neatly match the number types used in
+// tuple encoding. For compatibility, by default all javascript integer numbers
+// are encoded using the integer tuple types. This means in the byte encoding
+// (and thus in key ordering), all non-integers are greater than all integers.
+// Eg the tuple key for 0.5 > tuple key for 1. You can force the tuple encoding
+// to encode a number as a float / double by wrapping your key in an object -
+// {type: 'float' | 'double', value: XXX}. Any number that is an integer outside
+// the safe range will be encoded as a double. If you want to preserve exact
+// byte encodings of inputs, you can pass `true` as the final argument to decode.
+//
+// Also note that tuple values can encode integers larger than the safe range
+// supported by javascript's number type. You will run into these numbers when
+// interoperating with bindings in other languages, or when decoding tuple
+// values containing bigints. Any integer outside the javascript safe range will
+// be decoded into a BigInt.
+//
+// Note when encoding bigints: The tuple encoding does not differentiate between
+// the encoding for an integer and a bigint. Any integer inside the JS safe
+// range for a number will be decoded to a 'number' rather than a 'bigint'. So
+// for instance: decode(encode(2n**53n)) === 2n**53n but decode(encode(10n)) ===
+// 10.
+
 
 import assert = require('assert')
 import {UnboundStamp} from './versionstamp'
@@ -46,8 +61,8 @@ enum Code {
   String = 2,
   Nested = 0x5,
   IntZero = 0x14,
-  PosIntEnd = 0x1c,
-  NegIntStart = 0x0c,
+  PosIntEnd = 0x1d,
+  NegIntStart = 0x0b,
   Float = 0x20,
   Double = 0x21,
   False = 0x26,
@@ -61,7 +76,7 @@ enum Code {
 // Supported tuple item types.
 // This awkwardness brougth to you by:
 // https://github.com/unional/typescript-guidelines/blob/master/pages/advance-types/recursive-types.md
-export type TupleItem = null | Buffer | string | TupleArr | number | boolean | {
+export type TupleItem = null | Buffer | string | TupleArr | number | BigInt | boolean | {
   type: 'uuid', value: Buffer
 } | {
   // This is flattened into a double during decoding if noCanonicalize is
@@ -128,6 +143,10 @@ const findNullBytes = (buf: Buffer, pos: number, searchForTerminators: boolean =
 
   return nullBytes
 }
+
+// This helper works around a bug in typescript related to bigint:
+// https://github.com/microsoft/TypeScript/issues/36155
+const isBigInt = (x: TupleItem): x is BigInt => typeof x === 'bigint'
 
 class BufferBuilder {
   storage: Buffer
@@ -232,33 +251,64 @@ const encode = (into: BufferBuilder, item: TupleItem, versionstampPos: Versionst
     }
     into.appendByte(0)
 
-  } else if (typeof item === 'number' && Number.isSafeInteger(item) && !Object.is(item, -0)) {
-    const isNegative = item < 0
-    let absItem = Math.abs(item)
-    let byteLen = numByteLen(absItem)
-    into.need(1 + byteLen)
-
-    into.appendByte(Code.IntZero + (item < 0 ? -byteLen : byteLen))
-
-    let lowBits = (absItem & 0xffffffff) >>> 0
-    let highBits = ((absItem - lowBits) / 0x100000000) >>> 0
-    if (item < 0) {
-      lowBits = (~lowBits)>>>0
-      highBits = (~highBits)>>>0
-    }
-
-    for (; byteLen > 4; --byteLen) into.appendByte(highBits >>> (8*(byteLen-5)))
-    for (; byteLen > 0; --byteLen) into.appendByte(lowBits >>> (8*(byteLen-1)))
-
   } else if (typeof item === 'number') {
-    // Double precision float.
-    into.appendByte(Code.Double)
+    if (Number.isSafeInteger(item) && !Object.is(item, -0)) {
+      let absItem = Math.abs(item)
+      let byteLen = numByteLen(absItem)
+      into.need(1 + byteLen)
 
-    // We need to look at the representation bytes - which needs a temporary buffer.
-    const bytes = Buffer.allocUnsafe(8)
-    bytes.writeDoubleBE(item, 0)
-    adjustFloat(bytes, true)
-    into.appendBuffer(bytes)
+      into.appendByte(Code.IntZero + (item < 0 ? -byteLen : byteLen))
+
+      let lowBits = (absItem & 0xffffffff) >>> 0
+      let highBits = ((absItem - lowBits) / 0x100000000) >>> 0
+      if (item < 0) {
+        lowBits = (~lowBits)>>>0
+        highBits = (~highBits)>>>0
+      }
+
+      for (; byteLen > 4; --byteLen) into.appendByte(highBits >>> (8*(byteLen-5)))
+      for (; byteLen > 0; --byteLen) into.appendByte(lowBits >>> (8*(byteLen-1)))
+      
+    } else {
+      // Encode as a double precision float.
+      into.appendByte(Code.Double)
+
+      // We need to look at the representation bytes - which needs a temporary buffer.
+      const bytes = Buffer.allocUnsafe(8)
+      bytes.writeDoubleBE(item, 0)
+      adjustFloat(bytes, true)
+      into.appendBuffer(bytes)
+    }
+  } else if (isBigInt(item)) {
+    const biZero = BigInt(0)
+    // throw new Error('BigInts are not yet supported by this library')
+    if (item === biZero) {
+      into.appendByte(Code.IntZero)
+    } else {
+      const isNeg = item < biZero
+      // String based conversion like this is pretty inefficient. It could be sped
+      // up using https://www.npmjs.com/package/bigint-buffer or something similar.
+      const rawHexBytes = (isNeg ? -item : item).toString(16)
+      const rawBytes = Buffer.from(((rawHexBytes.length % 2 === 1) ? '0' : '') + rawHexBytes, 'hex')
+      const len = rawBytes.length
+
+      if (len > 255) throw Error('Tuple encoding does not support bigints larger than 255 bytes.')
+
+      if (isNeg) {
+        // Encode using 1s compliment - flip the bits.
+        for (let i = 0; i < rawBytes.length; i++) rawBytes[i] = ~rawBytes[i]
+      }
+
+      if (len <= 8) {
+        // Normal integer encoding. This is required for sorting to be correct
+        // but these numbers might not round-trip into bigints.
+        into.appendByte(Code.IntZero + (isNeg ? -len : len))
+      } else if (len < 256) {
+        into.appendByte(isNeg ? Code.NegIntStart : Code.PosIntEnd)
+        into.appendByte(len)
+      }
+      into.appendBuffer(rawBytes)
+    }
 
   } else if (typeof item === 'object' && (item.type === 'float' || item.type === 'double')) {
     const isFloat = item.type === 'float'
@@ -329,27 +379,38 @@ export const packUnboundVersionstamp = (arr: TupleItem[]): UnboundStamp => {
 
 // *** Decode
 
-function decodeNumber(buf: Buffer, offset: number, numBytes: number) {
-  const negative = numBytes < 0
-  numBytes = Math.abs(numBytes)
+function decodeBigInt(buf: Buffer, offset: number, numBytes: number, isNeg: boolean): BigInt {
+  let num = BigInt(0)
+  let shift = 0
+  for (let i = numBytes-1; i >= 0; --i) {
+    let b = buf[offset+i]
+    if (isNeg) b = ~b & 0xff
+
+    num += BigInt(b) << BigInt(shift)
+    shift += 8
+  }
+
+  return isNeg ? -num : num
+}
+
+function decodeNumberOrBigInt(buf: Buffer, offset: number, numBytes: number, isNeg: boolean): number | BigInt {
+  // const negative = numBytesOrNeg < 0
+  // const numBytes = Math.abs(numBytesOrNeg)
 
   let num = 0
   let mult = 1
-  let odd
   for (let i = numBytes-1; i >= 0; --i) {
     let b = buf[offset+i]
-    if (negative) b = -(~b & 0xff)
-
-    if (i == numBytes-1) odd = b & 0x01
+    if (isNeg) b = -(~b & 0xff)
 
     num += b * mult
     mult *= 0x100
   }
 
   if (!Number.isSafeInteger(num)) {
-    throw new RangeError('Cannot unpack signed integers larger than 54 bits')
+    return decodeBigInt(buf, offset, numBytes, isNeg)
   }
-
+  
   return num
 }
 
@@ -451,13 +512,24 @@ function decode(buf: Buffer, pos: {p: number}, vsAt: number, noCanonicalize: boo
       }
     }
     default: {
-      const byteLen = code-20 // negative if number is negative.
-      const absByteLen = Math.abs(byteLen)
-      if (absByteLen <= 7) {
+      if (code > Code.NegIntStart && code < Code.PosIntEnd) {
+        const byteLen = code-20 // negative if number is negative.
+        const absByteLen = Math.abs(byteLen)
         pos.p += absByteLen
-        return code === Code.IntZero ? 0 : decodeNumber(buf, p, byteLen)
-      } else if (absByteLen <= 8) {
-        throw new RangeError('Cannot unpack signed integers larger than 54 bits');
+        if (code === Code.IntZero) return 0
+        else if (absByteLen <= 7) {
+          // Try to decode as a number - but we'll bump it to a BigInt if the
+          // number falls outside the safe range.
+          return decodeNumberOrBigInt(buf, p, absByteLen, byteLen < 0)
+        } else {
+          return decodeBigInt(buf, p, absByteLen, byteLen < 0)
+        }
+      } else if (code === Code.NegIntStart || code === Code.PosIntEnd) {
+        const len = buf[p++]
+        const bytes = Buffer.alloc(len)
+        pos.p = p + len
+        
+        return decodeBigInt(buf, p, len, code === Code.NegIntStart)
       } else throw new TypeError(`Unknown data type in DB: ${buf} at ${pos} code ${code}`);
     }
   }
@@ -511,8 +583,8 @@ export function bakeVersionstamp(val: TupleItem[], versionstamp: Buffer, codeByt
   for (let i = 0; i < val.length; i++) {
     const v = val[i]
     if (Array.isArray(v)) bakeVersionstamp(v, versionstamp, codeBytes)
-    else if (v != null && typeof v === 'object' && !Buffer.isBuffer(v) && v.type === 'unbound versionstamp') {
-      // ^-- thats gross
+    else if (v != null && typeof v === 'object' && !Buffer.isBuffer(v) && !isBigInt(v) && v.type === 'unbound versionstamp') {
+      // ^-- gross
       if (codeBytes == null && v.code == null) {
         throw Error('Internal consistency error: unknown versionstamp code in bakeVersion. This should never happen - file a bug')
       }
