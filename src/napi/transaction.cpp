@@ -116,7 +116,10 @@ static napi_status toStringParams(napi_env env, napi_value value, StringParams *
 }
 
 static void destroyStringParams(StringParams *params) {
-  if (params->owned) free(params->str);
+  if (params->owned) {
+    free(params->str);
+    params->owned = false;
+  }
   else if (params->str == sp_buf) buf_in_use = false;
   params->str = NULL;
 }
