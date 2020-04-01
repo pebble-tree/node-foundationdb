@@ -15,6 +15,11 @@ export type Transformer<In, Out> = {
   // These are hooks for the tuple type to support unset versionstamps
   packUnboundVersionstamp?(val: In): UnboundStamp,
   bakeVersionstamp?(val: In, versionstamp: Buffer, code: Buffer | null): void,
+
+  /// Range which includes all "children" of this item, or whatever that means
+  /// for the type. Added primarily to make it easier to get a range with some
+  /// tuple prefix.
+  range?(prefix: In): {begin: Buffer, end: Buffer},
 }
 
 const id = <T>(x: T) => x
@@ -47,6 +52,14 @@ export const prefixTransformer = <In, Out>(prefix: string | Buffer, inner: Trans
   }
 
   if (inner.bakeVersionstamp) transformer.bakeVersionstamp = inner.bakeVersionstamp.bind(inner)
+
+  if (inner.range) transformer.range = prefix => {
+    const innerRange = inner.range!(prefix)
+    return {
+      begin: concat2(_prefix, innerRange.begin),
+      end: concat2(_prefix, innerRange.end),
+    }
+  }
 
   return transformer
 }

@@ -77,6 +77,11 @@ interface TxnScope {
   toBake: null | BakeItem<any>[]
 }
 
+const defaultGetRange = <KeyIn, KeyOut>(prefix: KeyIn, keyXf: Transformer<KeyIn, KeyOut>): {begin: Buffer | string, end: Buffer | string} => ({
+  begin: keyXf.pack(prefix),
+  end: strInc(keyXf.pack(prefix)),
+})
+
 // NativeValue is string | Buffer because the C code accepts either format.
 // But all values returned from methods will actually just be Buffer.
 export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = NativeValue, ValOut = Buffer> {
@@ -247,10 +252,25 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
       _start: KeyIn | KeySelector<KeyIn>, // Consider also supporting string / buffers for these.
       _end?: KeyIn | KeySelector<KeyIn>, // If not specified, start is used as a prefix.
       opts: RangeOptions = {}) {
-    let start = keySelector.toNative(keySelector.from(_start), this._keyEncoding)
-    let end = _end == null
-      ? keySelector.firstGreaterOrEqual(strInc(start.key))
-      : keySelector.toNative(keySelector.from(_end), this._keyEncoding)
+
+    // This is a bit of a dog's breakfast. We're trying to handle a lot of different cases here:
+    // - The start and end parameters can be specified as keys or as selectors
+    // - The end parameter can be missing / null, and if it is we want to "do the right thing" here
+    //   - Which normally means searching between [start, strInc(start)]
+    //   - But with tuple encoding this means between [start + '\x00', start + '\xff']
+
+    let start: KeySelector<string | Buffer>, end: KeySelector<string | Buffer>
+    const startSelEnc = keySelector.from(_start)
+    
+    if (_end == null) {
+      const range = (this._keyEncoding.range || defaultGetRange)(startSelEnc.key, this._keyEncoding)
+      start = keySelector(range.begin, startSelEnc.orEqual, startSelEnc.offset)
+      end = keySelector.firstGreaterOrEqual(range.end)
+    } else {
+      start = keySelector.toNative(startSelEnc, this._keyEncoding)
+      end = keySelector.toNative(keySelector.from(_end), this._keyEncoding)
+    }
+
     let limit = opts.limit || 0
     const streamingMode = opts.streamingMode == null ? StreamingMode.Iterator : opts.streamingMode
 

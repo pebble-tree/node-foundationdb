@@ -46,6 +46,10 @@ import {concat2} from './util'
 
 const UNSET_TR_VERSION = Buffer.alloc(10).fill(0xff)
 
+// Safe to return in short-circuit evaluation because unless you do something
+// weird, an empty buffer is immutable.
+const BUF_EMPTY = Buffer.alloc(0)
+
 const numByteLen = (num: number) => {
   let max = 1
   for (let i = 0; i <= 8; i++) {
@@ -116,10 +120,12 @@ interface TupleArr extends Array<TupleItem> {}
 // I only need this helper because {type: 'unbound versionstamp'} is so awful to type ... :/
 export const unboundVersionstamp = (code?: number): TupleItem => ({type: 'unbound versionstamp', code})
 
+// const falseByte = Buffer.from([Code.False])
+// const trueByte = Buffer.from([Code.True])
 
-const nullByte = Buffer.from([Code.Null])
-const falseByte = Buffer.from([Code.False])
-const trueByte = Buffer.from([Code.True])
+export const rawRange = {
+  begin: Buffer.from([0x00]), end: Buffer.from([0xff])
+}
 
 const findNullBytes = (buf: Buffer, pos: number, searchForTerminators: boolean = false) => {
   var nullBytes = [];
@@ -352,6 +358,8 @@ const encode = (into: BufferBuilder, item: TupleItem, versionstampPos: Versionst
 function packRaw(arr: TupleItem[]): Buffer | UnboundStamp {
   if (!Array.isArray(arr)) throw new TypeError('fdb.tuple.pack must be called with an array')
 
+  if (arr.length === 0) return BUF_EMPTY
+
   let versionstampPos: VersionstampPos = {}
   const builder = new BufferBuilder()
   for (let i = 0; i < arr.length; i++) {
@@ -530,7 +538,7 @@ function decode(buf: Buffer, pos: {p: number}, vsAt: number, noCanonicalize: boo
         pos.p = p + len
         
         return decodeBigInt(buf, p, len, code === Code.NegIntStart)
-      } else throw new TypeError(`Unknown data type in DB: ${buf} at ${pos} code ${code}`);
+      } else throw new TypeError(`Invalid tuple data: code ${code} ('${buf}' at ${pos})`);
     }
   }
 }
@@ -565,8 +573,8 @@ export function range(arr: TupleItem[]) {
   var packed = pack(arr)
 
   return {
-    begin: Buffer.concat([packed, nullByte]),
-    end: Buffer.concat([packed, Buffer.from('ff', 'hex')])
+    begin: concat2(packed, rawRange.begin),
+    end: concat2(packed, rawRange.end),
   }
 }
 

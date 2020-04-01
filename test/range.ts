@@ -51,15 +51,25 @@ withEachDb(db => describe('key value functionality', () => {
     })
   })
 
-  it('supports null characters in the range string', async () => {
+  it('supports raw string ranges against the root database', async () => {
     // Regression - https://github.com/josephg/node-foundationdb/pull/39
     
     // This regression requires that we run a naked query without a prefix,
-    // which is impossible to do using the current API.
-    const _db = db.getRoot()
-    await db.doTransaction(async tn => {
+    // which is difficult to do with the current API
+    await db.getRoot().doTransaction(async tn => {
       for await (const batch of tn.getRange( 'a', 'b' )) {}
     });
+  })
+
+  it('fetches tuple ranges using a prefix correctly', async () => {
+    const _db = db.withKeyEncoding(fdb.tuple)
+
+    await _db.set(['a\x00'], 'no')
+    await _db.set(['a', 'b'], 'yes')
+
+    assert.deepStrictEqual(await _db.getRangeAllStartsWith(['a']),
+      [[['a', 'b'], Buffer.from('yes')]]
+    )
   })
 
   it('getRange without a specified end uses start as a prefix')
