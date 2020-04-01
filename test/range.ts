@@ -51,6 +51,17 @@ withEachDb(db => describe('key value functionality', () => {
     })
   })
 
+  it('supports null characters in the range string', async () => {
+    // Regression - https://github.com/josephg/node-foundationdb/pull/39
+    
+    // This regression requires that we run a naked query without a prefix,
+    // which is impossible to do using the current API.
+    const _db = db.getRoot()
+    await db.doTransaction(async tn => {
+      for await (const batch of tn.getRange( 'a', 'b' )) {}
+    });
+  })
+
   it('getRange without a specified end uses start as a prefix')
 
   describe('selectors', () => {

@@ -59,12 +59,17 @@ MaybeValue newTransaction(napi_env env, FDBTransaction *transaction) {
 }
 
 // This is a helper struct to move strings out of passed buffers into a format
-// accessible to foundationdb.
+// accessible to foundationdb. Objects of this class shouldn't be created
+// directly - they should only be created and destroyed via toStringParams and
+// destroyStringParams.
 typedef struct StringParams {
-  bool owned;
+  bool owned; // Marks if we're holding memory that needs to be freed.
   uint8_t *str;
   size_t len;
 
+  // This code is mostly straight C code - I'm using these simply to make memory
+  // leaks cause runtime assertions if the struct is used incorrectly. I feel
+  // weird about mixing styles like this though.
   StringParams(): owned(false) {}
   ~StringParams() {
     // The object must be cleaned up manually using destroyStringParams, for
@@ -118,9 +123,8 @@ static napi_status toStringParams(napi_env env, napi_value value, StringParams *
 static void destroyStringParams(StringParams *params) {
   if (params->owned) {
     free(params->str);
-    params->owned = false;
-  }
-  else if (params->str == sp_buf) buf_in_use = false;
+    params->owned = false; // Mark stringparams object as safe to delete.
+  } else if (params->str == sp_buf) buf_in_use = false;
   params->str = NULL;
 }
 

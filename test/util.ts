@@ -3,6 +3,7 @@ import * as fdb from '../lib'
 
 // We'll tuck everything behind this prefix and delete it all when the tests finish running.
 export const prefix = '__test_data__/'
+
 // export const prefixBuf = (key: Buffer) => Buffer.concat([Buffer.from(prefix), key])
 
 // Using big endian numbers because they're lexographically sorted correctly.
