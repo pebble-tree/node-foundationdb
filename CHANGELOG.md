@@ -1,3 +1,22 @@
+# 0.10.4
+
+- Fixed [a bug](https://github.com/josephg/node-foundationdb/pull/39) involving range queries when a prefix wasn't applied to the database. Thanks @kristate!
+- Removed compiled nan-based prebuilds for node 8 and node 11, since those versions have left the nodejs LTS window. Napi artifacts should still work on recent point releases.
+- Added bigint support in tuple encoding
+
+# 0.10.3
+
+- Fixed behaviour when setAPIVersion is called multiple times. Thanks @ex3ndr! [Issue](https://github.com/josephg/node-foundationdb/issues/30) / [PR](https://github.com/josephg/node-foundationdb/pull/31)
+- Added .modType to exported library artifact to help with debugging (its 'nan' or 'napi' depending on the build used).
+
+# 0.10.2
+
+- Fixed a bug causing node-gyp-build to stall when running `npm install`
+
+# 0.10.1
+
+(Tweaked testing infrastructure, but made no user / package level changes)
+
 # 0.10.0
 
 - Moved to n-api, which should improve performance and fix the build on node 12. It should also work on all future nodejs versions without code change. This breaks compatibility between the bundled prebuilds and most older point releases of node 8, 10 and 11. The latest point releases of each version of nodejs (v8.16.0+, 10.15.3+, 11.14.0+ or node 12) all support napi v4. The fallback build process should still build correct & usable binaries using the old C code path, but at some point I'll remove this code entirely.
