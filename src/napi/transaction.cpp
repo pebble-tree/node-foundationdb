@@ -90,7 +90,6 @@ static napi_status toStringParams(napi_env env, napi_value value, StringParams *
   napi_valuetype type;
   NAPI_OK_OR_RETURN_STATUS(env, napi_typeof(env, value, &type));
   if (type == napi_string) {
-
     // First get the length.
     NAPI_OK_OR_RETURN_STATUS(env, napi_get_value_string_utf8(env, value, NULL, 0, &result->len));
 
@@ -101,8 +100,8 @@ static napi_status toStringParams(napi_env env, napi_value value, StringParams *
       buf_in_use = true; // After fetch function, so the buffer isn't held if an error happens.
     } else {
       result->owned = true;
-      result->str = (uint8_t *)malloc(result->len);
-      NAPI_OK_OR_RETURN_STATUS(env, napi_get_value_string_utf8(env, value, (char *)result->str, result->len, NULL));
+      result->str = (uint8_t *)malloc(result->len + 1);
+      NAPI_OK_OR_RETURN_STATUS(env, napi_get_value_string_utf8(env, value, (char *)result->str, result->len + 1, NULL));
     }
   } else {
     result->owned = false;

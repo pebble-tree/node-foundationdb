@@ -1,6 +1,7 @@
 import 'mocha'
 import assert = require('assert')
 import {
+  prefix as testPrefix,
   strXF,
   numToBuf,
   bufToNum,
@@ -331,6 +332,17 @@ withEachDb(db => describe('key value functionality', () => {
       }))
 
       await assertRejects(watch!.promise)
+    })
+  })
+
+  describe('regression', () => {
+    it('does not trim off the end of a string', async () => {
+      // https://github.com/josephg/node-foundationdb/issues/40
+      const _db = db.getRoot()
+
+      await _db.set(testPrefix + 'somekey', 'val')
+      const val = await _db.get(testPrefix + 'somekey')
+      assert.strictEqual(val?.toString(), 'val')
     })
   })
 }))
