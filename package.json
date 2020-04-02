@@ -24,7 +24,7 @@
   "scripts": {
     "install": "node-gyp-build",
     "test": "mocha -r ts-node/register test/*.ts",
-    "prepare": "tsc -p .",
+    "prepare": "rm -rf dist && tsc -p .",
     "prepublishOnly": "rm -rf prebuilds && prebuildify-ci download",
     "prebuild": "prebuildify -t 10.0.0 --strip && prebuildify -t 12.1.0 --napi --strip"
   },
