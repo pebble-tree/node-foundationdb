@@ -1,4 +1,5 @@
 #include <cassert>
+#include <thread>
 
 #include "utils.h"
 #include "future.h"
@@ -12,12 +13,17 @@
 
 static napi_threadsafe_function tsf;
 static int num_outstanding = 0;
-
+std::thread::id node_main_thread;
 
 
 template<class T> struct CtxBase {
   FDBFuture *future;
   napi_status (*fn)(napi_env, FDBFuture*, T*);
+
+  // This is a little dirty, since we don't want to hold a reference to env.
+  // This is here so when fdb_future_set_callback calls the callback directly we
+  // can immediately call trigger.
+  napi_env env;
 };
 
 static void trigger(napi_env env, napi_value _js_callback, void* _context, void* data) {
@@ -55,6 +61,8 @@ napi_value unused(napi_env, napi_callback_info) {
 }
 
 napi_status initFuture(napi_env env) {
+  node_main_thread = std::this_thread::get_id();
+
   char name[] = "unused_panic";
   NAPI_OK_OR_RETURN_STATUS(env, napi_create_function(env, name, sizeof(name)-1, unused, NULL, &unused_func));
 
@@ -62,7 +70,7 @@ napi_status initFuture(napi_env env) {
   napi_value str;
   NAPI_OK_OR_RETURN_STATUS(env, napi_create_string_utf8(env, resource_name, sizeof(resource_name)-1, &str));
   NAPI_OK_OR_RETURN_STATUS(env,
-    napi_create_threadsafe_function(env, unused_func, NULL, str, 16, 1, NULL, NULL, NULL, trigger, &tsf)
+    napi_create_threadsafe_function(env, unused_func, NULL, str, 16 /*queue size*/, 1, NULL, NULL, NULL, trigger, &tsf)
   );
   // Start the threadsafe function unreferenced, so node can exit cleanly if its never used.
   NAPI_OK_OR_RETURN_STATUS(env, napi_unref_threadsafe_function(env, tsf));
@@ -79,6 +87,7 @@ void closeFuture(napi_env env) {
 template<class T> static napi_status resolveFutureInMainLoop(napi_env env, FDBFuture *f, T* ctx, napi_status (*fn)(napi_env env, FDBFuture *f, T*)) {
   ctx->future = f;
   ctx->fn = fn;
+  ctx->env = env;
 
   // Prevent node from closing until the future has resolved.
   // NAPI_OK_OR_RETURN_STATUS(env, napi_ref_threadsafe_function(env, tsf));
@@ -91,7 +100,17 @@ template<class T> static napi_status resolveFutureInMainLoop(napi_env env, FDBFu
   assert(0 == fdb_future_set_callback(f, [](FDBFuture *f, void *_ctx) {
     // raise(SIGTRAP);
     T* ctx = static_cast<T*>(_ctx);
-    assert(napi_ok == napi_call_threadsafe_function(tsf, ctx, napi_tsfn_blocking));
+
+    // Foundationdb will sometimes resolve this callback in the main thread. In
+    // that case, we can't block because doing so could cause a deadlock - see
+    // https://github.com/josephg/node-foundationdb/issues/41 .
+    if (node_main_thread == std::this_thread::get_id()) {
+      // Trigger immediately without going via threadsafe_function
+      trigger(ctx->env, NULL, NULL, ctx);
+    } else {
+      ctx->env = NULL;
+      assert(napi_ok == napi_call_threadsafe_function(tsf, ctx, napi_tsfn_blocking));
+    }
   }, ctx));
 
   return napi_ok;
