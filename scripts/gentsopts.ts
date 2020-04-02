@@ -81,7 +81,11 @@ parseString(xml, (err, result) => {
     line(`export enum ${enumName} {`)
     options.forEach(({name, code, type, description, deprecated}) => {
       if (deprecated) line(`  ${comment} DEPRECATED`)
-      else if (description) output.write(splitLines(description).map(s => `  ${comment} ${s}\n`).join(''))
+      else if (description) {
+        output.write('  /**\n')
+        output.write(splitLines(description).map(s => `   * ${s}\n`).join(''))
+        output.write('   */\n')
+      }
 
       line(`  ${toUpperCamelCase(name)} = ${code},\n`)
     })

@@ -46,136 +46,196 @@ export enum NetworkOptionCode {
   // DEPRECATED
   ClusterFile = 20,
 
-  // Enables trace output to a file in a directory of the clients choosing
+  /**
+   * Enables trace output to a file in a directory of the clients choosing
+   */
   TraceEnable = 30,
 
-  // Sets the maximum size in bytes of a single trace output file. This
-  // value should be in the range ``[0, INT64_MAX]``. If the value is set
-  // to 0, there is no limit on individual file size. The default is a
-  // maximum size of 10,485,760 bytes.
+  /**
+   * Sets the maximum size in bytes of a single trace output file. This
+   * value should be in the range ``[0, INT64_MAX]``. If the value is set
+   * to 0, there is no limit on individual file size. The default is a
+   * maximum size of 10,485,760 bytes.
+   */
   TraceRollSize = 31,
 
-  // Sets the maximum size of all the trace output files put together. This
-  // value should be in the range ``[0, INT64_MAX]``. If the value is set
-  // to 0, there is no limit on the total size of the files. The default is
-  // a maximum size of 104,857,600 bytes. If the default roll size is used,
-  // this means that a maximum of 10 trace files will be written at a time.
+  /**
+   * Sets the maximum size of all the trace output files put together. This
+   * value should be in the range ``[0, INT64_MAX]``. If the value is set
+   * to 0, there is no limit on the total size of the files. The default is
+   * a maximum size of 104,857,600 bytes. If the default roll size is used,
+   * this means that a maximum of 10 trace files will be written at a time.
+   */
   TraceMaxLogsSize = 32,
 
-  // Sets the 'LogGroup' attribute with the specified value for all events
-  // in the trace output files. The default log group is 'default'.
+  /**
+   * Sets the 'LogGroup' attribute with the specified value for all events
+   * in the trace output files. The default log group is 'default'.
+   */
   TraceLogGroup = 33,
 
-  // Select the format of the log files. xml (the default) and json are
-  // supported.
+  /**
+   * Select the format of the log files. xml (the default) and json are
+   * supported.
+   */
   TraceFormat = 34,
 
-  // Set internal tuning or debugging knobs
+  /**
+   * Set internal tuning or debugging knobs
+   */
   Knob = 40,
 
   // DEPRECATED
   TLSPlugin = 41,
 
-  // Set the certificate chain
+  /**
+   * Set the certificate chain
+   */
   TLSCertBytes = 42,
 
-  // Set the file from which to load the certificate chain
+  /**
+   * Set the file from which to load the certificate chain
+   */
   TLSCertPath = 43,
 
-  // Set the private key corresponding to your own certificate
+  /**
+   * Set the private key corresponding to your own certificate
+   */
   TLSKeyBytes = 45,
 
-  // Set the file from which to load the private key corresponding to your
-  // own certificate
+  /**
+   * Set the file from which to load the private key corresponding to your
+   * own certificate
+   */
   TLSKeyPath = 46,
 
-  // Set the peer certificate field verification criteria
+  /**
+   * Set the peer certificate field verification criteria
+   */
   TLSVerifyPeers = 47,
 
   BuggifyEnable = 48,
 
   BuggifyDisable = 49,
 
-  // Set the probability of a BUGGIFY section being active for the current
-  // execution.  Only applies to code paths first traversed AFTER this
-  // option is changed.
+  /**
+   * Set the probability of a BUGGIFY section being active for the current
+   * execution.  Only applies to code paths first traversed AFTER this
+   * option is changed.
+   */
   BuggifySectionActivatedProbability = 50,
 
-  // Set the probability of an active BUGGIFY section being fired
+  /**
+   * Set the probability of an active BUGGIFY section being fired
+   */
   BuggifySectionFiredProbability = 51,
 
-  // Set the ca bundle
+  /**
+   * Set the ca bundle
+   */
   TLSCaBytes = 52,
 
-  // Set the file from which to load the certificate authority bundle
+  /**
+   * Set the file from which to load the certificate authority bundle
+   */
   TLSCaPath = 53,
 
-  // Set the passphrase for encrypted private key. Password should be set
-  // before setting the key for the password to be used.
+  /**
+   * Set the passphrase for encrypted private key. Password should be set
+   * before setting the key for the password to be used.
+   */
   TLSPassword = 54,
 
-  // Disables the multi-version client API and instead uses the local
-  // client directly. Must be set before setting up the network.
+  /**
+   * Disables the multi-version client API and instead uses the local
+   * client directly. Must be set before setting up the network.
+   */
   DisableMultiVersionClientApi = 60,
 
-  // If set, callbacks from external client libraries can be called from
-  // threads created by the FoundationDB client library. Otherwise,
-  // callbacks will be called from either the thread used to add the
-  // callback or the network thread. Setting this option can improve
-  // performance when connected using an external client, but may not be
-  // safe to use in all environments. Must be set before setting up the
-  // network. WARNING: This feature is considered experimental at this
-  // time.
+  /**
+   * If set, callbacks from external client libraries can be called from
+   * threads created by the FoundationDB client library. Otherwise,
+   * callbacks will be called from either the thread used to add the
+   * callback or the network thread. Setting this option can improve
+   * performance when connected using an external client, but may not be
+   * safe to use in all environments. Must be set before setting up the
+   * network. WARNING: This feature is considered experimental at this
+   * time.
+   */
   CallbacksOnExternalThreads = 61,
 
-  // Adds an external client library for use by the multi-version client
-  // API. Must be set before setting up the network.
+  /**
+   * Adds an external client library for use by the multi-version client
+   * API. Must be set before setting up the network.
+   */
   ExternalClientLibrary = 62,
 
-  // Searches the specified path for dynamic libraries and adds them to the
-  // list of client libraries for use by the multi-version client API. Must
-  // be set before setting up the network.
+  /**
+   * Searches the specified path for dynamic libraries and adds them to the
+   * list of client libraries for use by the multi-version client API. Must
+   * be set before setting up the network.
+   */
   ExternalClientDirectory = 63,
 
-  // Prevents connections through the local client, allowing only
-  // connections through externally loaded client libraries. Intended
-  // primarily for testing.
+  /**
+   * Prevents connections through the local client, allowing only
+   * connections through externally loaded client libraries. Intended
+   * primarily for testing.
+   */
   DisableLocalClient = 64,
 
-  // Disables logging of client statistics, such as sampled transaction
-  // activity.
+  /**
+   * Disables logging of client statistics, such as sampled transaction
+   * activity.
+   */
   DisableClientStatisticsLogging = 70,
 
-  // Enables debugging feature to perform slow task profiling. Requires
-  // trace logging to be enabled. WARNING: this feature is not recommended
-  // for use in production.
+  /**
+   * Enables debugging feature to perform slow task profiling. Requires
+   * trace logging to be enabled. WARNING: this feature is not recommended
+   * for use in production.
+   */
   EnableSlowTaskProfiling = 71,
 
-  // Enable client buggify - will make requests randomly fail (intended for
-  // client testing)
+  /**
+   * Enable client buggify - will make requests randomly fail (intended for
+   * client testing)
+   */
   ClientBuggifyEnable = 80,
 
-  // Disable client buggify
+  /**
+   * Disable client buggify
+   */
   ClientBuggifyDisable = 81,
 
-  // Set the probability of a CLIENT_BUGGIFY section being active for the
-  // current execution.
+  /**
+   * Set the probability of a CLIENT_BUGGIFY section being active for the
+   * current execution.
+   */
   ClientBuggifySectionActivatedProbability = 82,
 
-  // Set the probability of an active CLIENT_BUGGIFY section being fired. A
-  // section will only fire if it was activated
+  /**
+   * Set the probability of an active CLIENT_BUGGIFY section being fired. A
+   * section will only fire if it was activated
+   */
   ClientBuggifySectionFiredProbability = 83,
 
-  // This option is set automatically to communicate the list of supported
-  // clients to the active client.
+  /**
+   * This option is set automatically to communicate the list of supported
+   * clients to the active client.
+   */
   SupportedClientVersions = 1000,
 
-  // This option is set automatically on all clients loaded externally
-  // using the multi-version API.
+  /**
+   * This option is set automatically on all clients loaded externally
+   * using the multi-version API.
+   */
   ExternalClient = 1001,
 
-  // This option tells a child on a multiversion client what transport ID
-  // to use.
+  /**
+   * This option tells a child on a multiversion client what transport ID
+   * to use.
+   */
   ExternalClientTransportId = 1002,
 
 }
@@ -197,75 +257,101 @@ export type DatabaseOptions = {
 }
 
 export enum DatabaseOptionCode {
-  // Set the size of the client location cache. Raising this value can
-  // boost performance in very large databases where clients access data in
-  // a near-random pattern. Defaults to 100000.
+  /**
+   * Set the size of the client location cache. Raising this value can
+   * boost performance in very large databases where clients access data in
+   * a near-random pattern. Defaults to 100000.
+   */
   LocationCacheSize = 10,
 
-  // Set the maximum number of watches allowed to be outstanding on a
-  // database connection. Increasing this number could result in increased
-  // resource usage. Reducing this number will not cancel any outstanding
-  // watches. Defaults to 10000 and cannot be larger than 1000000.
+  /**
+   * Set the maximum number of watches allowed to be outstanding on a
+   * database connection. Increasing this number could result in increased
+   * resource usage. Reducing this number will not cancel any outstanding
+   * watches. Defaults to 10000 and cannot be larger than 1000000.
+   */
   MaxWatches = 20,
 
-  // Specify the machine ID that was passed to fdbserver processes running
-  // on the same machine as this client, for better location-aware load
-  // balancing.
+  /**
+   * Specify the machine ID that was passed to fdbserver processes running
+   * on the same machine as this client, for better location-aware load
+   * balancing.
+   */
   MachineId = 21,
 
-  // Specify the datacenter ID that was passed to fdbserver processes
-  // running in the same datacenter as this client, for better
-  // location-aware load balancing.
+  /**
+   * Specify the datacenter ID that was passed to fdbserver processes
+   * running in the same datacenter as this client, for better
+   * location-aware load balancing.
+   */
   DatacenterId = 22,
 
-  // Snapshot read operations will see the results of writes done in the
-  // same transaction. This is the default behavior.
+  /**
+   * Snapshot read operations will see the results of writes done in the
+   * same transaction. This is the default behavior.
+   */
   SnapshotRywEnable = 26,
 
-  // Snapshot read operations will not see the results of writes done in
-  // the same transaction. This was the default behavior prior to API
-  // version 300.
+  /**
+   * Snapshot read operations will not see the results of writes done in
+   * the same transaction. This was the default behavior prior to API
+   * version 300.
+   */
   SnapshotRywDisable = 27,
 
-  // Sets the maximum escaped length of key and value fields to be logged
-  // to the trace file via the LOG_TRANSACTION option. This sets the
-  // ``transaction_logging_max_field_length`` option of each transaction
-  // created by this database. See the transaction option description for
-  // more information.
+  /**
+   * Sets the maximum escaped length of key and value fields to be logged
+   * to the trace file via the LOG_TRANSACTION option. This sets the
+   * ``transaction_logging_max_field_length`` option of each transaction
+   * created by this database. See the transaction option description for
+   * more information.
+   */
   TransactionLoggingMaxFieldLength = 405,
 
-  // Set a timeout in milliseconds which, when elapsed, will cause each
-  // transaction automatically to be cancelled. This sets the ``timeout``
-  // option of each transaction created by this database. See the
-  // transaction option description for more information. Using this option
-  // requires that the API version is 610 or higher.
+  /**
+   * Set a timeout in milliseconds which, when elapsed, will cause each
+   * transaction automatically to be cancelled. This sets the ``timeout``
+   * option of each transaction created by this database. See the
+   * transaction option description for more information. Using this option
+   * requires that the API version is 610 or higher.
+   */
   TransactionTimeout = 500,
 
-  // Set a maximum number of retries after which additional calls to
-  // ``onError`` will throw the most recently seen error code. This sets
-  // the ``retry_limit`` option of each transaction created by this
-  // database. See the transaction option description for more information.
+  /**
+   * Set a maximum number of retries after which additional calls to
+   * ``onError`` will throw the most recently seen error code. This sets
+   * the ``retry_limit`` option of each transaction created by this
+   * database. See the transaction option description for more information.
+   */
   TransactionRetryLimit = 501,
 
-  // Set the maximum amount of backoff delay incurred in the call to
-  // ``onError`` if the error is retryable. This sets the
-  // ``max_retry_delay`` option of each transaction created by this
-  // database. See the transaction option description for more information.
+  /**
+   * Set the maximum amount of backoff delay incurred in the call to
+   * ``onError`` if the error is retryable. This sets the
+   * ``max_retry_delay`` option of each transaction created by this
+   * database. See the transaction option description for more information.
+   */
   TransactionMaxRetryDelay = 502,
 
-  // Set the maximum transaction size in bytes. This sets the
-  // ``size_limit`` option on each transaction created by this database.
-  // See the transaction option description for more information.
+  /**
+   * Set the maximum transaction size in bytes. This sets the
+   * ``size_limit`` option on each transaction created by this database.
+   * See the transaction option description for more information.
+   */
   TransactionSizeLimit = 503,
 
-  // The read version will be committed, and usually will be the latest
-  // committed, but might not be the latest committed in the event of a
-  // simultaneous fault and misbehaving clock.
+  /**
+   * The read version will be committed, and usually will be the latest
+   * committed, but might not be the latest committed in the event of a
+   * simultaneous fault and misbehaving clock.
+   */
   TransactionCausalReadRisky = 504,
 
-  // Addresses returned by get_addresses_for_key include the port when
-  // enabled. This will be enabled by default in api version 700, and this
-  // option will be deprecated.
+  /**
+   * Addresses returned by get_addresses_for_key include the port when
+   * enabled. This will be enabled by default in api version 700, and this
+   * option will be deprecated.
+   */
   TransactionIncludePortInAddress = 505,
 
 }
@@ -308,45 +394,57 @@ export type TransactionOptions = {
 }
 
 export enum TransactionOptionCode {
-  // The transaction, if not self-conflicting, may be committed a second
-  // time after commit succeeds, in the event of a fault
+  /**
+   * The transaction, if not self-conflicting, may be committed a second
+   * time after commit succeeds, in the event of a fault
+   */
   CausalWriteRisky = 10,
 
-  // The read version will be committed, and usually will be the latest
-  // committed, but might not be the latest committed in the event of a
-  // simultaneous fault and misbehaving clock.
+  /**
+   * The read version will be committed, and usually will be the latest
+   * committed, but might not be the latest committed in the event of a
+   * simultaneous fault and misbehaving clock.
+   */
   CausalReadRisky = 20,
 
   CausalReadDisable = 21,
 
-  // Addresses returned by get_addresses_for_key include the port when
-  // enabled. This will be enabled by default in api version 700, and this
-  // option will be deprecated.
+  /**
+   * Addresses returned by get_addresses_for_key include the port when
+   * enabled. This will be enabled by default in api version 700, and this
+   * option will be deprecated.
+   */
   IncludePortInAddress = 23,
 
-  // The next write performed on this transaction will not generate a write
-  // conflict range. As a result, other transactions which read the key(s)
-  // being modified by the next write will not conflict with this
-  // transaction. Care needs to be taken when using this option on a
-  // transaction that is shared between multiple threads. When setting this
-  // option, write conflict ranges will be disabled on the next write
-  // operation, regardless of what thread it is on.
+  /**
+   * The next write performed on this transaction will not generate a write
+   * conflict range. As a result, other transactions which read the key(s)
+   * being modified by the next write will not conflict with this
+   * transaction. Care needs to be taken when using this option on a
+   * transaction that is shared between multiple threads. When setting this
+   * option, write conflict ranges will be disabled on the next write
+   * operation, regardless of what thread it is on.
+   */
   NextWriteNoWriteConflictRange = 30,
 
-  // Committing this transaction will bypass the normal load balancing
-  // across proxies and go directly to the specifically nominated 'first
-  // proxy'.
+  /**
+   * Committing this transaction will bypass the normal load balancing
+   * across proxies and go directly to the specifically nominated 'first
+   * proxy'.
+   */
   CommitOnFirstProxy = 40,
 
   CheckWritesEnable = 50,
 
-  // Reads performed by a transaction will not see any prior mutations that
-  // occured in that transaction, instead seeing the value which was in the
-  // database at the transaction's read version. This option may provide a
-  // small performance benefit for the client, but also disables a number
-  // of client-side optimizations which are beneficial for transactions
-  // which tend to read and write the same keys within a single
-  // transaction.
+  /**
+   * Reads performed by a transaction will not see any prior mutations that
+   * occured in that transaction, instead seeing the value which was in the
+   * database at the transaction's read version. This option may provide a
+   * small performance benefit for the client, but also disables a number
+   * of client-side optimizations which are beneficial for transactions
+   * which tend to read and write the same keys within a single
+   * transaction.
+   */
   ReadYourWritesDisable = 51,
 
   // DEPRECATED
@@ -359,29 +457,39 @@ export enum TransactionOptionCode {
   // DEPRECATED
   DurabilityDevNullIsWebScale = 130,
 
-  // Specifies that this transaction should be treated as highest priority
-  // and that lower priority transactions should block behind this one. Use
-  // is discouraged outside of low-level tools
+  /**
+   * Specifies that this transaction should be treated as highest priority
+   * and that lower priority transactions should block behind this one. Use
+   * is discouraged outside of low-level tools
+   */
   PrioritySystemImmediate = 200,
 
-  // Specifies that this transaction should be treated as low priority and
-  // that default priority transactions will be processed first. Batch
-  // priority transactions will also be throttled at load levels smaller
-  // than for other types of transactions and may be fully cut off in the
-  // event of machine failures. Useful for doing batch work simultaneously
-  // with latency-sensitive work
+  /**
+   * Specifies that this transaction should be treated as low priority and
+   * that default priority transactions will be processed first. Batch
+   * priority transactions will also be throttled at load levels smaller
+   * than for other types of transactions and may be fully cut off in the
+   * event of machine failures. Useful for doing batch work simultaneously
+   * with latency-sensitive work
+   */
   PriorityBatch = 201,
 
-  // This is a write-only transaction which sets the initial configuration.
-  // This option is designed for use by database system tools only.
+  /**
+   * This is a write-only transaction which sets the initial configuration.
+   * This option is designed for use by database system tools only.
+   */
   InitializeNewDatabase = 300,
 
-  // Allows this transaction to read and modify system keys (those that
-  // start with the byte 0xFF)
+  /**
+   * Allows this transaction to read and modify system keys (those that
+   * start with the byte 0xFF)
+   */
   AccessSystemKeys = 301,
 
-  // Allows this transaction to read system keys (those that start with the
-  // byte 0xFF)
+  /**
+   * Allows this transaction to read system keys (those that start with the
+   * byte 0xFF)
+   */
   ReadSystemKeys = 302,
 
   DebugDump = 400,
@@ -391,312 +499,388 @@ export enum TransactionOptionCode {
   // DEPRECATED
   TransactionLoggingEnable = 402,
 
-  // Sets a client provided identifier for the transaction that will be
-  // used in scenarios like tracing or profiling. Client trace logging or
-  // transaction profiling must be separately enabled.
+  /**
+   * Sets a client provided identifier for the transaction that will be
+   * used in scenarios like tracing or profiling. Client trace logging or
+   * transaction profiling must be separately enabled.
+   */
   DebugTransactionIdentifier = 403,
 
-  // Enables tracing for this transaction and logs results to the client
-  // trace logs. The DEBUG_TRANSACTION_IDENTIFIER option must be set before
-  // using this option, and client trace logging must be enabled to get log
-  // output.
+  /**
+   * Enables tracing for this transaction and logs results to the client
+   * trace logs. The DEBUG_TRANSACTION_IDENTIFIER option must be set before
+   * using this option, and client trace logging must be enabled to get log
+   * output.
+   */
   LogTransaction = 404,
 
-  // Sets the maximum escaped length of key and value fields to be logged
-  // to the trace file via the LOG_TRANSACTION option, after which the
-  // field will be truncated. A negative value disables truncation.
+  /**
+   * Sets the maximum escaped length of key and value fields to be logged
+   * to the trace file via the LOG_TRANSACTION option, after which the
+   * field will be truncated. A negative value disables truncation.
+   */
   TransactionLoggingMaxFieldLength = 405,
 
-  // Set a timeout in milliseconds which, when elapsed, will cause the
-  // transaction automatically to be cancelled. Valid parameter values are
-  // ``[0, INT_MAX]``. If set to 0, will disable all timeouts. All pending
-  // and any future uses of the transaction will throw an exception. The
-  // transaction can be used again after it is reset. Prior to API version
-  // 610, like all other transaction options, the timeout must be reset
-  // after a call to ``onError``. If the API version is 610 or greater, the
-  // timeout is not reset after an ``onError`` call. This allows the user
-  // to specify a longer timeout on specific transactions than the default
-  // timeout specified through the ``transaction_timeout`` database option
-  // without the shorter database timeout cancelling transactions that
-  // encounter a retryable error. Note that at all API versions, it is safe
-  // and legal to set the timeout each time the transaction begins, so most
-  // code written assuming the older behavior can be upgraded to the newer
-  // behavior without requiring any modification, and the caller is not
-  // required to implement special logic in retry loops to only
-  // conditionally set this option.
+  /**
+   * Set a timeout in milliseconds which, when elapsed, will cause the
+   * transaction automatically to be cancelled. Valid parameter values are
+   * ``[0, INT_MAX]``. If set to 0, will disable all timeouts. All pending
+   * and any future uses of the transaction will throw an exception. The
+   * transaction can be used again after it is reset. Prior to API version
+   * 610, like all other transaction options, the timeout must be reset
+   * after a call to ``onError``. If the API version is 610 or greater, the
+   * timeout is not reset after an ``onError`` call. This allows the user
+   * to specify a longer timeout on specific transactions than the default
+   * timeout specified through the ``transaction_timeout`` database option
+   * without the shorter database timeout cancelling transactions that
+   * encounter a retryable error. Note that at all API versions, it is safe
+   * and legal to set the timeout each time the transaction begins, so most
+   * code written assuming the older behavior can be upgraded to the newer
+   * behavior without requiring any modification, and the caller is not
+   * required to implement special logic in retry loops to only
+   * conditionally set this option.
+   */
   Timeout = 500,
 
-  // Set a maximum number of retries after which additional calls to
-  // ``onError`` will throw the most recently seen error code. Valid
-  // parameter values are ``[-1, INT_MAX]``. If set to -1, will disable the
-  // retry limit. Prior to API version 610, like all other transaction
-  // options, the retry limit must be reset after a call to ``onError``. If
-  // the API version is 610 or greater, the retry limit is not reset after
-  // an ``onError`` call. Note that at all API versions, it is safe and
-  // legal to set the retry limit each time the transaction begins, so most
-  // code written assuming the older behavior can be upgraded to the newer
-  // behavior without requiring any modification, and the caller is not
-  // required to implement special logic in retry loops to only
-  // conditionally set this option.
+  /**
+   * Set a maximum number of retries after which additional calls to
+   * ``onError`` will throw the most recently seen error code. Valid
+   * parameter values are ``[-1, INT_MAX]``. If set to -1, will disable the
+   * retry limit. Prior to API version 610, like all other transaction
+   * options, the retry limit must be reset after a call to ``onError``. If
+   * the API version is 610 or greater, the retry limit is not reset after
+   * an ``onError`` call. Note that at all API versions, it is safe and
+   * legal to set the retry limit each time the transaction begins, so most
+   * code written assuming the older behavior can be upgraded to the newer
+   * behavior without requiring any modification, and the caller is not
+   * required to implement special logic in retry loops to only
+   * conditionally set this option.
+   */
   RetryLimit = 501,
 
-  // Set the maximum amount of backoff delay incurred in the call to
-  // ``onError`` if the error is retryable. Defaults to 1000 ms. Valid
-  // parameter values are ``[0, INT_MAX]``. If the maximum retry delay is
-  // less than the current retry delay of the transaction, then the current
-  // retry delay will be clamped to the maximum retry delay. Prior to API
-  // version 610, like all other transaction options, the maximum retry
-  // delay must be reset after a call to ``onError``. If the API version is
-  // 610 or greater, the retry limit is not reset after an ``onError``
-  // call. Note that at all API versions, it is safe and legal to set the
-  // maximum retry delay each time the transaction begins, so most code
-  // written assuming the older behavior can be upgraded to the newer
-  // behavior without requiring any modification, and the caller is not
-  // required to implement special logic in retry loops to only
-  // conditionally set this option.
+  /**
+   * Set the maximum amount of backoff delay incurred in the call to
+   * ``onError`` if the error is retryable. Defaults to 1000 ms. Valid
+   * parameter values are ``[0, INT_MAX]``. If the maximum retry delay is
+   * less than the current retry delay of the transaction, then the current
+   * retry delay will be clamped to the maximum retry delay. Prior to API
+   * version 610, like all other transaction options, the maximum retry
+   * delay must be reset after a call to ``onError``. If the API version is
+   * 610 or greater, the retry limit is not reset after an ``onError``
+   * call. Note that at all API versions, it is safe and legal to set the
+   * maximum retry delay each time the transaction begins, so most code
+   * written assuming the older behavior can be upgraded to the newer
+   * behavior without requiring any modification, and the caller is not
+   * required to implement special logic in retry loops to only
+   * conditionally set this option.
+   */
   MaxRetryDelay = 502,
 
-  // Set the transaction size limit in bytes. The size is calculated by
-  // combining the sizes of all keys and values written or mutated, all key
-  // ranges cleared, and all read and write conflict ranges. (In other
-  // words, it includes the total size of all data included in the request
-  // to the cluster to commit the transaction.) Large transactions can
-  // cause performance problems on FoundationDB clusters, so setting this
-  // limit to a smaller value than the default can help prevent the client
-  // from accidentally degrading the cluster's performance. This value must
-  // be at least 32 and cannot be set to higher than 10,000,000, the
-  // default transaction size limit.
+  /**
+   * Set the transaction size limit in bytes. The size is calculated by
+   * combining the sizes of all keys and values written or mutated, all key
+   * ranges cleared, and all read and write conflict ranges. (In other
+   * words, it includes the total size of all data included in the request
+   * to the cluster to commit the transaction.) Large transactions can
+   * cause performance problems on FoundationDB clusters, so setting this
+   * limit to a smaller value than the default can help prevent the client
+   * from accidentally degrading the cluster's performance. This value must
+   * be at least 32 and cannot be set to higher than 10,000,000, the
+   * default transaction size limit.
+   */
   SizeLimit = 503,
 
-  // Snapshot read operations will see the results of writes done in the
-  // same transaction. This is the default behavior.
+  /**
+   * Snapshot read operations will see the results of writes done in the
+   * same transaction. This is the default behavior.
+   */
   SnapshotRywEnable = 600,
 
-  // Snapshot read operations will not see the results of writes done in
-  // the same transaction. This was the default behavior prior to API
-  // version 300.
+  /**
+   * Snapshot read operations will not see the results of writes done in
+   * the same transaction. This was the default behavior prior to API
+   * version 300.
+   */
   SnapshotRywDisable = 601,
 
-  // The transaction can read and write to locked databases, and is
-  // responsible for checking that it took the lock.
+  /**
+   * The transaction can read and write to locked databases, and is
+   * responsible for checking that it took the lock.
+   */
   LockAware = 700,
 
-  // By default, operations that are performed on a transaction while it is
-  // being committed will not only fail themselves, but they will attempt
-  // to fail other in-flight operations (such as the commit) as well. This
-  // behavior is intended to help developers discover situations where
-  // operations could be unintentionally executed after the transaction has
-  // been reset. Setting this option removes that protection, causing only
-  // the offending operation to fail.
+  /**
+   * By default, operations that are performed on a transaction while it is
+   * being committed will not only fail themselves, but they will attempt
+   * to fail other in-flight operations (such as the commit) as well. This
+   * behavior is intended to help developers discover situations where
+   * operations could be unintentionally executed after the transaction has
+   * been reset. Setting this option removes that protection, causing only
+   * the offending operation to fail.
+   */
   UsedDuringCommitProtectionDisable = 701,
 
-  // The transaction can read from locked databases.
+  /**
+   * The transaction can read from locked databases.
+   */
   ReadLockAware = 702,
 
-  // No other transactions will be applied before this transaction within
-  // the same commit version.
+  /**
+   * No other transactions will be applied before this transaction within
+   * the same commit version.
+   */
   FirstInBatch = 710,
 
-  // This option should only be used by tools which change the database
-  // configuration.
+  /**
+   * This option should only be used by tools which change the database
+   * configuration.
+   */
   UseProvisionalProxies = 711,
 
 }
 
 export enum StreamingMode {
-  // Client intends to consume the entire range and would like it all
-  // transferred as early as possible.
+  /**
+   * Client intends to consume the entire range and would like it all
+   * transferred as early as possible.
+   */
   WantAll = -2,
 
-  // The default. The client doesn't know how much of the range it is
-  // likely to used and wants different performance concerns to be
-  // balanced. Only a small portion of data is transferred to the client
-  // initially (in order to minimize costs if the client doesn't read the
-  // entire range), and as the caller iterates over more items in the range
-  // larger batches will be transferred in order to minimize latency. After
-  // enough iterations, the iterator mode will eventually reach the same
-  // byte limit as ``WANT_ALL``
+  /**
+   * The default. The client doesn't know how much of the range it is
+   * likely to used and wants different performance concerns to be
+   * balanced. Only a small portion of data is transferred to the client
+   * initially (in order to minimize costs if the client doesn't read the
+   * entire range), and as the caller iterates over more items in the range
+   * larger batches will be transferred in order to minimize latency. After
+   * enough iterations, the iterator mode will eventually reach the same
+   * byte limit as ``WANT_ALL``
+   */
   Iterator = -1,
 
-  // Infrequently used. The client has passed a specific row limit and
-  // wants that many rows delivered in a single batch. Because of iterator
-  // operation in client drivers make request batches transparent to the
-  // user, consider ``WANT_ALL`` StreamingMode instead. A row limit must be
-  // specified if this mode is used.
+  /**
+   * Infrequently used. The client has passed a specific row limit and
+   * wants that many rows delivered in a single batch. Because of iterator
+   * operation in client drivers make request batches transparent to the
+   * user, consider ``WANT_ALL`` StreamingMode instead. A row limit must be
+   * specified if this mode is used.
+   */
   Exact = 0,
 
-  // Infrequently used. Transfer data in batches small enough to not be
-  // much more expensive than reading individual rows, to minimize cost if
-  // iteration stops early.
+  /**
+   * Infrequently used. Transfer data in batches small enough to not be
+   * much more expensive than reading individual rows, to minimize cost if
+   * iteration stops early.
+   */
   Small = 1,
 
-  // Infrequently used. Transfer data in batches sized in between small and
-  // large.
+  /**
+   * Infrequently used. Transfer data in batches sized in between small and
+   * large.
+   */
   Medium = 2,
 
-  // Infrequently used. Transfer data in batches large enough to be, in a
-  // high-concurrency environment, nearly as efficient as possible. If the
-  // client stops iteration early, some disk and network bandwidth may be
-  // wasted. The batch size may still be too small to allow a single client
-  // to get high throughput from the database, so if that is what you need
-  // consider the SERIAL StreamingMode.
+  /**
+   * Infrequently used. Transfer data in batches large enough to be, in a
+   * high-concurrency environment, nearly as efficient as possible. If the
+   * client stops iteration early, some disk and network bandwidth may be
+   * wasted. The batch size may still be too small to allow a single client
+   * to get high throughput from the database, so if that is what you need
+   * consider the SERIAL StreamingMode.
+   */
   Large = 3,
 
-  // Transfer data in batches large enough that an individual client can
-  // get reasonable read bandwidth from the database. If the client stops
-  // iteration early, considerable disk and network bandwidth may be
-  // wasted.
+  /**
+   * Transfer data in batches large enough that an individual client can
+   * get reasonable read bandwidth from the database. If the client stops
+   * iteration early, considerable disk and network bandwidth may be
+   * wasted.
+   */
   Serial = 4,
 
 }
 
 export enum MutationType {
-  // Performs an addition of little-endian integers. If the existing value
-  // in the database is not present or shorter than ``param``, it is first
-  // extended to the length of ``param`` with zero bytes.  If ``param`` is
-  // shorter than the existing value in the database, the existing value is
-  // truncated to match the length of ``param``. The integers to be added
-  // must be stored in a little-endian representation.  They can be signed
-  // in two's complement representation or unsigned. You can add to an
-  // integer at a known offset in the value by prepending the appropriate
-  // number of zero bytes to ``param`` and padding with zero bytes to match
-  // the length of the value. However, this offset technique requires that
-  // you know the addition will not cause the integer field within the
-  // value to overflow.
+  /**
+   * Performs an addition of little-endian integers. If the existing value
+   * in the database is not present or shorter than ``param``, it is first
+   * extended to the length of ``param`` with zero bytes.  If ``param`` is
+   * shorter than the existing value in the database, the existing value is
+   * truncated to match the length of ``param``. The integers to be added
+   * must be stored in a little-endian representation.  They can be signed
+   * in two's complement representation or unsigned. You can add to an
+   * integer at a known offset in the value by prepending the appropriate
+   * number of zero bytes to ``param`` and padding with zero bytes to match
+   * the length of the value. However, this offset technique requires that
+   * you know the addition will not cause the integer field within the
+   * value to overflow.
+   */
   Add = 2,
 
   // DEPRECATED
   And = 6,
 
-  // Performs a bitwise ``and`` operation.  If the existing value in the
-  // database is not present, then ``param`` is stored in the database. If
-  // the existing value in the database is shorter than ``param``, it is
-  // first extended to the length of ``param`` with zero bytes.  If
-  // ``param`` is shorter than the existing value in the database, the
-  // existing value is truncated to match the length of ``param``.
+  /**
+   * Performs a bitwise ``and`` operation.  If the existing value in the
+   * database is not present, then ``param`` is stored in the database. If
+   * the existing value in the database is shorter than ``param``, it is
+   * first extended to the length of ``param`` with zero bytes.  If
+   * ``param`` is shorter than the existing value in the database, the
+   * existing value is truncated to match the length of ``param``.
+   */
   BitAnd = 6,
 
   // DEPRECATED
   Or = 7,
 
-  // Performs a bitwise ``or`` operation.  If the existing value in the
-  // database is not present or shorter than ``param``, it is first
-  // extended to the length of ``param`` with zero bytes.  If ``param`` is
-  // shorter than the existing value in the database, the existing value is
-  // truncated to match the length of ``param``.
+  /**
+   * Performs a bitwise ``or`` operation.  If the existing value in the
+   * database is not present or shorter than ``param``, it is first
+   * extended to the length of ``param`` with zero bytes.  If ``param`` is
+   * shorter than the existing value in the database, the existing value is
+   * truncated to match the length of ``param``.
+   */
   BitOr = 7,
 
   // DEPRECATED
   Xor = 8,
 
-  // Performs a bitwise ``xor`` operation.  If the existing value in the
-  // database is not present or shorter than ``param``, it is first
-  // extended to the length of ``param`` with zero bytes.  If ``param`` is
-  // shorter than the existing value in the database, the existing value is
-  // truncated to match the length of ``param``.
+  /**
+   * Performs a bitwise ``xor`` operation.  If the existing value in the
+   * database is not present or shorter than ``param``, it is first
+   * extended to the length of ``param`` with zero bytes.  If ``param`` is
+   * shorter than the existing value in the database, the existing value is
+   * truncated to match the length of ``param``.
+   */
   BitXor = 8,
 
-  // Appends ``param`` to the end of the existing value already in the
-  // database at the given key (or creates the key and sets the value to
-  // ``param`` if the key is empty). This will only append the value if the
-  // final concatenated value size is less than or equal to the maximum
-  // value size (i.e., if it fits). WARNING: No error is surfaced back to
-  // the user if the final value is too large because the mutation will not
-  // be applied until after the transaction has been committed. Therefore,
-  // it is only safe to use this mutation type if one can guarantee that
-  // one will keep the total value size under the maximum size.
+  /**
+   * Appends ``param`` to the end of the existing value already in the
+   * database at the given key (or creates the key and sets the value to
+   * ``param`` if the key is empty). This will only append the value if the
+   * final concatenated value size is less than or equal to the maximum
+   * value size (i.e., if it fits). WARNING: No error is surfaced back to
+   * the user if the final value is too large because the mutation will not
+   * be applied until after the transaction has been committed. Therefore,
+   * it is only safe to use this mutation type if one can guarantee that
+   * one will keep the total value size under the maximum size.
+   */
   AppendIfFits = 9,
 
-  // Performs a little-endian comparison of byte strings. If the existing
-  // value in the database is not present or shorter than ``param``, it is
-  // first extended to the length of ``param`` with zero bytes.  If
-  // ``param`` is shorter than the existing value in the database, the
-  // existing value is truncated to match the length of ``param``. The
-  // larger of the two values is then stored in the database.
+  /**
+   * Performs a little-endian comparison of byte strings. If the existing
+   * value in the database is not present or shorter than ``param``, it is
+   * first extended to the length of ``param`` with zero bytes.  If
+   * ``param`` is shorter than the existing value in the database, the
+   * existing value is truncated to match the length of ``param``. The
+   * larger of the two values is then stored in the database.
+   */
   Max = 12,
 
-  // Performs a little-endian comparison of byte strings. If the existing
-  // value in the database is not present, then ``param`` is stored in the
-  // database. If the existing value in the database is shorter than
-  // ``param``, it is first extended to the length of ``param`` with zero
-  // bytes.  If ``param`` is shorter than the existing value in the
-  // database, the existing value is truncated to match the length of
-  // ``param``. The smaller of the two values is then stored in the
-  // database.
+  /**
+   * Performs a little-endian comparison of byte strings. If the existing
+   * value in the database is not present, then ``param`` is stored in the
+   * database. If the existing value in the database is shorter than
+   * ``param``, it is first extended to the length of ``param`` with zero
+   * bytes.  If ``param`` is shorter than the existing value in the
+   * database, the existing value is truncated to match the length of
+   * ``param``. The smaller of the two values is then stored in the
+   * database.
+   */
   Min = 13,
 
-  // Transforms ``key`` using a versionstamp for the transaction. Sets the
-  // transformed key in the database to ``param``. The key is transformed
-  // by removing the final four bytes from the key and reading those as a
-  // little-Endian 32-bit integer to get a position ``pos``. The 10 bytes
-  // of the key from ``pos`` to ``pos + 10`` are replaced with the
-  // versionstamp of the transaction used. The first byte of the key is
-  // position 0. A versionstamp is a 10 byte, unique, monotonically (but
-  // not sequentially) increasing value for each committed transaction. The
-  // first 8 bytes are the committed version of the database (serialized in
-  // big-Endian order). The last 2 bytes are monotonic in the serialization
-  // order for transactions. WARNING: At this time, versionstamps are
-  // compatible with the Tuple layer only in the Java, Python, and Go
-  // bindings. Also, note that prior to API version 520, the offset was
-  // computed from only the final two bytes rather than the final four
-  // bytes.
+  /**
+   * Transforms ``key`` using a versionstamp for the transaction. Sets the
+   * transformed key in the database to ``param``. The key is transformed
+   * by removing the final four bytes from the key and reading those as a
+   * little-Endian 32-bit integer to get a position ``pos``. The 10 bytes
+   * of the key from ``pos`` to ``pos + 10`` are replaced with the
+   * versionstamp of the transaction used. The first byte of the key is
+   * position 0. A versionstamp is a 10 byte, unique, monotonically (but
+   * not sequentially) increasing value for each committed transaction. The
+   * first 8 bytes are the committed version of the database (serialized in
+   * big-Endian order). The last 2 bytes are monotonic in the serialization
+   * order for transactions. WARNING: At this time, versionstamps are
+   * compatible with the Tuple layer only in the Java, Python, and Go
+   * bindings. Also, note that prior to API version 520, the offset was
+   * computed from only the final two bytes rather than the final four
+   * bytes.
+   */
   SetVersionstampedKey = 14,
 
-  // Transforms ``param`` using a versionstamp for the transaction. Sets
-  // the ``key`` given to the transformed ``param``. The parameter is
-  // transformed by removing the final four bytes from ``param`` and
-  // reading those as a little-Endian 32-bit integer to get a position
-  // ``pos``. The 10 bytes of the parameter from ``pos`` to ``pos + 10``
-  // are replaced with the versionstamp of the transaction used. The first
-  // byte of the parameter is position 0. A versionstamp is a 10 byte,
-  // unique, monotonically (but not sequentially) increasing value for each
-  // committed transaction. The first 8 bytes are the committed version of
-  // the database (serialized in big-Endian order). The last 2 bytes are
-  // monotonic in the serialization order for transactions. WARNING: At
-  // this time, versionstamps are compatible with the Tuple layer only in
-  // the Java, Python, and Go bindings. Also, note that prior to API
-  // version 520, the versionstamp was always placed at the beginning of
-  // the parameter rather than computing an offset.
+  /**
+   * Transforms ``param`` using a versionstamp for the transaction. Sets
+   * the ``key`` given to the transformed ``param``. The parameter is
+   * transformed by removing the final four bytes from ``param`` and
+   * reading those as a little-Endian 32-bit integer to get a position
+   * ``pos``. The 10 bytes of the parameter from ``pos`` to ``pos + 10``
+   * are replaced with the versionstamp of the transaction used. The first
+   * byte of the parameter is position 0. A versionstamp is a 10 byte,
+   * unique, monotonically (but not sequentially) increasing value for each
+   * committed transaction. The first 8 bytes are the committed version of
+   * the database (serialized in big-Endian order). The last 2 bytes are
+   * monotonic in the serialization order for transactions. WARNING: At
+   * this time, versionstamps are compatible with the Tuple layer only in
+   * the Java, Python, and Go bindings. Also, note that prior to API
+   * version 520, the versionstamp was always placed at the beginning of
+   * the parameter rather than computing an offset.
+   */
   SetVersionstampedValue = 15,
 
-  // Performs lexicographic comparison of byte strings. If the existing
-  // value in the database is not present, then ``param`` is stored.
-  // Otherwise the smaller of the two values is then stored in the
-  // database.
+  /**
+   * Performs lexicographic comparison of byte strings. If the existing
+   * value in the database is not present, then ``param`` is stored.
+   * Otherwise the smaller of the two values is then stored in the
+   * database.
+   */
   ByteMin = 16,
 
-  // Performs lexicographic comparison of byte strings. If the existing
-  // value in the database is not present, then ``param`` is stored.
-  // Otherwise the larger of the two values is then stored in the database.
+  /**
+   * Performs lexicographic comparison of byte strings. If the existing
+   * value in the database is not present, then ``param`` is stored.
+   * Otherwise the larger of the two values is then stored in the database.
+   */
   ByteMax = 17,
 
-  // Performs an atomic ``compare and clear`` operation. If the existing
-  // value in the database is equal to the given value, then given key is
-  // cleared.
+  /**
+   * Performs an atomic ``compare and clear`` operation. If the existing
+   * value in the database is equal to the given value, then given key is
+   * cleared.
+   */
   CompareAndClear = 20,
 
 }
 
 export enum ConflictRangeType {
-  // Used to add a read conflict range
+  /**
+   * Used to add a read conflict range
+   */
   Read = 0,
 
-  // Used to add a write conflict range
+  /**
+   * Used to add a write conflict range
+   */
   Write = 1,
 
 }
 
 export enum ErrorPredicate {
-  // Returns ``true`` if the error indicates the operations in the
-  // transactions should be retried because of transient error.
+  /**
+   * Returns ``true`` if the error indicates the operations in the
+   * transactions should be retried because of transient error.
+   */
   Retryable = 50000,
 
-  // Returns ``true`` if the error indicates the transaction may have
-  // succeeded, though not in a way the system can verify.
+  /**
+   * Returns ``true`` if the error indicates the transaction may have
+   * succeeded, though not in a way the system can verify.
+   */
   MaybeCommitted = 50001,
 
-  // Returns ``true`` if the error indicates the transaction has not
-  // committed, though in a way that can be retried.
+  /**
+   * Returns ``true`` if the error indicates the transaction has not
+   * committed, though in a way that can be retried.
+   */
   RetryableNotCommitted = 50002,
 
 }
