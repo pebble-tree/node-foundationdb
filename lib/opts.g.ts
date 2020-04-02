@@ -8,6 +8,7 @@ export type NetworkOptions = {
   trace_roll_size?: number  // max size of a single trace output file
   trace_max_logs_size?: number  // max total size of trace files
   trace_log_group?: string  // value of the LogGroup attribute
+  trace_format?: string  // Format of trace files
   knob?: string  // knob_name=knob_value
   TLS_plugin?: string // DEPRECATED
   TLS_cert_bytes?: Buffer  // certificates
@@ -29,6 +30,10 @@ export type NetworkOptions = {
   disable_local_client?: true
   disable_client_statistics_logging?: true
   enable_slow_task_profiling?: true
+  client_buggify_enable?: true
+  client_buggify_disable?: true
+  client_buggify_section_activated_probability?: number  // probability expressed as a percentage between 0 and 100
+  client_buggify_section_fired_probability?: number  // probability expressed as a percentage between 0 and 100
   supported_client_versions?: string  // [release version],[source version],[protocol version];...
   external_client?: true
   external_client_transport_id?: number  // Transport ID for the child connection
@@ -60,6 +65,10 @@ export enum NetworkOptionCode {
   // Sets the 'LogGroup' attribute with the specified value for all events
   // in the trace output files. The default log group is 'default'.
   TraceLogGroup = 33,
+
+  // Select the format of the log files. xml (the default) and json are
+  // supported.
+  TraceFormat = 34,
 
   // Set internal tuning or debugging knobs
   Knob = 40,
@@ -142,6 +151,21 @@ export enum NetworkOptionCode {
   // for use in production.
   EnableSlowTaskProfiling = 71,
 
+  // Enable client buggify - will make requests randomly fail (intended for
+  // client testing)
+  ClientBuggifyEnable = 80,
+
+  // Disable client buggify
+  ClientBuggifyDisable = 81,
+
+  // Set the probability of a CLIENT_BUGGIFY section being active for the
+  // current execution.
+  ClientBuggifySectionActivatedProbability = 82,
+
+  // Set the probability of an active CLIENT_BUGGIFY section being fired. A
+  // section will only fire if it was activated
+  ClientBuggifySectionFiredProbability = 83,
+
   // This option is set automatically to communicate the list of supported
   // clients to the active client.
   SupportedClientVersions = 1000,
@@ -161,6 +185,15 @@ export type DatabaseOptions = {
   max_watches?: number  // Max outstanding watches
   machine_id?: string  // Hexadecimal ID
   datacenter_id?: string  // Hexadecimal ID
+  snapshot_ryw_enable?: true
+  snapshot_ryw_disable?: true
+  transaction_logging_max_field_length?: number  // Maximum length of escaped key and value fields.
+  transaction_timeout?: number  // value in milliseconds of timeout
+  transaction_retry_limit?: number  // number of times to retry
+  transaction_max_retry_delay?: number  // value in milliseconds of maximum delay
+  transaction_size_limit?: number  // value in bytes
+  transaction_causal_read_risky?: true
+  transaction_include_port_in_address?: true
 }
 
 export enum DatabaseOptionCode {
@@ -185,12 +218,63 @@ export enum DatabaseOptionCode {
   // location-aware load balancing.
   DatacenterId = 22,
 
+  // Snapshot read operations will see the results of writes done in the
+  // same transaction. This is the default behavior.
+  SnapshotRywEnable = 26,
+
+  // Snapshot read operations will not see the results of writes done in
+  // the same transaction. This was the default behavior prior to API
+  // version 300.
+  SnapshotRywDisable = 27,
+
+  // Sets the maximum escaped length of key and value fields to be logged
+  // to the trace file via the LOG_TRANSACTION option. This sets the
+  // ``transaction_logging_max_field_length`` option of each transaction
+  // created by this database. See the transaction option description for
+  // more information.
+  TransactionLoggingMaxFieldLength = 405,
+
+  // Set a timeout in milliseconds which, when elapsed, will cause each
+  // transaction automatically to be cancelled. This sets the ``timeout``
+  // option of each transaction created by this database. See the
+  // transaction option description for more information. Using this option
+  // requires that the API version is 610 or higher.
+  TransactionTimeout = 500,
+
+  // Set a maximum number of retries after which additional calls to
+  // ``onError`` will throw the most recently seen error code. This sets
+  // the ``retry_limit`` option of each transaction created by this
+  // database. See the transaction option description for more information.
+  TransactionRetryLimit = 501,
+
+  // Set the maximum amount of backoff delay incurred in the call to
+  // ``onError`` if the error is retryable. This sets the
+  // ``max_retry_delay`` option of each transaction created by this
+  // database. See the transaction option description for more information.
+  TransactionMaxRetryDelay = 502,
+
+  // Set the maximum transaction size in bytes. This sets the
+  // ``size_limit`` option on each transaction created by this database.
+  // See the transaction option description for more information.
+  TransactionSizeLimit = 503,
+
+  // The read version will be committed, and usually will be the latest
+  // committed, but might not be the latest committed in the event of a
+  // simultaneous fault and misbehaving clock.
+  TransactionCausalReadRisky = 504,
+
+  // Addresses returned by get_addresses_for_key include the port when
+  // enabled. This will be enabled by default in api version 700, and this
+  // option will be deprecated.
+  TransactionIncludePortInAddress = 505,
+
 }
 
 export type TransactionOptions = {
   causal_write_risky?: true
   causal_read_risky?: true
   causal_read_disable?: true
+  include_port_in_address?: true
   next_write_no_write_conflict_range?: true
   commit_on_first_proxy?: true
   check_writes_enable?: true
@@ -206,16 +290,21 @@ export type TransactionOptions = {
   read_system_keys?: true
   debug_dump?: true
   debug_retry_logging?: string  // Optional transaction name
-  transaction_logging_enable?: string  // String identifier to be used in the logs when tracing this transaction. The identifier must not exceed 100 characters.
+  transaction_logging_enable?: string // DEPRECATED
+  debug_transaction_identifier?: string  // String identifier to be used when tracing or profiling this transaction. The identifier must not exceed 100 characters.
+  log_transaction?: true
+  transaction_logging_max_field_length?: number  // Maximum length of escaped key and value fields.
   timeout?: number  // value in milliseconds of timeout
   retry_limit?: number  // number of times to retry
   max_retry_delay?: number  // value in milliseconds of maximum delay
+  size_limit?: number  // value in bytes
   snapshot_ryw_enable?: true
   snapshot_ryw_disable?: true
   lock_aware?: true
   used_during_commit_protection_disable?: true
   read_lock_aware?: true
   first_in_batch?: true
+  use_provisional_proxies?: true
 }
 
 export enum TransactionOptionCode {
@@ -225,10 +314,15 @@ export enum TransactionOptionCode {
 
   // The read version will be committed, and usually will be the latest
   // committed, but might not be the latest committed in the event of a
-  // fault or partition
+  // simultaneous fault and misbehaving clock.
   CausalReadRisky = 20,
 
   CausalReadDisable = 21,
+
+  // Addresses returned by get_addresses_for_key include the port when
+  // enabled. This will be enabled by default in api version 700, and this
+  // option will be deprecated.
+  IncludePortInAddress = 23,
 
   // The next write performed on this transaction will not generate a write
   // conflict range. As a result, other transactions which read the key(s)
@@ -271,8 +365,11 @@ export enum TransactionOptionCode {
   PrioritySystemImmediate = 200,
 
   // Specifies that this transaction should be treated as low priority and
-  // that default priority transactions should be processed first. Useful
-  // for doing batch work simultaneously with latency-sensitive work
+  // that default priority transactions will be processed first. Batch
+  // priority transactions will also be throttled at load levels smaller
+  // than for other types of transactions and may be fully cut off in the
+  // event of machine failures. Useful for doing batch work simultaneously
+  // with latency-sensitive work
   PriorityBatch = 201,
 
   // This is a write-only transaction which sets the initial configuration.
@@ -291,46 +388,97 @@ export enum TransactionOptionCode {
 
   DebugRetryLogging = 401,
 
-  // Enables tracing for this transaction and logs results to the client
-  // trace logs. Client trace logging must be enabled to get log output.
+  // DEPRECATED
   TransactionLoggingEnable = 402,
+
+  // Sets a client provided identifier for the transaction that will be
+  // used in scenarios like tracing or profiling. Client trace logging or
+  // transaction profiling must be separately enabled.
+  DebugTransactionIdentifier = 403,
+
+  // Enables tracing for this transaction and logs results to the client
+  // trace logs. The DEBUG_TRANSACTION_IDENTIFIER option must be set before
+  // using this option, and client trace logging must be enabled to get log
+  // output.
+  LogTransaction = 404,
+
+  // Sets the maximum escaped length of key and value fields to be logged
+  // to the trace file via the LOG_TRANSACTION option, after which the
+  // field will be truncated. A negative value disables truncation.
+  TransactionLoggingMaxFieldLength = 405,
 
   // Set a timeout in milliseconds which, when elapsed, will cause the
   // transaction automatically to be cancelled. Valid parameter values are
   // ``[0, INT_MAX]``. If set to 0, will disable all timeouts. All pending
   // and any future uses of the transaction will throw an exception. The
-  // transaction can be used again after it is reset. Like all transaction
-  // options, a timeout must be reset after a call to onError. This
-  // behavior allows the user to make the timeout dynamic.
+  // transaction can be used again after it is reset. Prior to API version
+  // 610, like all other transaction options, the timeout must be reset
+  // after a call to ``onError``. If the API version is 610 or greater, the
+  // timeout is not reset after an ``onError`` call. This allows the user
+  // to specify a longer timeout on specific transactions than the default
+  // timeout specified through the ``transaction_timeout`` database option
+  // without the shorter database timeout cancelling transactions that
+  // encounter a retryable error. Note that at all API versions, it is safe
+  // and legal to set the timeout each time the transaction begins, so most
+  // code written assuming the older behavior can be upgraded to the newer
+  // behavior without requiring any modification, and the caller is not
+  // required to implement special logic in retry loops to only
+  // conditionally set this option.
   Timeout = 500,
 
   // Set a maximum number of retries after which additional calls to
-  // onError will throw the most recently seen error code. Valid parameter
-  // values are ``[-1, INT_MAX]``. If set to -1, will disable the retry
-  // limit. Like all transaction options, the retry limit must be reset
-  // after a call to onError. This behavior allows the user to make the
-  // retry limit dynamic.
+  // ``onError`` will throw the most recently seen error code. Valid
+  // parameter values are ``[-1, INT_MAX]``. If set to -1, will disable the
+  // retry limit. Prior to API version 610, like all other transaction
+  // options, the retry limit must be reset after a call to ``onError``. If
+  // the API version is 610 or greater, the retry limit is not reset after
+  // an ``onError`` call. Note that at all API versions, it is safe and
+  // legal to set the retry limit each time the transaction begins, so most
+  // code written assuming the older behavior can be upgraded to the newer
+  // behavior without requiring any modification, and the caller is not
+  // required to implement special logic in retry loops to only
+  // conditionally set this option.
   RetryLimit = 501,
 
   // Set the maximum amount of backoff delay incurred in the call to
-  // onError if the error is retryable. Defaults to 1000 ms. Valid
-  // parameter values are ``[0, INT_MAX]``. Like all transaction options,
-  // the maximum retry delay must be reset after a call to onError. If the
-  // maximum retry delay is less than the current retry delay of the
-  // transaction, then the current retry delay will be clamped to the
-  // maximum retry delay.
+  // ``onError`` if the error is retryable. Defaults to 1000 ms. Valid
+  // parameter values are ``[0, INT_MAX]``. If the maximum retry delay is
+  // less than the current retry delay of the transaction, then the current
+  // retry delay will be clamped to the maximum retry delay. Prior to API
+  // version 610, like all other transaction options, the maximum retry
+  // delay must be reset after a call to ``onError``. If the API version is
+  // 610 or greater, the retry limit is not reset after an ``onError``
+  // call. Note that at all API versions, it is safe and legal to set the
+  // maximum retry delay each time the transaction begins, so most code
+  // written assuming the older behavior can be upgraded to the newer
+  // behavior without requiring any modification, and the caller is not
+  // required to implement special logic in retry loops to only
+  // conditionally set this option.
   MaxRetryDelay = 502,
 
+  // Set the transaction size limit in bytes. The size is calculated by
+  // combining the sizes of all keys and values written or mutated, all key
+  // ranges cleared, and all read and write conflict ranges. (In other
+  // words, it includes the total size of all data included in the request
+  // to the cluster to commit the transaction.) Large transactions can
+  // cause performance problems on FoundationDB clusters, so setting this
+  // limit to a smaller value than the default can help prevent the client
+  // from accidentally degrading the cluster's performance. This value must
+  // be at least 32 and cannot be set to higher than 10,000,000, the
+  // default transaction size limit.
+  SizeLimit = 503,
+
   // Snapshot read operations will see the results of writes done in the
-  // same transaction.
+  // same transaction. This is the default behavior.
   SnapshotRywEnable = 600,
 
   // Snapshot read operations will not see the results of writes done in
-  // the same transaction.
+  // the same transaction. This was the default behavior prior to API
+  // version 300.
   SnapshotRywDisable = 601,
 
   // The transaction can read and write to locked databases, and is
-  // resposible for checking that it took the lock.
+  // responsible for checking that it took the lock.
   LockAware = 700,
 
   // By default, operations that are performed on a transaction while it is
@@ -349,6 +497,10 @@ export enum TransactionOptionCode {
   // the same commit version.
   FirstInBatch = 710,
 
+  // This option should only be used by tools which change the database
+  // configuration.
+  UseProvisionalProxies = 711,
+
 }
 
 export enum StreamingMode {
@@ -361,7 +513,9 @@ export enum StreamingMode {
   // balanced. Only a small portion of data is transferred to the client
   // initially (in order to minimize costs if the client doesn't read the
   // entire range), and as the caller iterates over more items in the range
-  // larger batches will be transferred in order to minimize latency.
+  // larger batches will be transferred in order to minimize latency. After
+  // enough iterations, the iterator mode will eventually reach the same
+  // byte limit as ``WANT_ALL``
   Iterator = -1,
 
   // Infrequently used. The client has passed a specific row limit and
@@ -482,9 +636,10 @@ export enum MutationType {
   // first 8 bytes are the committed version of the database (serialized in
   // big-Endian order). The last 2 bytes are monotonic in the serialization
   // order for transactions. WARNING: At this time, versionstamps are
-  // compatible with the Tuple layer only in the Java and Python bindings.
-  // Also, note that prior to API version 520, the offset was computed from
-  // only the final two bytes rather than the final four bytes.
+  // compatible with the Tuple layer only in the Java, Python, and Go
+  // bindings. Also, note that prior to API version 520, the offset was
+  // computed from only the final two bytes rather than the final four
+  // bytes.
   SetVersionstampedKey = 14,
 
   // Transforms ``param`` using a versionstamp for the transaction. Sets
@@ -499,9 +654,9 @@ export enum MutationType {
   // the database (serialized in big-Endian order). The last 2 bytes are
   // monotonic in the serialization order for transactions. WARNING: At
   // this time, versionstamps are compatible with the Tuple layer only in
-  // the Java and Python bindings. Also, note that prior to API version
-  // 520, the versionstamp was always placed at the beginning of the
-  // parameter rather than computing an offset.
+  // the Java, Python, and Go bindings. Also, note that prior to API
+  // version 520, the versionstamp was always placed at the beginning of
+  // the parameter rather than computing an offset.
   SetVersionstampedValue = 15,
 
   // Performs lexicographic comparison of byte strings. If the existing
@@ -514,6 +669,11 @@ export enum MutationType {
   // value in the database is not present, then ``param`` is stored.
   // Otherwise the larger of the two values is then stored in the database.
   ByteMax = 17,
+
+  // Performs an atomic ``compare and clear`` operation. If the existing
+  // value in the database is equal to the given value, then given key is
+  // cleared.
+  CompareAndClear = 20,
 
 }
 
@@ -584,6 +744,13 @@ export const networkOptionData: OptionData = {
     description: "Sets the 'LogGroup' attribute with the specified value for all events in the trace output files. The default log group is 'default'.",
     type: 'string',
     paramDescription: "value of the LogGroup attribute",
+  },
+
+  trace_format: {
+    code: 34,
+    description: "Select the format of the log files. xml (the default) and json are supported.",
+    type: 'string',
+    paramDescription: "Format of trace files",
   },
 
   knob: {
@@ -727,6 +894,32 @@ export const networkOptionData: OptionData = {
     type: 'none',
   },
 
+  client_buggify_enable: {
+    code: 80,
+    description: "Enable client buggify - will make requests randomly fail (intended for client testing)",
+    type: 'none',
+  },
+
+  client_buggify_disable: {
+    code: 81,
+    description: "Disable client buggify",
+    type: 'none',
+  },
+
+  client_buggify_section_activated_probability: {
+    code: 82,
+    description: "Set the probability of a CLIENT_BUGGIFY section being active for the current execution.",
+    type: 'int',
+    paramDescription: "probability expressed as a percentage between 0 and 100",
+  },
+
+  client_buggify_section_fired_probability: {
+    code: 83,
+    description: "Set the probability of an active CLIENT_BUGGIFY section being fired. A section will only fire if it was activated",
+    type: 'int',
+    paramDescription: "probability expressed as a percentage between 0 and 100",
+  },
+
   supported_client_versions: {
     code: 1000,
     description: "This option is set automatically to communicate the list of supported clients to the active client.",
@@ -778,6 +971,65 @@ export const databaseOptionData: OptionData = {
     paramDescription: "Hexadecimal ID",
   },
 
+  snapshot_ryw_enable: {
+    code: 26,
+    description: "Snapshot read operations will see the results of writes done in the same transaction. This is the default behavior.",
+    type: 'none',
+  },
+
+  snapshot_ryw_disable: {
+    code: 27,
+    description: "Snapshot read operations will not see the results of writes done in the same transaction. This was the default behavior prior to API version 300.",
+    type: 'none',
+  },
+
+  transaction_logging_max_field_length: {
+    code: 405,
+    description: "Sets the maximum escaped length of key and value fields to be logged to the trace file via the LOG_TRANSACTION option. This sets the ``transaction_logging_max_field_length`` option of each transaction created by this database. See the transaction option description for more information.",
+    type: 'int',
+    paramDescription: "Maximum length of escaped key and value fields.",
+  },
+
+  transaction_timeout: {
+    code: 500,
+    description: "Set a timeout in milliseconds which, when elapsed, will cause each transaction automatically to be cancelled. This sets the ``timeout`` option of each transaction created by this database. See the transaction option description for more information. Using this option requires that the API version is 610 or higher.",
+    type: 'int',
+    paramDescription: "value in milliseconds of timeout",
+  },
+
+  transaction_retry_limit: {
+    code: 501,
+    description: "Set a maximum number of retries after which additional calls to ``onError`` will throw the most recently seen error code. This sets the ``retry_limit`` option of each transaction created by this database. See the transaction option description for more information.",
+    type: 'int',
+    paramDescription: "number of times to retry",
+  },
+
+  transaction_max_retry_delay: {
+    code: 502,
+    description: "Set the maximum amount of backoff delay incurred in the call to ``onError`` if the error is retryable. This sets the ``max_retry_delay`` option of each transaction created by this database. See the transaction option description for more information.",
+    type: 'int',
+    paramDescription: "value in milliseconds of maximum delay",
+  },
+
+  transaction_size_limit: {
+    code: 503,
+    description: "Set the maximum transaction size in bytes. This sets the ``size_limit`` option on each transaction created by this database. See the transaction option description for more information.",
+    type: 'int',
+    paramDescription: "value in bytes",
+  },
+
+  transaction_causal_read_risky: {
+    code: 504,
+    description: "The read version will be committed, and usually will be the latest committed, but might not be the latest committed in the event of a simultaneous fault and misbehaving clock.",
+    type: 'none',
+  },
+
+  transaction_include_port_in_address: {
+    code: 505,
+    description: "Addresses returned by get_addresses_for_key include the port when enabled. This will be enabled by default in api version 700, and this option will be deprecated.",
+    type: 'none',
+  },
+
 }
 
 export const transactionOptionData: OptionData = {
@@ -789,13 +1041,19 @@ export const transactionOptionData: OptionData = {
 
   causal_read_risky: {
     code: 20,
-    description: "The read version will be committed, and usually will be the latest committed, but might not be the latest committed in the event of a fault or partition",
+    description: "The read version will be committed, and usually will be the latest committed, but might not be the latest committed in the event of a simultaneous fault and misbehaving clock.",
     type: 'none',
   },
 
   causal_read_disable: {
     code: 21,
     description: "undefined",
+    type: 'none',
+  },
+
+  include_port_in_address: {
+    code: 23,
+    description: "Addresses returned by get_addresses_for_key include the port when enabled. This will be enabled by default in api version 700, and this option will be deprecated.",
     type: 'none',
   },
 
@@ -857,7 +1115,7 @@ export const transactionOptionData: OptionData = {
 
   priority_batch: {
     code: 201,
-    description: "Specifies that this transaction should be treated as low priority and that default priority transactions should be processed first. Useful for doing batch work simultaneously with latency-sensitive work",
+    description: "Specifies that this transaction should be treated as low priority and that default priority transactions will be processed first. Batch priority transactions will also be throttled at load levels smaller than for other types of transactions and may be fully cut off in the event of machine failures. Useful for doing batch work simultaneously with latency-sensitive work",
     type: 'none',
   },
 
@@ -894,47 +1152,75 @@ export const transactionOptionData: OptionData = {
 
   transaction_logging_enable: {
     code: 402,
-    description: "Enables tracing for this transaction and logs results to the client trace logs. Client trace logging must be enabled to get log output.",
+    description: "Deprecated",
+    deprecated: true,
     type: 'string',
     paramDescription: "String identifier to be used in the logs when tracing this transaction. The identifier must not exceed 100 characters.",
   },
 
+  debug_transaction_identifier: {
+    code: 403,
+    description: "Sets a client provided identifier for the transaction that will be used in scenarios like tracing or profiling. Client trace logging or transaction profiling must be separately enabled.",
+    type: 'string',
+    paramDescription: "String identifier to be used when tracing or profiling this transaction. The identifier must not exceed 100 characters.",
+  },
+
+  log_transaction: {
+    code: 404,
+    description: "Enables tracing for this transaction and logs results to the client trace logs. The DEBUG_TRANSACTION_IDENTIFIER option must be set before using this option, and client trace logging must be enabled to get log output.",
+    type: 'none',
+  },
+
+  transaction_logging_max_field_length: {
+    code: 405,
+    description: "Sets the maximum escaped length of key and value fields to be logged to the trace file via the LOG_TRANSACTION option, after which the field will be truncated. A negative value disables truncation.",
+    type: 'int',
+    paramDescription: "Maximum length of escaped key and value fields.",
+  },
+
   timeout: {
     code: 500,
-    description: "Set a timeout in milliseconds which, when elapsed, will cause the transaction automatically to be cancelled. Valid parameter values are ``[0, INT_MAX]``. If set to 0, will disable all timeouts. All pending and any future uses of the transaction will throw an exception. The transaction can be used again after it is reset. Like all transaction options, a timeout must be reset after a call to onError. This behavior allows the user to make the timeout dynamic.",
+    description: "Set a timeout in milliseconds which, when elapsed, will cause the transaction automatically to be cancelled. Valid parameter values are ``[0, INT_MAX]``. If set to 0, will disable all timeouts. All pending and any future uses of the transaction will throw an exception. The transaction can be used again after it is reset. Prior to API version 610, like all other transaction options, the timeout must be reset after a call to ``onError``. If the API version is 610 or greater, the timeout is not reset after an ``onError`` call. This allows the user to specify a longer timeout on specific transactions than the default timeout specified through the ``transaction_timeout`` database option without the shorter database timeout cancelling transactions that encounter a retryable error. Note that at all API versions, it is safe and legal to set the timeout each time the transaction begins, so most code written assuming the older behavior can be upgraded to the newer behavior without requiring any modification, and the caller is not required to implement special logic in retry loops to only conditionally set this option.",
     type: 'int',
     paramDescription: "value in milliseconds of timeout",
   },
 
   retry_limit: {
     code: 501,
-    description: "Set a maximum number of retries after which additional calls to onError will throw the most recently seen error code. Valid parameter values are ``[-1, INT_MAX]``. If set to -1, will disable the retry limit. Like all transaction options, the retry limit must be reset after a call to onError. This behavior allows the user to make the retry limit dynamic.",
+    description: "Set a maximum number of retries after which additional calls to ``onError`` will throw the most recently seen error code. Valid parameter values are ``[-1, INT_MAX]``. If set to -1, will disable the retry limit. Prior to API version 610, like all other transaction options, the retry limit must be reset after a call to ``onError``. If the API version is 610 or greater, the retry limit is not reset after an ``onError`` call. Note that at all API versions, it is safe and legal to set the retry limit each time the transaction begins, so most code written assuming the older behavior can be upgraded to the newer behavior without requiring any modification, and the caller is not required to implement special logic in retry loops to only conditionally set this option.",
     type: 'int',
     paramDescription: "number of times to retry",
   },
 
   max_retry_delay: {
     code: 502,
-    description: "Set the maximum amount of backoff delay incurred in the call to onError if the error is retryable. Defaults to 1000 ms. Valid parameter values are ``[0, INT_MAX]``. Like all transaction options, the maximum retry delay must be reset after a call to onError. If the maximum retry delay is less than the current retry delay of the transaction, then the current retry delay will be clamped to the maximum retry delay.",
+    description: "Set the maximum amount of backoff delay incurred in the call to ``onError`` if the error is retryable. Defaults to 1000 ms. Valid parameter values are ``[0, INT_MAX]``. If the maximum retry delay is less than the current retry delay of the transaction, then the current retry delay will be clamped to the maximum retry delay. Prior to API version 610, like all other transaction options, the maximum retry delay must be reset after a call to ``onError``. If the API version is 610 or greater, the retry limit is not reset after an ``onError`` call. Note that at all API versions, it is safe and legal to set the maximum retry delay each time the transaction begins, so most code written assuming the older behavior can be upgraded to the newer behavior without requiring any modification, and the caller is not required to implement special logic in retry loops to only conditionally set this option.",
     type: 'int',
     paramDescription: "value in milliseconds of maximum delay",
   },
 
+  size_limit: {
+    code: 503,
+    description: "Set the transaction size limit in bytes. The size is calculated by combining the sizes of all keys and values written or mutated, all key ranges cleared, and all read and write conflict ranges. (In other words, it includes the total size of all data included in the request to the cluster to commit the transaction.) Large transactions can cause performance problems on FoundationDB clusters, so setting this limit to a smaller value than the default can help prevent the client from accidentally degrading the cluster's performance. This value must be at least 32 and cannot be set to higher than 10,000,000, the default transaction size limit.",
+    type: 'int',
+    paramDescription: "value in bytes",
+  },
+
   snapshot_ryw_enable: {
     code: 600,
-    description: "Snapshot read operations will see the results of writes done in the same transaction.",
+    description: "Snapshot read operations will see the results of writes done in the same transaction. This is the default behavior.",
     type: 'none',
   },
 
   snapshot_ryw_disable: {
     code: 601,
-    description: "Snapshot read operations will not see the results of writes done in the same transaction.",
+    description: "Snapshot read operations will not see the results of writes done in the same transaction. This was the default behavior prior to API version 300.",
     type: 'none',
   },
 
   lock_aware: {
     code: 700,
-    description: "The transaction can read and write to locked databases, and is resposible for checking that it took the lock.",
+    description: "The transaction can read and write to locked databases, and is responsible for checking that it took the lock.",
     type: 'none',
   },
 
@@ -953,6 +1239,12 @@ export const transactionOptionData: OptionData = {
   first_in_batch: {
     code: 710,
     description: "No other transactions will be applied before this transaction within the same commit version.",
+    type: 'none',
+  },
+
+  use_provisional_proxies: {
+    code: 711,
+    description: "This option should only be used by tools which change the database configuration.",
     type: 'none',
   },
 
