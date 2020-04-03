@@ -26,22 +26,52 @@ export default class Subspace<KeyIn = NativeValue, KeyOut = Buffer, ValIn = Nati
 
   _bakedKeyXf: Transformer<KeyIn, KeyOut> // This is cached from _prefix + keyXf.
 
-  constructor(prefix: Buffer | null, keyXf: Transformer<KeyIn, KeyOut>, valueXf: Transformer<ValIn, ValOut>) {
-    this.prefix = prefix || EMPTY_BUF
+  constructor(prefix: string | Buffer | null, keyXf: Transformer<KeyIn, KeyOut>, valueXf: Transformer<ValIn, ValOut>) {
+    this.prefix = prefix != null ? Buffer.from(prefix) : EMPTY_BUF
     this.keyXf = keyXf
     this.valueXf = valueXf
 
     this._bakedKeyXf = prefix ? prefixTransformer(prefix, keyXf) : keyXf
   }
 
-  // All these template parameters make me question my life choices.
-  // at(prefix: KeyIn | null): Scope<KeyIn, KeyOut, ValIn, ValOut>;
-  // at<ChildKeyIn, ChildKeyOut>(prefix: KeyIn | null, keyXf: Transformer<ChildKeyIn, ChildKeyOut>): Scope<ChildKeyIn, ChildKeyOut, ValIn, ValOut>;
-  // at<ChildKeyIn, ChildKeyOut, ChildValIn, ChildValOut>(prefix: KeyIn | null, keyXf?: Transformer<ChildKeyIn, ChildKeyOut>, valueXf?: Transformer<ChildValIn, ChildValOut>): Scope<ChildKeyIn, ChildKeyOut, ChildValIn, ChildValOut>;
-  at<ChildKeyIn, ChildKeyOut, ChildValIn, ChildValOut>(prefix: KeyIn | null, keyXf: Transformer<any, any> = this.keyXf, valueXf: Transformer<any, any> = this.valueXf) {
+  // All these template parameters make me question my life choices, but this is
+  // legit all the variants. Typescript can probably infer using less than this,
+  // but I honestly don't trust it not to land with any or unknown or something
+  // in some of the derived types
+  at(prefix: KeyIn | null): Subspace<KeyIn, KeyOut, ValIn, ValOut>;
+  at<CKI, CKO>(prefix: KeyIn | null, keyXf: Transformer<CKI, CKO>): Subspace<CKI, CKO, ValIn, ValOut>;
+  at<CVI, CVO>(prefix: KeyIn | null, keyXf: undefined, valueXf: Transformer<CVI, CVO>): Subspace<KeyIn, KeyOut, CVI, CVO>;
+  at<CKI, CKO, CVI, CVO>(prefix: KeyIn | null, keyXf?: Transformer<CKI, CKO>, valueXf?: Transformer<CVI, CVO>): Subspace<CKI, CKO, CVI, CVO>;
+  // ***
+  at(prefix: KeyIn | null, keyXf: Transformer<any, any> = this.keyXf, valueXf: Transformer<any, any> = this.valueXf) {
     const _prefix = prefix == null ? null : this.keyXf.pack(prefix)
     return new Subspace(concatPrefix(this.prefix, _prefix), keyXf, valueXf)
   }
+
+  /** At a child prefix thats specified without reference to the key transformer */
+  atRaw(prefix: Buffer) {
+    return new Subspace(concatPrefix(this.prefix, prefix), this.keyXf, this.valueXf)
+  }
+
+
+  withKeyEncoding<CKI, CKO>(keyXf: Transformer<CKI, CKO>): Subspace<CKI, CKO, ValIn, ValOut> {
+    return new Subspace(this.prefix, keyXf, this.valueXf)
+  }
+  
+  withValueEncoding<CVI, CVO>(valXf: Transformer<CVI, CVO>): Subspace<KeyIn, KeyOut, CVI, CVO> {
+    return new Subspace(this.prefix, this.keyXf, valXf)
+  }
+
+  // GetSubspace implementation
+  getSubspace() { return this }
 }
 
 export const defaultSubspace: Subspace = new Subspace(null, defaultTransformer, defaultTransformer)
+
+export interface GetSubspace<KI, KO, VI, VO> {
+  getSubspace(): Subspace<KI, KO, VI, VO>
+}
+
+export const isGetSubspace = <KI, KO, VI, VO>(obj: any): obj is GetSubspace<KI, KO, VI, VO> => {
+  return obj != null && typeof obj === 'object' && 'getSubspace' in obj
+}

@@ -1,5 +1,6 @@
 import 'mocha'
 import * as fdb from '../lib'
+import Subspace, { defaultSubspace } from '../lib/subspace'
 
 // We'll tuck everything behind this prefix and delete it all when the tests finish running.
 export const prefix = '__test_data__/'

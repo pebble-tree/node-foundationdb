@@ -4,12 +4,11 @@ import Transaction, {
   Watch,
   WatchOptions,
 } from './transaction'
-import {Transformer, defaultTransformer, prefixTransformer} from './transformer'
+import {Transformer, defaultTransformer} from './transformer'
 import {NativeValue} from './native'
 import {KeySelector} from './keySelector'
-import Subspace, { defaultSubspace } from './subspace'
-import {TupleItem, pack} from './tuple'
-import {asBuf, concat2} from './util'
+import Subspace, { defaultSubspace, GetSubspace, isGetSubspace } from './subspace'
+import {asBuf} from './util'
 import {eachOption} from './opts'
 import {DatabaseOptions,
   TransactionOptions,
@@ -43,24 +42,28 @@ export default class Database<KeyIn = NativeValue, KeyOut = Buffer, ValIn = Nati
     return new Database(this._db, defaultSubspace)
   }
 
-  getPrefix(): Buffer {
-    return this.subspace.prefix
-  }
+  getSubspace() { return this.subspace }
+  getPrefix(): Buffer { return this.subspace.prefix }
 
   // The actual behaviour here has moved into subspace, but this method is kept for
   // convenience and backwards compatibility.
   /** Create a shallow reference to the database at a specified subspace */
-  at<CKI, CKO, CVI, CVO>(subspace: Subspace<CKI, CKO, CVI, CVO>): Database<CKI, CKO, CVI, CVO>
+  at<CKI, CKO, CVI, CVO>(hasSubspace: GetSubspace<CKI, CKO, CVI, CVO>): Database<CKI, CKO, CVI, CVO>
   /** Create a shallow reference to the database at the subspace of another database reference */
-  at<CKI = KeyIn, CKO = KeyOut, CVI = ValIn, CVO = ValOut>(prefix: KeyIn | null, keyXf?: Transformer<CKI, CKO>, valueXf?: Transformer<CVI, CVO>): Database<CKI, CKO, CVI, CVO>
+  // at<CKI = KeyIn, CKO = KeyOut, CVI = ValIn, CVO = ValOut>(prefix: KeyIn | null, keyXf?: Transformer<CKI, CKO>, valueXf?: Transformer<CVI, CVO>): Database<CKI, CKO, CVI, CVO>
 
-  at<CKI, CKO, CVI, CVO>(prefixOrSubspace: Subspace | KeyIn | null, keyXf?: Transformer<any, any>, valueXf?: Transformer<any, any>) {
-    if (prefixOrSubspace instanceof Subspace) return new Database(this._db, prefixOrSubspace)
+  at(prefix: KeyIn | null): Database<KeyIn, KeyOut, ValIn, ValOut>;
+  at<CKI, CKO>(prefix: KeyIn | null, keyXf: Transformer<CKI, CKO>): Database<CKI, CKO, ValIn, ValOut>;
+  at<CVI, CVO>(prefix: KeyIn | null, keyXf: undefined, valueXf: Transformer<CVI, CVO>): Database<KeyIn, KeyOut, CVI, CVO>;
+  at<CKI, CKO, CVI, CVO>(prefix: KeyIn | null, keyXf: Transformer<CKI, CKO>, valueXf: Transformer<CVI, CVO>): Database<CKI, CKO, CVI, CVO>;
+
+  at<CKI, CKO, CVI, CVO>(prefixOrSubspace: GetSubspace<CKI, CKO, CVI, CVO> | KeyIn | null, keyXf?: Transformer<CKI, CKO>, valueXf?: Transformer<CVI, CVO>): Database<CKI, CKO, CVI, CVO> {
+    if (isGetSubspace(prefixOrSubspace)) return new Database(this._db, prefixOrSubspace.getSubspace())
     else return new Database(this._db, this.subspace.at(prefixOrSubspace, keyXf, valueXf))
   }
 
-  // withKeyEncoding<NativeBuffer>(): Database<NativeValue, Buffer, ValIn, ValOut>;
-  // withKeyEncoding<ChildKeyIn, ChildKeyOut>(keyXf?: Transformer<ChildKeyIn, ChildKeyOut>): Database<ChildKeyIn, ChildKeyOut, ValIn, ValOut>;
+  withKeyEncoding<ChildKeyIn, ChildKeyOut>(keyXf: Transformer<ChildKeyIn, ChildKeyOut>): Database<ChildKeyIn, ChildKeyOut, ValIn, ValOut>
+  withKeyEncoding<NativeValue, Buffer>(): Database<NativeValue, Buffer, ValIn, ValOut>
   withKeyEncoding<ChildKeyIn, ChildKeyOut>(keyXf: Transformer<any, any> = defaultTransformer): Database<ChildKeyIn, ChildKeyOut, ValIn, ValOut> {
     return new Database(this._db, this.subspace.at(null, keyXf))
   }

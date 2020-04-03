@@ -1,4 +1,3 @@
-import assert = require('assert')
 import FDBError from './error'
 import {
   Watch,
@@ -33,7 +32,7 @@ import {
   packPrefixedVersionstamp,
   packVersionstampPrefixSuffix
 } from './versionstamp'
-import Subspace from './subspace'
+import Subspace, { GetSubspace } from './subspace'
 
 const byteZero = Buffer.alloc(1)
 byteZero.writeUInt8(0, 0)
@@ -177,14 +176,10 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
   }
 
   /**
-   * Create a shallow copy of the transaction in the specified subspace (or the subspace of the specified database reference)
+   * Create a shallow copy of the transaction in the specified subspace (or database, transaction, or directory).
   */
-  at<CKI, CKO, CVI, CVO>(db: Database<CKI, CKO, CVI, CVO>): Transaction<CKI, CKO, CVI, CVO>
-  at<CKI, CKO, CVI, CVO>(subspace: Subspace<CKI, CKO, CVI, CVO>): Transaction<CKI, CKO, CVI, CVO>
-
-  at<CKI, CKO, CVI, CVO>(subspaceOrDb: Subspace<CKI, CKO, CVI, CVO> | Database<CKI, CKO, CVI, CVO>): Transaction<CKI, CKO, CVI, CVO> {
-    if (subspaceOrDb instanceof Subspace) return new Transaction(this._tn, this.isSnapshot, subspaceOrDb, undefined, this._ctx)
-    else return new Transaction(this._tn, this.isSnapshot, subspaceOrDb.subspace, undefined, this._ctx)
+  at<CKI, CKO, CVI, CVO>(hasSubspace: GetSubspace<CKI, CKO, CVI, CVO>): Transaction<CKI, CKO, CVI, CVO> {
+    return new Transaction(this._tn, this.isSnapshot, hasSubspace.getSubspace(), undefined, this._ctx)
   }
 
   /** @deprecated - use transaction.at(db) instead. */
@@ -232,14 +227,20 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
       ))
   }
 
-
+  /** Set the specified key/value pair in the database */
   set(key: KeyIn, val: ValIn) {
     this._tn.set(this._keyEncoding.pack(key), this._valueEncoding.pack(val))
   }
 
+  /** Remove the value for the specified key */
   clear(key: KeyIn) {
     const pack = this._keyEncoding.pack(key)
     this._tn.clear(pack)
+  }
+
+  /** Alias for clear to match naming in Map/Set/etc */
+  delete(key: KeyIn) {
+    return this.clear(key)
   }
 
   // This just destructively edits the result in-place.
