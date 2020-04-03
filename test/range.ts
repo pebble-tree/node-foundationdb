@@ -72,6 +72,19 @@ withEachDb(db => describe('key value functionality', () => {
     )
   })
 
+  it('clears tuple ranges using a prefix correctly', async () => {
+    const _db = db.withKeyEncoding(fdb.tuple)
+
+    await _db.set(['a\x00'], 'no')
+    await _db.set(['a', 'b'], 'yes')
+
+    await _db.clearRangeStartsWith('a')
+    // That should have deleted yes, but not no.
+
+    assert.equal(await _db.get(['a', 'b']), null)
+    assert.deepStrictEqual(await _db.get(['a\x00']), Buffer.from('no'))
+  })
+
   it('getRange without a specified end uses start as a prefix')
 
   describe('selectors', () => {

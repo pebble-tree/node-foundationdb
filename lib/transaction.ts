@@ -353,10 +353,20 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
   }
   
   // If end is not specified, clears entire range starting with prefix.
-  clearRange(start: KeyIn, end?: KeyIn) {
-    const _start = this._keyEncoding.pack(start)
-    const _end = end == null ? strInc(_start) : this._keyEncoding.pack(end)
-    this._tn.clearRange(_start, _end)
+  clearRange(_start: KeyIn, _end?: KeyIn) {
+    let start: NativeValue, end: NativeValue
+    // const _start = this._keyEncoding.pack(start)
+
+    if (_end == null) {
+      const range = (this._keyEncoding.range || defaultGetRange)(_start, this._keyEncoding)
+      start = range.begin
+      end = range.end
+    } else {
+      start = this._keyEncoding.pack(_start)
+      end = this._keyEncoding.pack(_end)
+    }
+    // const _end = end == null ? strInc(_start) : this._keyEncoding.pack(end)
+    this._tn.clearRange(start, end)
   }
   // Just an alias for unary clearRange.
   clearRangeStartsWith(prefix: KeyIn) {
