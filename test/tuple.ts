@@ -9,17 +9,6 @@ const floatBytes = (x: number) => {
 }
 
 describe('tuple', () => {
-  const assertRoundTrip = (val: TupleItem, strict: boolean = false) => {
-    const packed = tuple.pack([val])
-    const unpacked = tuple.unpack(packed, strict)[0]
-    assert.deepStrictEqual(unpacked, val)
-
-    // Check that numbered int -> bigint has no effect on encoded output.
-    if (typeof val === 'number' && Number.isSafeInteger(val)) {
-      const packed2 = tuple.pack([BigInt(val)])
-      assert.deepStrictEqual(packed2, packed, 'Value encoded differently with bigint encoder')
-    }
-  }
   const assertRoundTripBytes = (orig: Buffer, strict: boolean = false) => {
     const val = tuple.unpack(orig, strict)[0] as TupleItem
     const packed = tuple.pack([val])
@@ -45,7 +34,25 @@ describe('tuple', () => {
     else assert.deepStrictEqual(decoded, [value])
   }
 
-  it('roundtrips expected values', () => {
+  describe('roundtrips expected values', () => {
+    const assertRoundTrip = (val: TupleItem, strict: boolean = false) => it(typeof val === 'bigint' ? `${val}n` : JSON.stringify(val), () => {
+      // const packed = tuple.pack([val])
+      const packed = tuple.pack([val])
+      if (!Array.isArray(val)) {
+        const packedRaw = tuple.pack(val)
+        assert.deepStrictEqual(packed, packedRaw)
+      }
+  
+      const unpacked = tuple.unpack(packed, strict)[0]
+      assert.deepStrictEqual(unpacked, val)
+  
+      // Check that numbered int -> bigint has no effect on encoded output.
+      if (typeof val === 'number' && Number.isSafeInteger(val)) {
+        const packed2 = tuple.pack([BigInt(val)])
+        assert.deepStrictEqual(packed2, packed, 'Value encoded differently with bigint encoder')
+      }
+    })
+
     const data = ['hi', null, '👾', 321, 0, -100]
     assertRoundTrip(data)
 
@@ -62,6 +69,16 @@ describe('tuple', () => {
     assertRoundTrip(-BigInt(Number.MAX_SAFE_INTEGER) - BigInt(1))
 
     assertRoundTrip({type: 'float', value: 0.5, rawEncoding:floatBytes(0.5)}, true)
+  })
+
+  it('handles null and undefined as expected', () => {
+    assert.deepStrictEqual(tuple.pack(null), Buffer.from([0]))
+    assert.deepStrictEqual(tuple.pack(undefined), Buffer.from([]))
+    assert.deepStrictEqual(tuple.pack([]), Buffer.from([]))
+
+    assert.throws(() => {
+      tuple.pack([undefined as any])
+    })
   })
 
   it('implements bigint encoding in a way that matches the java bindings', () => {

@@ -1,6 +1,15 @@
 # HEAD
 
 - Pulled out database / transaction scope information (prefix and key value transformers) into a separate class 'subspace' to more closely match the other bindings. This is currently internal-only but it will be exposed when I'm more confident about the API.
+- Added support in the tuple encoder for non-array values, which are functionally equivalent to their array-wrapped versions. Eg this will now work:
+
+```javascript
+db.withKeyEncoding(fdb.tuple).at('index').set('hi', 'yo') // <-- 'index' and 'hi' no longer need to be wrapped in arrays
+```
+
+Note that `db.at(['prefix']).set(['key'], 'value')` is equivalent to `db.at(['prefix', 'key']).set([] (or undefined), 'value')` but *not* equivalent to `db.at(['prefix', 'key']).set(null, 'value')` because `null` is treated like `[null]` which is not the same as `[]`.
+
+(The mental model is that tuple.pack(arr1) + tuple.pack(arr2) is always equivalent to tuple.pack(arr1 + arr2), so `[]` encodes to an empty byte string, but `[null]` encodes to `[0]`).
 
 # 0.10.7
 

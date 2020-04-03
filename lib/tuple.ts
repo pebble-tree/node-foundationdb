@@ -355,17 +355,19 @@ const encode = (into: BufferBuilder, item: TupleItem, versionstampPos: Versionst
   }
 }
 
-function packRaw(arr: TupleItem[]): Buffer | UnboundStamp {
-  if (!Array.isArray(arr)) throw new TypeError('fdb.tuple.pack must be called with an array')
+function packRaw(arr?: TupleItem | TupleItem[]): Buffer | UnboundStamp {
+  if (arr === undefined || Array.isArray(arr) && arr.length === 0) return BUF_EMPTY
 
-  if (arr.length === 0) return BUF_EMPTY
-
-  let versionstampPos: VersionstampPos = {}
+  // if (!Array.isArray(arr)) throw new TypeError('fdb.tuple.pack must be called with an array')
+  const versionstampPos: VersionstampPos = {}
   const builder = new BufferBuilder()
-  for (let i = 0; i < arr.length; i++) {
-    encode(builder, arr[i], versionstampPos)
-    // console.log('pack', arr[i], builder.storage)
-  }
+
+  if (Array.isArray(arr)) {
+    for (let i = 0; i < arr.length; i++) {
+      encode(builder, arr[i], versionstampPos)
+      // console.log('pack', arr[i], builder.storage)
+    }
+  } else encode(builder, arr, versionstampPos)    
 
   const data = builder.make()
   return versionstampPos.stamp == null
@@ -373,7 +375,7 @@ function packRaw(arr: TupleItem[]): Buffer | UnboundStamp {
     : {data, stampPos: versionstampPos.stamp, codePos: versionstampPos.code}
 }
 
-export const pack = (arr: TupleItem[]): Buffer => {
+export const pack = (arr?: TupleItem | TupleItem[]): Buffer => {
   const pack = packRaw(arr)
   if (!Buffer.isBuffer(pack)) throw new TypeError('Incomplete versionstamp included in vanilla tuple pack')
   return pack
