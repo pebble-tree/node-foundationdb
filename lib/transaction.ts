@@ -33,6 +33,7 @@ import {
   packPrefixedVersionstamp,
   packVersionstampPrefixSuffix
 } from './versionstamp'
+import Subspace from './subspace'
 
 const byteZero = Buffer.alloc(1)
 byteZero.writeUInt8(0, 0)
@@ -68,7 +69,7 @@ const doNothing = () => {}
 type BakeItem<T> = {item: T, transformer: Transformer<T, any>, code: Buffer | null}
 
 // This scope object is shared by the family of transaction objects made with .scope().
-interface TxnScope {
+interface TxnCtx {
   nextCode: number
 
   // If you call setVersionstampedKey / setVersionstampedValue, we pull out
@@ -88,25 +89,31 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
   _tn: NativeTransaction
   
   isSnapshot: boolean
+  subspace: Subspace<KeyIn, KeyOut, ValIn, ValOut>
+
+  // Copied out from scope for convenience, since these are so heavily used. Not
+  // sure if this is a good idea.
   _keyEncoding: Transformer<KeyIn, KeyOut>
   _valueEncoding: Transformer<ValIn, ValOut>
   
-  _scope: TxnScope
+  _ctx: TxnCtx
   
-
+  /** NOTE: Do not call this directly. Instead transactions should be created via db.doTn(...) */
   constructor(tn: NativeTransaction, snapshot: boolean,
-      keyEncoding: Transformer<KeyIn, KeyOut>, valueEncoding: Transformer<ValIn, ValOut>,
-      opts?: TransactionOptions, scope?: TxnScope) {
+      scope: Subspace<KeyIn, KeyOut, ValIn, ValOut>,
+      // keyEncoding: Transformer<KeyIn, KeyOut>, valueEncoding: Transformer<ValIn, ValOut>,
+      opts?: TransactionOptions, ctx?: TxnCtx) {
     this._tn = tn
 
     this.isSnapshot = snapshot
-    this._keyEncoding = keyEncoding
-    this._valueEncoding = valueEncoding
+    this.subspace = scope
+    this._keyEncoding = scope._bakedKeyXf
+    this._valueEncoding = scope.valueXf
 
     // this._root = root || this
     if (opts) eachOption(transactionOptionData, opts, (code, val) => tn.setOption(code, val))
 
-    this._scope = scope ? scope : {
+    this._ctx = ctx ? ctx : {
       nextCode: 0,
       toBake: null
     }
@@ -121,7 +128,7 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
       try {
         const result = await body(this)
 
-        const stampPromise = (this._scope.toBake && this._scope.toBake.length)
+        const stampPromise = (this._ctx.toBake && this._ctx.toBake.length)
           ? this.getVersionstamp() : null
 
         await this.rawCommit()
@@ -129,7 +136,7 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
         if (stampPromise) {
           const stamp = await stampPromise.promise
 
-          this._scope.toBake!.forEach(({item, transformer, code}) => (
+          this._ctx.toBake!.forEach(({item, transformer, code}) => (
             transformer.bakeVersionstamp!(item, stamp, code))
           )
         }
@@ -143,27 +150,46 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
       }
 
       // Reset our local state that will have been filled in by calling the body.
-      this._scope.nextCode = 0
-      if (this._scope.toBake) this._scope.toBake.length = 0
+      this._ctx.nextCode = 0
+      if (this._ctx.toBake) this._ctx.toBake.length = 0
     } while (true)
   }
 
-  // Usually you should pass options when the transaction is constructed.
-  // Options are shared between a transaction object and any other aliases
-  // (snapshots, transactions in other scopes)
+  /**
+   * Set options on the transaction object. These options can have a variety of
+   * effects - see TransactionOptionCode for details. For options which are
+   * persistent on the transaction, its recommended to set the option when the
+   * transaction is constructed.
+   *
+   * Note that options are shared between a transaction object and any aliases
+   * of the transaction object (eg in other scopes or from `txn.snapshot()`).
+   */
   setOption(opt: TransactionOptionCode, value?: number | string | Buffer) {
     // TODO: Check type of passed option is valid.
     this._tn.setOption(opt, (value == null) ? null : value)
   }
 
-  // Returns a mirror transaction which does snapshot reads.
+  /**
+   * Returns a shallow copy of the transaction object which does snapshot reads.
+   */
   snapshot(): Transaction<KeyIn, KeyOut, ValIn, ValOut> {
-    return new Transaction(this._tn, true, this._keyEncoding, this._valueEncoding, undefined, this._scope)
+    return new Transaction(this._tn, true, this.subspace, undefined, this._ctx)
   }
 
-  // Creates a shallow copy of the database in a different scope
+  /**
+   * Create a shallow copy of the transaction in the specified subspace (or the subspace of the specified database reference)
+  */
+  at<CKI, CKO, CVI, CVO>(db: Database<CKI, CKO, CVI, CVO>): Transaction<CKI, CKO, CVI, CVO>
+  at<CKI, CKO, CVI, CVO>(subspace: Subspace<CKI, CKO, CVI, CVO>): Transaction<CKI, CKO, CVI, CVO>
+
+  at<CKI, CKO, CVI, CVO>(subspaceOrDb: Subspace<CKI, CKO, CVI, CVO> | Database<CKI, CKO, CVI, CVO>): Transaction<CKI, CKO, CVI, CVO> {
+    if (subspaceOrDb instanceof Subspace) return new Transaction(this._tn, this.isSnapshot, subspaceOrDb, undefined, this._ctx)
+    else return new Transaction(this._tn, this.isSnapshot, subspaceOrDb.subspace, undefined, this._ctx)
+  }
+
+  /** @deprecated - use transaction.at(db) instead. */
   scopedTo<CKI, CKO, CVI, CVO>(db: Database<CKI, CKO, CVI, CVO>): Transaction<CKI, CKO, CVI, CVO> {
-    return new Transaction(this._tn, this.isSnapshot, db._bakedKeyXf, db._valueXf, undefined, this._scope)
+    return this.at(db)
   }
 
   // You probably don't want to call any of these functions directly. Instead call db.transact(async tn => {...}).
@@ -434,7 +460,7 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
 
   // **** Version stamp stuff
 
-  getNextTransactionID() { return this._scope.nextCode++ }
+  getNextTransactionID() { return this._ctx.nextCode++ }
 
   _bakeCode(into: UnboundStamp) {
     if (this.isSnapshot) throw new Error('Cannot use this method in a snapshot transaction')
@@ -462,7 +488,7 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
 
   _addBakeItem<T>(item: T, transformer: Transformer<T, any>, code: Buffer | null) {
     if (transformer.bakeVersionstamp) {
-      const scope = this._scope
+      const scope = this._ctx
       if (scope.toBake == null) scope.toBake = []
       scope.toBake.push({item, transformer, code})
     }

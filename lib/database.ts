@@ -7,6 +7,7 @@ import Transaction, {
 import {Transformer, defaultTransformer, prefixTransformer} from './transformer'
 import {NativeValue} from './native'
 import {KeySelector} from './keySelector'
+import Subspace, { defaultSubspace } from './subspace'
 import {TupleItem, pack} from './tuple'
 import {asBuf, concat2} from './util'
 import {eachOption} from './opts'
@@ -17,31 +18,15 @@ import {DatabaseOptions,
   MutationType,
 } from './opts.g'
 
-const concatPrefix = (p1: Buffer, p2: string | Buffer | null) => (
-  p2 == null ? p1
-    : p1.length === 0 ? asBuf(p2)
-    : concat2(p1, asBuf(p2))
-)
-
-const emptyBuf = Buffer.alloc(0)
-
 export type WatchWithValue<Value> = Watch & { value: Value | null }
 
 export default class Database<KeyIn = NativeValue, KeyOut = Buffer, ValIn = NativeValue, ValOut = Buffer> {
   _db: fdb.NativeDatabase
-  _prefix: Buffer // This is baked into _bakedKeyXf but we hold it so we can call .at / .atPrefix.
-  _keyXf: Transformer<KeyIn, KeyOut>
-  _valueXf: Transformer<ValIn, ValOut>
+  subspace: Subspace<KeyIn, KeyOut, ValIn, ValOut>
 
-  _bakedKeyXf: Transformer<KeyIn, KeyOut> // This is cached from _prefix + _keyXf.
-
-  constructor(db: fdb.NativeDatabase, prefix: Buffer | null, keyXf: Transformer<KeyIn, KeyOut>, valueXf: Transformer<ValIn, ValOut>) {
+  constructor(db: fdb.NativeDatabase, subspace: Subspace<KeyIn, KeyOut, ValIn, ValOut>) {
     this._db = db
-    this._prefix = prefix || emptyBuf
-    this._keyXf = keyXf
-    this._valueXf = valueXf
-
-    this._bakedKeyXf = prefix ? prefixTransformer(prefix, keyXf) : keyXf
+    this.subspace = subspace//new Subspace<KeyIn, KeyOut, ValIn, ValOut>(prefix, keyXf, valueXf)
   }
 
   setNativeOptions(opts: DatabaseOptions) {
@@ -55,26 +40,33 @@ export default class Database<KeyIn = NativeValue, KeyOut = Buffer, ValIn = Nati
   // **** Scoping functions
   
   getRoot(): Database {
-    return new Database(this._db, null, defaultTransformer, defaultTransformer)
+    return new Database(this._db, defaultSubspace)
   }
 
-  // All these template parameters make me question my life choices.
-  at(prefix: KeyIn | null): Database<KeyIn, KeyOut, ValIn, ValOut>;
-  at<ChildKeyIn, ChildKeyOut>(prefix: KeyIn | null, keyXf: Transformer<ChildKeyIn, ChildKeyOut>): Database<ChildKeyIn, ChildKeyOut, ValIn, ValOut>;
-  at<ChildKeyIn, ChildKeyOut, ChildValIn, ChildValOut>(prefix: KeyIn | null, keyXf: Transformer<ChildKeyIn, ChildKeyOut>, valueXf: Transformer<ChildValIn, ChildValOut>): Database<ChildKeyIn, ChildKeyOut, ChildValIn, ChildValOut>;
-  at<ChildKeyIn, ChildKeyOut, ChildValIn, ChildValOut>(prefix: KeyIn | null, keyXf: Transformer<any, any> = this._keyXf, valueXf: Transformer<any, any> = this._valueXf) {
-    const _prefix = prefix == null ? null : this._keyXf.pack(prefix)
-    return new Database(this._db, concatPrefix(this._prefix, _prefix), keyXf, valueXf)
+  getPrefix(): Buffer {
+    return this.subspace.prefix
   }
 
-  withKeyEncoding<NativeBuffer>(): Database<NativeValue, Buffer, ValIn, ValOut>;
-  withKeyEncoding<ChildKeyIn, ChildKeyOut>(keyXf?: Transformer<ChildKeyIn, ChildKeyOut>): Database<ChildKeyIn, ChildKeyOut, ValIn, ValOut>;
+  // The actual behaviour here has moved into subspace, but this method is kept for
+  // convenience and backwards compatibility.
+  /** Create a shallow reference to the database at a specified subspace */
+  at<CKI, CKO, CVI, CVO>(subspace: Subspace<CKI, CKO, CVI, CVO>): Database<CKI, CKO, CVI, CVO>
+  /** Create a shallow reference to the database at the subspace of another database reference */
+  at<CKI = KeyIn, CKO = KeyOut, CVI = ValIn, CVO = ValOut>(prefix: KeyIn | null, keyXf?: Transformer<CKI, CKO>, valueXf?: Transformer<CVI, CVO>): Database<CKI, CKO, CVI, CVO>
+
+  at<CKI, CKO, CVI, CVO>(prefixOrSubspace: Subspace | KeyIn | null, keyXf?: Transformer<any, any>, valueXf?: Transformer<any, any>) {
+    if (prefixOrSubspace instanceof Subspace) return new Database(this._db, prefixOrSubspace)
+    else return new Database(this._db, this.subspace.at(prefixOrSubspace, keyXf, valueXf))
+  }
+
+  // withKeyEncoding<NativeBuffer>(): Database<NativeValue, Buffer, ValIn, ValOut>;
+  // withKeyEncoding<ChildKeyIn, ChildKeyOut>(keyXf?: Transformer<ChildKeyIn, ChildKeyOut>): Database<ChildKeyIn, ChildKeyOut, ValIn, ValOut>;
   withKeyEncoding<ChildKeyIn, ChildKeyOut>(keyXf: Transformer<any, any> = defaultTransformer): Database<ChildKeyIn, ChildKeyOut, ValIn, ValOut> {
-    return new Database(this._db, this._prefix, keyXf, this._valueXf)
+    return new Database(this._db, this.subspace.at(null, keyXf))
   }
-
+  
   withValueEncoding<ChildValIn, ChildValOut>(valXf: Transformer<ChildValIn, ChildValOut>): Database<KeyIn, KeyOut, ChildValIn, ChildValOut> {
-    return new Database(this._db, this._prefix, this._keyXf, valXf)
+    return new Database(this._db, this.subspace.at(null, undefined /* inherit */, valXf))
   }
 
   // This is the API you want to use for non-trivial transactions.
@@ -98,7 +90,7 @@ export default class Database<KeyIn = NativeValue, KeyOut = Buffer, ValIn = Nati
 
   // Infrequently used. You probably want to use doTransaction instead.
   rawCreateTransaction(opts?: TransactionOptions) {
-    return new Transaction(this._db.createTransaction(), false, this._bakedKeyXf, this._valueXf, opts)
+    return new Transaction<KeyIn, KeyOut, ValIn, ValOut>(this._db.createTransaction(), false, this.subspace, opts)
   }
 
   get(key: KeyIn): Promise<ValOut | null> {
@@ -223,9 +215,11 @@ export const createDatabase = <KeyIn = NativeValue, KeyOut = Buffer, ValIn = Nat
     keyXf?: Transformer<KeyIn, KeyOut> | null, valXf?: Transformer<ValIn, ValOut>
 ): Database<KeyIn, KeyOut, ValIn, ValOut> => {
   return new Database(db,
-    prefix == null ? null : asBuf(prefix),
-    // Typing here is ugly but eh.
-    keyXf || (defaultTransformer as any as Transformer<KeyIn, KeyOut>),
-    valXf || (defaultTransformer as any as Transformer<ValIn, ValOut>)
+    new Subspace(
+      prefix == null ? null : asBuf(prefix),
+      // Typing here is ugly but eh.
+      keyXf || (defaultTransformer as any as Transformer<KeyIn, KeyOut>),
+      valXf || (defaultTransformer as any as Transformer<ValIn, ValOut>)
+    )
   )
 }

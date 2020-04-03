@@ -1,3 +1,18 @@
+# HEAD
+
+- Pulled out database / transaction scope information (prefix and key value transformers) into a separate class 'subspace' to more closely match the other bindings. This is currently internal-only but it will be exposed when I'm more confident about the API.
+
+# 0.10.7
+
+- Fixed another [critical bug](https://github.com/josephg/node-foundationdb/issues/41) which can cause nodejs to hang (deadlock) under heavy load.
+- Started moving some documentation into doc comment style, so hovering over methods can now show information.
+- Updated transaction options and network options to match upstream foundationdb @ 6.2.19
+
+# 0.10.6
+
+- Fixed a really bad [bug](https://github.com/josephg/node-foundationdb/issues/40) enabled by version 0.10.4 which can cause data corruption in some cases
+- Improved the behaviour in `getRange` methods when fetching a range with a tuple key prefix. (`getRangeAll` / `getRangeStartsWith` / etc all do the right thing by default now when using tuple keys).
+
 # 0.10.4
 
 - Fixed [a bug](https://github.com/josephg/node-foundationdb/pull/39) involving range queries when a prefix wasn't applied to the database. Thanks @kristate!
