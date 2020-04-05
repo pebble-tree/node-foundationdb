@@ -12,9 +12,6 @@
         'src/future.cpp',
         'src/utils.cpp'
       ],
-      'include_dirs': [
-        "<!(node -e \"require('nan')\")"
-      ],
       'cflags': ['-std=c++0x'],
       'conditions': [
         ['OS=="linux"', {

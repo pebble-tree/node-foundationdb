@@ -11,6 +11,8 @@ Note that `db.at(['prefix']).set(['key'], 'value')` is equivalent to `db.at(['pr
 
 (The mental model is that tuple.pack(arr1) + tuple.pack(arr2) is always equivalent to tuple.pack(arr1 + arr2), so `[]` encodes to an empty byte string, but `[null]` encodes to `[0]`).
 
+- Removed support for the older nan-based native module. The newer napi code works on all officially supported versions of nodejs, as well as node 8.16. So this should be pretty safe at this point.
+
 # 0.10.7
 
 - Fixed another [critical bug](https://github.com/josephg/node-foundationdb/issues/41) which can cause nodejs to hang (deadlock) under heavy load.

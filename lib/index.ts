@@ -15,7 +15,7 @@ import * as apiVersion from './apiVersion'
 // Must be called before fdb is initialized. Eg setAPIVersion(510).
 export {set as setAPIVersion} from './apiVersion'
 
-// 'nan' or 'napi'.
+// 'napi'
 export const modType = fdb.type
 
 let initCalled = false

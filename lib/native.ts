@@ -126,6 +126,7 @@ try {
   throw e
 }
 
-export const type: 'nan' | 'napi' = mod.type || 'nan'
+// Nan module no longer supported.
+export const type = 'napi'
 mod.FDBError = FDBError
 export default mod as NativeModule
