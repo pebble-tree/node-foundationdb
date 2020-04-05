@@ -44,5 +44,5 @@ export const concat2 = (a: Buffer, b: Buffer) => {
 }
 
 export const startsWith = (a: Buffer, prefix: Buffer) => (
-  prefix.length <= a.length && prefix.compare(a, 0, prefix.length) !== 0
+  prefix.length <= a.length && prefix.compare(a, 0, prefix.length) === 0
 )
