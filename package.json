@@ -36,7 +36,7 @@
     "@types/mocha": "^7.0.1",
     "@types/node": "^12.0.0",
     "@types/xml2js": "^0.4.5",
-    "chalk": "^3.0.0",
+    "chalk": "^4.0.0",
     "mocha": "^7.0.1",
     "prebuildify": "^3.0.4",
     "prebuildify-ci": "^1.0.5",
