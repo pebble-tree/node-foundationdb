@@ -6,7 +6,6 @@
         'src/module.cpp',
         'src/database.cpp',
         'src/transaction.cpp',
-        'src/cluster.cpp',
         'src/error.cpp',
         'src/options.cpp',
         'src/future.cpp',

@@ -576,6 +576,10 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
       }
   }
 
+  getApproximateSize() {
+    return this._tn.getApproximateSize()
+  }
+
   // This packs the value by prefixing the version stamp to the
   // valueEncoding's packed version of the value.
   // This is intended for use with getPackedVersionstampedValue.

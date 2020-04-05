@@ -83,7 +83,7 @@ inline MaybeValue fdb_status_to_maybe(napi_env env, fdb_error_t errcode) {
 
 #define GET_ARGS(env, info, args, count) \
   size_t _argc = count;\
-  napi_value args[count];\
+  napi_value args[count] = {};\
   NAPI_OK_OR_RETURN_NULL(env, napi_get_cb_info(env, info, &_argc, args, NULL, NULL));
 
 

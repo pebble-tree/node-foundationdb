@@ -13,7 +13,6 @@ import {eachOption} from './opts'
 import {DatabaseOptions,
   TransactionOptions,
   databaseOptionData,
-  StreamingMode,
   MutationType,
 } from './opts.g'
 
@@ -211,18 +210,4 @@ export default class Database<KeyIn = NativeValue, KeyOut = Buffer, ValIn = Nati
   setVersionstampPrefixedValue(key: KeyIn, value?: ValIn, prefix?: Buffer) {
     return this.doOneshot(tn => tn.setVersionstampPrefixedValue(key, value, prefix))
   }
-}
-
-export const createDatabase = <KeyIn = NativeValue, KeyOut = Buffer, ValIn = NativeValue, ValOut = Buffer>(
-    db: fdb.NativeDatabase, prefix?: string | Buffer | null,
-    keyXf?: Transformer<KeyIn, KeyOut> | null, valXf?: Transformer<ValIn, ValOut>
-): Database<KeyIn, KeyOut, ValIn, ValOut> => {
-  return new Database(db,
-    new Subspace(
-      prefix == null ? null : asBuf(prefix),
-      // Typing here is ugly but eh.
-      keyXf || (defaultTransformer as any as Transformer<KeyIn, KeyOut>),
-      valXf || (defaultTransformer as any as Transformer<ValIn, ValOut>)
-    )
-  )
 }

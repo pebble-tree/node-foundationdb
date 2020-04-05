@@ -32,7 +32,6 @@
 #include "fdbversion.h"
 #include <foundationdb/fdb_c.h>
 
-#include "cluster.h"
 #include "database.h"
 #include "future.h"
 #include "transaction.h"
@@ -47,9 +46,6 @@ static uv_thread_t fdbThread;
 static bool networkStarted = false;
 static int32_t previousApiVersion = 0;
 
-// napi_status get_int32_arg(napi_env env, napi_callback_info info) {
-
-// }
 
 static napi_value setAPIVersion(napi_env env, napi_callback_info info) {
   GET_ARGS(env, info, args, 1);
@@ -103,72 +99,34 @@ static fdb_error_t runNetwork() {
   return 0;
 }
 
-// Returns null if the passed value isn't a string or NULL.
-static FDBFuture *_createClusterFuture(napi_env env, napi_value filenameOrNull) {
+// Added in 610. This just creates a database; no muss no fuss.
+static napi_value createDatabase(napi_env env, napi_callback_info info) {
+  // The only argument here is an optional string cluster_file_path.
+  GET_ARGS(env, info, args, 1);
+
+  // fdb_create_database(
+  auto filenameOrNull = args[0];
+  char path[1024];
+  char *cfilename = NULL;
+
   if (filenameOrNull != NULL) {
     napi_valuetype type;
     NAPI_OK_OR_RETURN_NULL(env, napi_typeof(env, filenameOrNull, &type));
-    if (type == napi_null || type == napi_undefined) filenameOrNull = NULL;
+    if (type != napi_null && type != napi_undefined && type != napi_string) return NULL;
+    
+    if (type == napi_string) {
+      // This effectively enforces a hardcoded 1024 character limit on cluster file
+      // paths. In practice this should be fine.
+      // TODO: Consider adding a warning here if the path is truncated. (We can
+      // pull the length back off with the last argument).
+      NAPI_OK_OR_RETURN_NULL(env, napi_get_value_string_utf8(env, filenameOrNull, path, sizeof(path), NULL));
+      cfilename = path;
+    }
   }
 
-  if (filenameOrNull != NULL) {
-    // This effectively enforces a hardcoded 1024 character limit on cluster file
-    // paths. In practice this should be fine.
-    char path[1024];
-    // TODO: Consider adding a warning here if the path is truncated. (We can
-    // pull the length back off with the last argument).
-    NAPI_OK_OR_RETURN_NULL(env, napi_get_value_string_utf8(env, filenameOrNull, path, sizeof(path), NULL));
-    return fdb_create_cluster(path);
-  } else {
-    return fdb_create_cluster(NULL);
-  }
-}
-
-// static void finalizeCluster(napi_env env, void *cluster, void *_unused) {
-//   // fprintf(stderr, "finalizeCluster");
-//   // fflush(stderr);
-//   fdb_cluster_destroy((FDB_cluster *)cluster);
-// }
-
-static napi_value createClusterSync(napi_env env, napi_callback_info info) {
-  GET_ARGS(env, info, args, 1);
-
-  FDBFuture *f = _createClusterFuture(env, args[0]);
-  if (f == NULL) return NULL; // A napi error happened.
-
-  // Isolate *isolate = Isolate::GetCurrent();
-  // Nan::EscapableHandleScope scope;
-
-  // FDBFuture *f = _createClusterFuture(info[0]);
-  FDB_OK_OR_RETURN_NULL(env, fdb_future_block_until_ready(f));
-
-  FDBCluster *cluster;
-  FDB_OK_OR_RETURN_NULL(env, fdb_future_get_cluster(f, &cluster));
-
-  MaybeValue val = newCluster(env, cluster);
-  return val.value;
-  // if (val.status != napi_ok) return NULL;
-
-  // napi_value result;
-  // napi_status status = napi_create_external(env, (void *)cluster, finalizeCluster, NULL, &result);
-  // if (status != napi_ok) {
-  //   fdb_cluster_destroy(cluster);
-  //   return NULL;
-  // }
-
-  // return result;
-}
-
-// void createCluster(const FunctionCallbackInfo<Value>& info) {
-static napi_value createCluster(napi_env env, napi_callback_info info) {
-  GET_ARGS(env, info, args, 2);
-
-  FDBFuture *f = _createClusterFuture(env, args[0]);
-  return futureToJS(env, f, args[1], [](napi_env env, FDBFuture* f, fdb_error_t* errOut) -> MaybeValue {
-    FDBCluster *cluster;
-    if ((*errOut = fdb_future_get_cluster(f, &cluster))) return wrap_null();
-    else return newCluster(env, cluster);
-  }).value;
+  FDBDatabase *database;
+  FDB_OK_OR_RETURN_NULL(env, fdb_create_database(cfilename, &database));
+  return newDatabase(env, database).value;
 }
 
 static napi_value setNetworkOption(napi_env env, napi_callback_info info) {
@@ -219,7 +177,6 @@ static napi_value errorPredicate(napi_env env, napi_callback_info info) {
 
 static napi_value init(napi_env env, napi_value exports) {
   NAPI_OK_OR_RETURN_NULL(env, initFuture(env));
-  NAPI_OK_OR_RETURN_NULL(env, initCluster(env));
   NAPI_OK_OR_RETURN_NULL(env, initDatabase(env));
   NAPI_OK_OR_RETURN_NULL(env, initTransaction(env));
   NAPI_OK_OR_RETURN_NULL(env, initWatch(env));
@@ -232,8 +189,7 @@ static napi_value init(napi_env env, napi_value exports) {
     FN_DEF(setAPIVersion),
     FN_DEF(setAPIVersionImpl),
 
-    FN_DEF(createCluster),
-    FN_DEF(createClusterSync),
+    FN_DEF(createDatabase),
 
     FN_DEF(setNetworkOption),
     FN_DEF(startNetwork),

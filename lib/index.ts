@@ -5,12 +5,15 @@
 // const directory = require('./directory')
 
 import nativeMod, * as fdb from './native'
-import Database, {createDatabase} from './database'
+import Database from './database'
 import {eachOption} from './opts'
 import {NetworkOptions, networkOptionData, DatabaseOptions} from './opts.g'
 import {Transformer} from './transformer'
+import {defaultSubspace} from './subspace'
 
 import * as apiVersion from './apiVersion'
+
+import {deprecate} from 'util'
 
 // Must be called before fdb is initialized. Eg setAPIVersion(510).
 export {set as setAPIVersion} from './apiVersion'
@@ -45,6 +48,7 @@ export {default as keySelector, KeySelector} from './keySelector'
 // always be constructed using open or via a cluster object.
 export {default as Database} from './database'
 export {default as Transaction, Watch} from './transaction'
+export {default as Subspace, defaultSubspace} from './subspace'
 
 export {
   NetworkOptions,
@@ -69,6 +73,7 @@ import {TupleItem} from './tuple'
 
 export {TupleItem, tuple}
 
+export {Directory, DirectoryLayer} from './directory'
 
 const id = (x: any) => x
 export const encoders = {
@@ -100,44 +105,62 @@ export const encoders = {
   tuple: tuple as Transformer<TupleItem[], TupleItem[]>,
 }
 
-const wrapCluster = (cluster: fdb.NativeCluster) => ({
-  async openDatabase(dbName: 'DB' = 'DB', opts?: DatabaseOptions) {
-    const db = createDatabase(await cluster.openDatabase(dbName))
-    if (opts) db.setNativeOptions(opts)
-    return db
-  },
-  openDatabaseSync(dbName: 'DB' = 'DB', opts?: DatabaseOptions) {
-    const db = createDatabase(cluster.openDatabaseSync(dbName))
-    if (opts) db.setNativeOptions(opts)
-    return db
-  },
-  close() {cluster.close()}
-})
-
-export const createCluster = (clusterFile?: string) => {
-  init()
-  return nativeMod.createCluster(clusterFile).then(c => wrapCluster(c))
-}
-export const createClusterSync = (clusterFile?: string) => {
-  init()
-  return wrapCluster(nativeMod.createClusterSync(clusterFile))
-}
-
 // Can only be called before open() or openSync().
 export function configNetwork(netOpts: NetworkOptions) {
   if (initCalled) throw Error('configNetwork must be called before FDB connections are opened')
   eachOption(networkOptionData, netOpts, (code, val) => nativeMod.setNetworkOption(code, val))
 }
 
-// Returns a promise to a database.
-// Note any network configuration must preceed this call.
+/**
+ * Opens a database and returns it.
+ *
+ * Note any network configuration must happen before the database is opened.
+ */
 export function open(clusterFile?: string, dbOpts?: DatabaseOptions) {
-  return createCluster(clusterFile).then(c => c.openDatabase('DB', dbOpts))
+  init()
+
+  const db = new Database(nativeMod.createDatabase(clusterFile), defaultSubspace)
+  if (dbOpts) db.setNativeOptions(dbOpts)
+  
+  // Users of the previous version of the API would expect the object returned
+  // here to be a promise. I'm still breaking backwards compatibility by
+  // returning synchronously now but ...
+  ;(db as any).next = deprecate((fn: any) => {
+    setImmediate(fn, db)
+  }, 'fdb.open() returns a database synchronously. No need to use open().next(...)')
+
+  return db
 }
 
-export function openSync(clusterFile?: string, dbOpts?: DatabaseOptions) {
-  return createClusterSync(clusterFile).openDatabaseSync('DB', dbOpts)
-}
+// *** Some deprecated stuff to remove:
+
+/** @deprecated Async database connection has been removed from FDB. Call open() directly. */
+export const openSync = deprecate(open, 'Async database connection has been removed from FDB. Call open() directly.')
+
+// Previous versions of this library allowed you to create a cluster and then
+// create database objects from it. This was all removed from the C API. We'll
+// fake it for now, and remove this later.
+
+const stubCluster = (clusterFile?: string) => ({
+  openDatabase(dbName: 'DB' = 'DB', opts?: DatabaseOptions) {
+    return Promise.resolve(open(clusterFile, opts))
+  },
+  openDatabaseSync(dbName: 'DB' = 'DB', opts?: DatabaseOptions) {
+    return open(clusterFile, opts)
+  },
+  close() {}
+})
+
+/** @deprecated FDB clusters have been removed from the API. Call open() directly to connect. */
+export const createCluster = deprecate((clusterFile?: string) => {
+  return Promise.resolve(stubCluster(clusterFile))
+}, 'FDB clusters have been removed from the API. Call open() directly to connect.')
+
+/** @deprecated FDB clusters have been removed from the API. Call open() directly to connect. */
+export const createClusterSync = deprecate((clusterFile?: string) => {
+  return stubCluster(clusterFile)
+}, 'FDB clusters have been removed from the API. Call open() directly to connect.')
+
 
 // TODO: Should I expose a method here for stopping the network for clean shutdown?
 // I feel like I should.. but I'm not sure when its useful. Will the network thread

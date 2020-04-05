@@ -251,13 +251,23 @@ static MaybeValue versionToJSBuffer(napi_env env, int64_t version) {
   return wrap_ok(result);
 }
 
-static MaybeValue getVersion(napi_env env, FDBFuture* future, fdb_error_t* errOut) {
+static MaybeValue getInt64ToBuffer(napi_env env, FDBFuture* future, fdb_error_t* errOut) {
   int64_t version;
-  *errOut = fdb_future_get_version(future, &version);
+  *errOut = fdb_future_get_int64(future, &version);
 
   // See discussion about buffers vs storing the version as a JS number:
   // https://forums.foundationdb.org/t/version-length-is-53-bits-enough/260/6
   return UNLIKELY(*errOut) ? wrap_null() : versionToJSBuffer(env, version);
+}
+
+static MaybeValue getInt64ToNumber(napi_env env, FDBFuture* future, fdb_error_t* errOut) {
+  int64_t val;
+  *errOut = fdb_future_get_int64(future, &val);
+  if (UNLIKELY(*errOut)) return wrap_null();
+
+  napi_value result;
+  TRY(napi_create_int64(env, val, &result));
+  return wrap_ok(result);
 }
 
 // ***** End value extraction functions.
@@ -309,6 +319,13 @@ static napi_value onError(napi_env env, napi_callback_info info) {
   return futureToJS(env, f, args[1], ignoreResult).value;
 }
 
+static napi_value getApproximateSize(napi_env env, napi_callback_info info) {
+  FDBTransaction *tr = (FDBTransaction *)getWrapped(env, info);
+  if (UNLIKELY(tr == NULL)) return NULL;
+
+  FDBFuture *f = fdb_transaction_get_approximate_size(tr);
+  return futureToJS(env, f, NULL, getInt64ToNumber).value;
+}
 
 
 // Get(key, isSnapshot, [cb])
@@ -544,7 +561,7 @@ static napi_value getReadVersion(napi_env env, napi_callback_info info) {
   GET_ARGS(env, info, args, 1);
 
   FDBFuture *f = fdb_transaction_get_read_version(tr);
-  return futureToJS(env, f, args[0], getVersion).value;
+  return futureToJS(env, f, args[0], getInt64ToBuffer).value;
 }
 
 // setReadVersion(version)
@@ -612,6 +629,8 @@ napi_status initTransaction(napi_env env) {
     FN_DEF(reset),
     FN_DEF(cancel),
     FN_DEF(onError),
+
+    FN_DEF(getApproximateSize),
 
     FN_DEF(get),
     FN_DEF(getKey),

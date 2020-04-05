@@ -7,7 +7,6 @@ export type NativeValue = string | Buffer
 
 export type Callback<T> = (err: FDBError | null, results?: T) => void
 
-// type VoidCb = (err?: FDBError) => void
 
 export type KVList = {
   results: [Buffer, Buffer][], // [key, value] pair.
@@ -31,6 +30,8 @@ export interface NativeTransaction {
   cancel(): void
   onError(code: number, cb: Callback<void>): void
   onError(code: number): Promise<void>
+
+  getApproximateSize(): Promise<number>
 
   get(key: NativeValue, isSnapshot: boolean): Promise<Buffer | null>
   get(key: NativeValue, isSnapshot: boolean, cb: Callback<Buffer | null>): void
@@ -79,12 +80,6 @@ export interface NativeDatabase {
   close(): void
 }
 
-export interface NativeCluster {
-  openDatabase(dbName: 'DB'): Promise<NativeDatabase>
-  openDatabaseSync(dbName: 'DB'): NativeDatabase
-  close(): void
-}
-
 export enum ErrorPredicate {
   Retryable = 50000,
   MaybeCommitted = 50001,
@@ -98,8 +93,7 @@ export interface NativeModule {
   startNetwork(): void
   stopNetwork(): void
 
-  createCluster(filename?: string): Promise<NativeCluster>
-  createClusterSync(filename?: string): NativeCluster
+  createDatabase(clusterFile?: string): NativeDatabase
 
   setNetworkOption(code: number, param: string | number | Buffer | null): void
 

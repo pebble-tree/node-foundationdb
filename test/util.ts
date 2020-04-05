@@ -35,12 +35,17 @@ export const withEachDb = (fn: (db: fdb.Database) => void) => {
   // These tests just use a single shared database cluster instance which is
   // reset between tests. It would be cleaner if we used beforeEach to close &
   // reopen the database but its probably fine like this.
-  const cluster = fdb.createClusterSync()
-  const db = cluster.openDatabaseSync().at(prefix)
+  const db = fdb.open().at(prefix)
+
+  // const s = defaultSubspace
+  // const y = s.at(null, fdb.tuple)
+  // const y2 = y.at(null, undefined, fdb.tuple)
+
+  // const dy = db.at(null, fdb.tuple)
+  // const dy2 = dy.at(null, undefined, fdb.tuple)
 
   after(() => {
     db.close()
-    cluster.close()
     // fdb.stopNetworkSync()
   })
 
