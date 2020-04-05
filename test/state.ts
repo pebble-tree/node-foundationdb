@@ -8,7 +8,7 @@ fdb.setAPIVersion(testApiVersion)
 
 describe('state tests', () => {
   it('throws if a closed database has a tn run on it', async () => {
-    const db = fdb.openSync()
+    const db = fdb.open()
     db.close()
     // Not supported on node 8 :(
     // await assert.rejects(db.get('x'))
@@ -20,7 +20,7 @@ describe('state tests', () => {
 
   it.skip('cancels pending watches when the database is closed', async () => {
     // This doesn't actually work, though I thought it would.
-    const db = fdb.openSync()
+    const db = fdb.open()
     const w = await db.getAndWatch('x')
     db.close()
 
