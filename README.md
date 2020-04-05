@@ -15,7 +15,7 @@ These bindings are stable, but they're missing the directory layer from the othe
 
 ## Usage
 
-**You need to [download the FDB client library](https://www.foundationdb.org/download/) on your machine before you can use this node module**. This is also true on any machines you deploy to. I'm sorry about that. We've been [discussing it](https://forums.foundationdb.org/t/how-do-bindings-get-an-appropriate-copy-of-fdb-c/311/1).
+**You need to [download the FDB client library](https://www.foundationdb.org/download/) on your machine before you can use this node module**. This is also true on any machines you deploy to. I'm sorry about that. We've been [discussing it in the forums](https://forums.foundationdb.org/t/how-do-bindings-get-an-appropriate-copy-of-fdb-c/311/1) [and on the issue tracker](https://github.com/josephg/node-foundationdb/issues/22).
 
 #### Step 1
 
@@ -36,9 +36,9 @@ npm install --save foundationdb
 
 ```javascript
 const fdb = require('foundationdb')
-fdb.setAPIVersion(600) // Must be called before database is opened
+fdb.setAPIVersion(620) // Must be called before database is opened
 
-const db = fdb.openSync() // or openSync('/path/to/fdb.cluster')
+const db = fdb.open() // or open('/path/to/fdb.cluster')
   .at('myapp.') // Use the 'myapp.' database prefix for all operations
   .withValueEncoding(fdb.encoders.json) // automatically encode & decode values using JSON
 
@@ -61,7 +61,7 @@ The best way to connect to your foundationdb cluster is to just use:
 
 ```javascript
 const fdb = require('foundationdb')
-const db = fdb.openSync()
+const db = fdb.open()
 ```
 
 This will look for a cluster file in:
@@ -74,24 +74,10 @@ Alternately, you can manually specify a cluster file location:
 
 ```javascript
 const fdb = require('foundationdb')
-const db = fdb.openSync('/path/to/fdb.cluster')
+const db = fdb.open('/path/to/fdb.cluster')
 ```
 
-If you want you can instead use the async API:
-
-```javascript
-const fdb = require('foundationdb')
-
-;(async () => {
-  const db = await fdb.open()
-
-  // ... Which is itself shorthand for:
-  //const cluster = await fdb.createCluster()
-  //const db = await cluster.openDatabase('DB') // Database name must be 'DB'.
-})()
-```
-
-The JS database object can be scoped to work out of a prefix, with specified key & value encoders. [See scoping section below](#scoping--key--value-transformations) for more information.
+The returned database database object can be scoped to work out of a prefix, with specified key & value encoders. [See scoping section below](#scoping--key--value-transformations) for more information.
 
 
 ## Configuration
@@ -107,7 +93,7 @@ You almost always want to create transactions via `db.doTransaction(async tn => 
 
 > `db.doTransaction` is aliased as `db.doTn`. Both forms are used interchangably in this document.
 
-The transaction will automatically be committed when the function's promise resolves. If the transaction had conflicts, it will be retried with exponential backoff.
+The transaction will automatically be committed when the function's promise resolves. If the transaction had conflicts, the code you provide will be retried with exponential backoff. (Yes, in rare cases any code in the transaction will be executed multiple times. Make sure its idempotent!)
 
 `db.doTransaction` will pass your function's return value back to the caller.
 
@@ -136,12 +122,12 @@ await db.doTransaction(async tn => {
 })
 ```
 
-To cut down on work, most simple operations have helper functions on the database object:
+To cut down on work, most simple operations are aliased on the database object, so they can be called more easily. For example:
 
 ```javascript
 const val = await db.get('key')
 
-// Which is a shorthand for:
+// ... is a shorthand for:
 const val = db.doTransaction(async tn => await tn.get('key'))
 ```
 
@@ -191,7 +177,7 @@ By default the key and value arguments must be either node Buffer objects or str
 ```javascript
 const fdb = require('fdb')
 
-const db = fdb.openSync()
+const db = fdb.open()
   .withKeyEncoding(fdb.encoders.tuple)
   .withValueEncoding(fdb.encoders.json)
 
@@ -206,17 +192,19 @@ await db.get(['class', 6]) // returns {teacher: 'fred', room: '101a'}
 
 ## Scoping & Key / Value transformations
 
-Some areas of your database will contain different data, and might be encoded using different schemes. To make interacting with larger databases easier, this you can create a bunch of aliases of your database object, each configured to interact with a different subset of your data.
+Some areas of your database will contain different data, and might be encoded using different schemes. To make interacting with larger databases easier, this you can create aliases of your database object, each configured to interact with a different subset of your data.
 
-Each database and transaction object has a *scope*, which is made up of 3 configuration parameters:
+Each database and transaction object has a [*subspace*](https://apple.github.io/foundationdb/developer-guide.html#subspaces), which is made up of 3 configuration parameters:
 
 - A *prefix*, prepended to the start of all keys
 - A *key transformer*, which is a `pack` & `unpack` function pair for interacting with keys
 - A *value transformer*, which is a `pack` & `unpack` function pair for interacting with values
 
-The scope is transparent to your application once the database has been configured. Prefixes are automatically prepended to all keys supplied to the API, and automatically removed from all keys returned via the API.
+If you are used to other bindings, note that subspaces in python/ruby/etc only contain a prefix and not transformers.
 
-These prefixed database objects are called [subspaces](https://apple.github.io/foundationdb/developer-guide.html#subspaces) in the official documentation & other frontends.
+Subspaces can be created implicitly, by scoping your database object with `db.at()` or explicitly - by creating a subspace.
+
+The subspace is transparent to your application once the database has been configured. Prefixes are automatically prepended to all keys supplied to the API, and automatically removed from all keys returned via the API. So if you have some code that consumes a foundationdb database object, that code won't need to change if you decide to store your data with a different prefix.
 
 ### Prefixes
 
@@ -224,7 +212,7 @@ To add an application-specific prefix:
 
 ```javascript
 // Prepend 'myapp' to all keys
-const db = fdb.openSync('fdb.cluster').at('myapp.')
+const db = fdb.open('fdb.cluster').at('myapp.')
 
 // ... Then use the database as normal
 await db.set('hello', 'there') // Actually sets 'myapp.hello' to 'there'
@@ -234,19 +222,30 @@ await db.get('hello') // returns 'there', encoded as a buffer
 They can be nested arbitrarily:
 
 ```javascript
-const root = fdb.openSync('fdb.cluster')
+const root = fdb.open('fdb.cluster')
 const app = db.at('myapp.')
 const books = app.at('books.') // Equivalent to root.at('myapp.books.')
 ```
 
-Beware of prefixes getting too long. The byte size of a prefix is paid during each API call, so you should keep your prefixes short. If you want complex subdivisions, consider using [directories](https://apple.github.io/foundationdb/developer-guide.html#directories) instead. (*Note*: Directories are not yet implemented by this frontend).
+Beware of prefixes getting too long. The byte size of a prefix is paid during each API call, so you should keep your prefixes short. If you want complex subdivisions, consider using [directories](https://apple.github.io/foundationdb/developer-guide.html#directories) instead.
+
+You can also configure a subspace explicitly like this:
+
+```javascript
+const db = fdb.open('fdb.cluster')
+const subspace = new fdb.Subspace('myapp.')
+const app = db.at(subspace)
+
+const books = subspace.at('books.')
+const booksDb = db.at(books)
+```
 
 
 ### Key and Value transformation
 
-By default, the Node FoundationDB library accepts key and value input as either strings or Buffer objects, and always returns Buffers. This is usually not what you actually want in your application.
+By default, the Node FoundationDB library accepts key and value input as either strings or Buffer objects, and always returns Buffers. This is usually not what you actually want in your application!
 
-You can configure a database to always automatically transform keys and values via an *encoder*. An encoder is just a `pack` and `unpack` method pair. The following encoders are built into the library:
+You can configure a database to always automatically transform keys and values via an *encoder*. An encoder is usually just a `pack` and `unpack` method pair. The following encoders are built into the library:
 
 - `fdb.encoders.`**int32BE**: Integer encoding using big-endian 32 bit ints. (Big endian is preferred because it preserves lexical ordering)
 - `fdb.encoders.`**string**: UTF-8 string encoding
@@ -259,7 +258,7 @@ You can configure a database to always automatically transform keys and values v
 - JSON objects have no guaranteed encoding order. Eg `{a:4, b:3}` could be encoded as `{"a":4,"b":3}` or `{"b":3,"a":4}`. FDB compares strings to fetch values, so you might find your data is gone when you go to fetch your data again later.
 - When performing range queries, JSON-encoded values aren't ordered in any sensible way. For example, `2` is lexographically after `10`.
 
-These problems are addressed by using [FDB tuple encoding](https://apple.github.io/foundationdb/data-modeling.html#tuples). Tuple encoding is also supported by all FDB frontends, it formally (and carefully) defines ordering for all objects. It also supports transparent concatenation (tuple.pack(`['a']`) + tuple.pack(`['b']`) === tuple.pack(`['a', 'b']`)), so tuple values can be easily used as key prefixes.
+These problems are addressed by using [FDB tuple encoding](https://apple.github.io/foundationdb/data-modeling.html#tuples). Tuple encoding is also supported by all FDB frontends, it formally (and carefully) defines ordering for all objects. It also supports transparent concatenation (tuple.pack(`'a'`) + tuple.pack(`'b'`) === tuple.pack(`['a', 'b']`)), so tuple values can be easily used as key prefixes without worrying too much.
 
 JSON is only troublesome for key encoding. JSON works great for encoding FDB values.
 
@@ -269,7 +268,7 @@ Examples:
 #### Using a key encoding:
 
 ```javascript
-const db = fdb.openSync('fdb.cluster').withKeyEncoding(fdb.encoders.int32BE)
+const db = fdb.open('fdb.cluster').withKeyEncoding(fdb.encoders.int32BE)
 
 await db.set(123, 'hi')
 await db.get(123) // returns 'hi' as a buffer
@@ -279,11 +278,26 @@ await db.get(123) // returns 'hi' as a buffer
 #### Or a value encoding:
 
 ```javascript
-const db = fdb.openSync('fdb.cluster').withValueEncoding(fdb.encoders.json)
+const db = fdb.open('fdb.cluster').withValueEncoding(fdb.encoders.json)
 
 await db.set('hi', [1,2,3])
 await db.get('hi') // returns [1,2,3]
 ```
+
+#### With an explicit subspace
+
+```javascript
+const db = fdb.open('fdb.cluster')
+
+const subspace = new fdb.Subspace().withKeyEncoding(fdb.tuple).at('stuff')
+
+await db.at(subspace).set(['hi', 'there'], [1,2,3])
+
+await db.get(['stuff', 'hi', 'there']) // returns [1,2,3]
+```
+
+Note that the key encoding was applied *first*, which allowed the tuple encoder to encode 'stuff'. If we swapped the order (`subspace.at('stuff').withKeyEncoding(fdb.tuple)`), the prefix 'stuff' would be converted to raw bytes rather than being encoded with the tuple encoder.
+
 
 #### Custom encodings
 
@@ -292,7 +306,7 @@ You can define your own custom encoding by supplying your own `pack` & `unpack` 
 ```javascript
 const msgpack = require('msgpack-lite')
 
-const db = fdb.openSync('fdb.cluster').withValueEncoding({
+const db = fdb.open('fdb.cluster').withValueEncoding({
   pack: msgpack.encode,
   unpack: msgpack.decode,
 })
@@ -307,28 +321,28 @@ await db.get('hi') // returns ['x', 1.2, Buffer.from([1,2,3])]
 If you prefix a database which has a key encoding set, the prefix will be transformed by the encoding. This allows you to use the API like this:
 
 ```javascript
-const rootDb = fdb.openSync('fdb.cluster').withKeyEncoding(fdb.encoders.tuple)
+const rootDb = fdb.open('fdb.cluster').withKeyEncoding(fdb.encoders.tuple)
 
-const appDp = rootDb.at(['myapp'])
-const books = appDb.at(['data', 'books']) // Equivalent to .at(['myapp', 'data', 'books'])
+const appDp = rootDb.at('myapp') // alias of rootDb.at(['myapp'])
+const books = appDb.at(['data', 'books']) // Equivalent to rootDb.at(['myapp', 'data', 'books'])
 ```
 
 
 #### Multi-scoped transactions
 
-You can update objects in multiple scopes within the same transaction via `tn.scopedTo(db)`. This will to create an alias of the transaction in specified database's scope:
+You can update objects in multiple scopes within the same transaction via `tn.at(obj)` for any object that has a subspace (databases, directories, subspaces or other transactions). This will to create an alias of the transaction in object's subspace:
 
 ```javascript
-const root = fdb.openSync('fdb.cluster').withKeyEncoding(fdb.encoders.tuple).at(['myapp'])
-const data = root.at(['schools'])
-const index = root.at(['index'])
+const root = fdb.open('fdb.cluster').withKeyEncoding(fdb.encoders.tuple).at(['myapp'])
+const data = root.getSubspace().at(['schools'])
+const index = root.getSubspace().at(['index'])
 
-data.doTransaction(async tn => {
-  // Update the data object itself
+root.at(data).doTransaction(async tn => {
+  // Update values inside ['schools']
   tn.set('UNSW', 'some data ...')
 
-  // Update the index. This will use the prefix, key and value encoding of index defined above.
-  tn.scopedTo(index)
+  // Update the index, at ['index']:
+  tn.at(index)
   .set(['bycountry', 'australia', 'UNSW'], '... cached index data')
 })
 ```
@@ -361,7 +375,7 @@ This works particularly well combined with tuple encoding:
 
 ```javascript
 const fdb = require('fdb')
-const db = fdb.openSync()
+const db = fdb.open()
   .withKeyEncoding(fdb.encoders.tuple)
 
 const key = await db.getKey(['students', 'by_enrolment_date', 0])
@@ -372,7 +386,7 @@ You can also do something like this to get & use the last key in a range. This i
 
 ```javascript
 const fdb = require('fdb')
-const db = fdb.openSync()
+const db = fdb.open()
 
 // The next key after all the student scores
 const afterScore = fdb.util.strInc(tuple.pack(['students', 'by_score']))
@@ -394,12 +408,12 @@ These methods are available on transaction or database objects. The transaction 
 
 ### Conflict Keys and ranges
 
-> TODO addReadConflictKey(key), addReadConflictRange(start, end), addWriteConflictKey(key), addWriteConflictRange.
+> TODO addReadConflictKey(key), addReadConflictRange(start, end), addWriteConflictKey(key), addWriteConflictRange. Feature complete - but docs missing!
 
 
 ### Atomics
 
-> TODO
+> TODO docs. This is feature complete. Please help write docs and submit a PR!
 
 
 ## Range reads
@@ -433,7 +447,7 @@ Internally `getRange` fetches the data in batches, with a gradually increasing b
 Range reads work well with tuple keys:
 
 ```javascript
-const db = fdb.openSync().withKeyEncoding(fdb.encoders.tuple)
+const db = fdb.open().withKeyEncoding(fdb.encoders.tuple)
 
 db.doTransaction(async tn => {
   for await (const [key, studentId] of tn.getRange(
@@ -566,7 +580,7 @@ You can also specify raw key selectors using `fdb.keySelector(key: string | Buff
 Key selectors work with scoped types. This will fetch all students with ranks 1-10, inclusive:
 
 ```javascript
-const db = fdb.openSync().withKeyEncoding(fdb.encoders.tuple)
+const db = fdb.open().withKeyEncoding(fdb.encoders.tuple)
 const index = db.at(['index'])
 
 const students = index.getRangeAll(
@@ -656,7 +670,7 @@ const {stamp, value} = await db.getVersionstampPrefixedValue('key')
 Or with a value encoder:
 
 ```javascript
-const db = fdb.openSync().withValueEncoding(fdb.encoders.json)
+const db = fdb.open().withValueEncoding(fdb.encoders.json)
 db.setVersionstampPrefixedValue('key1', {some: 'data'})
 
 // ...
@@ -695,7 +709,7 @@ In action:
 
 ```javascript
 import * as fdb from 'foundationdb'
-const db = fdb.openSync().withKeyEncoding(fdb.encoders.tuple)
+const db = fdb.open().withKeyEncoding(fdb.encoders.tuple)
 
 const key = [1, 2, 'hi', fdb.tuple.unboundVersionstamp()]
 await db.setVersionstampedKey(key, 'hi there')
@@ -708,7 +722,7 @@ You can also write versionstamped *values* using tuples, but only in API version
 
 ```javascript
 import * as fdb from 'foundationdb'
-const db = fdb.openSync().withValueEncoding(fdb.encoders.tuple)
+const db = fdb.open().withValueEncoding(fdb.encoders.tuple)
 
 const value = ['some', 'data', fdb.tuple.unboundVersionstamp()]
 await db.setVersionstampedValue('somekey', value)
@@ -721,7 +735,7 @@ If you insert multiple versionstamped keys / values in the same transaction, eac
 
 ```javascript
 import * as fdb from 'foundationdb'
-const db = fdb.openSync().withValueEncoding(fdb.encoders.tuple)
+const db = fdb.open().withValueEncoding(fdb.encoders.tuple)
 
 const key1 = [1,2,3, tuple.unboundVersionstamp()]
 const key2 = [1,2,3, tuple.unboundVersionstamp()]
@@ -881,15 +895,52 @@ const val = await db.doTransaction(async tn => {
 Internally snapshot transaction objects are just shallow clones of the original transaction object, but with a flag set. They share the underlying FDB transaction with their originator. Inside a `doTransaction` block you can use the original transaction and snapshot transaction objects interchangeably as desired.
 
 
+## Directories
+
+Key prefixes can get very long, and they waste a lot of space when you have a lot of objects which share most of their key! For this reason its often useful to group together similar keys into a *directory*. A directory is basically an alias to a short name, which is then used as the prefix for your keys. So instead of having keys:
+
+- `some/reallllly/long/path/a` => a
+- `some/reallllly/long/path/b` => b
+- `some/reallllly/long/path/c` => c
+- ... etc
+
+Instead with directories, this would look like:
+
+- `{directory alias} some/reallllly/long/path/` => `_17_`
+- `_17_a` => a
+- `_17_b` => b
+- `_17_c` => c
+- ...
+
+Whew thats better!
+
+You can read more about the directory concept in the [foundationdb developer guide](https://apple.github.io/foundationdb/developer-guide.html#directories)
+
+### Usage
+
+You can create, open, move and remove directories using the API provided by `fdb.directory`:
+
+```javascript
+const db = fdb.open()
+const messagesDir = await fdb.directory.createOrOpen(db, 'fav color')
+
+await db.at(messagesDir).doTn(async txn => {
+  txn.set('fred', 'hotpink')
+})
+```
+
+> TODO: Flesh out the documentation here. The API methods available are extremely similar to their equivalents in python / ruby.
+
+
 ## Notes on API versions
 
 Since the very first release, FoundationDB has kept full backwards compatibility for clients behind an explicit call to `setAPIVersion`. In effect, client applications select the API semantics they expect to use and then the operations team should be able to deploy any version of the database software, so long as its not older than the specified version.
 
 From the point of view of a nodejs fdb client application, there are effectively three semi-independant versions your app consumes:
 
-1. **Cluster version**: The version of fdb you are running on your database cluster. Eg *6.0.8*
-2. **API version**: The semantics of the FDB client API (which change sometimes between versions of FDB). This affects supported FDB options and whether or not transactions read-your-writes is enabled by default. Eg *600*. Must be ≤ cluster version.
-3. **binding version**: The semver version of this library in npm. Eg *0.9.0*.
+1. **Cluster version**: The version of fdb you are running on your database cluster. Eg *6.2.11*
+2. **API version**: The semantics of the FDB client API (which change sometimes between versions of FDB). This affects supported FDB options and whether or not transactions read-your-writes is enabled by default. Eg *620*. Must be ≤ cluster version.
+3. **binding version**: The semver version of this library in npm. Eg *0.10.7*.
 
 I considered tying this library's version to the API version. Then with every new release of FoundationDB we would need to increment the major version number in npm. Unfortunately, new API versions depend on new versions of the database itself. Tying the latest version of `node-foundationdb` to the latest version of the FDB API would require users to either:
 
@@ -901,7 +952,7 @@ Both of these options would be annoying.
 So to deal with this, you need to manage all API versions:
 
 1. This library needs access to a copy of `libfdb_c` which is compatible with the fdb cluster it is connecting to. Usually this means major & minor versions should match.
-2. The API version of foundationdb is managed via a call at startup to `fdb.setAPIVersion`. This must be ≤ the version of the db cluster you are connecting to, but ≥ the C API version which the bindings depend on (currently `600`). (This can be overridden by also passing a header version to `setAPIVersion` - eg `fdb.setAPIVersion(520, 520)`).
+2. The API version of foundationdb is managed via a call at startup to `fdb.setAPIVersion`. This must be ≤ the version of the db cluster you are connecting to, but ≥ the C API version which the bindings depend on (currently `620`). (This can be overridden by also passing a header version to `setAPIVersion` - eg `fdb.setAPIVersion(520, 520)`).
 3. This package is versioned normally via npm & package.json.
 
 You should be free to upgrade this library and your foundationdb database independantly. However, this library will only maintain support for API versions within a recent range. This is simply a constraint of development time & testing.
@@ -923,8 +974,6 @@ Note that the API version number is different from the version of FDB you have i
 
 
 ## Caveats
-
-The bindings do not currently support the `Directory` layer. We have code, it just hasn't been ported to the new typescript API. If someone wants to take a stab at it, raise an issue so we don't repeat work.
 
 The API also entirely depends on node Promises. The C part of the bindings supports doing almost everything via callbacks but a callback-oriented API hasn't been written. If this is important to you for some reason, I think the best architecture would be to split out the native C backend into a `foundationdb-native` library and have an alternate callback-oriented frontend. Raise an issue if this is important to you. I'd be particularly interested in benchmarks showing how promise- or callback- oriented APIs perform.
 
@@ -948,7 +997,7 @@ The API also entirely depends on node Promises. The C part of the bindings suppo
 - [x] Subspace support
 - [x] Configure prebuilds so users don't need a local development environment to `npm install` this library
 - [x] Add proper tuple support for versionstamps
-- [ ] Directory layer support
+- [x] Directory layer support
 - [ ] API documentation for options (and TS types for them)
 - [ ] API documentation for all transaction methods (get, set, getKey, etc)
 - [ ] Cut 1.0

@@ -187,6 +187,22 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
     return this.at(db)
   }
 
+  getSubspace() { return this.subspace }
+
+  // Helpers to inspect whats going on.
+  packKey(key: KeyIn): NativeValue {
+    return this._keyEncoding.pack(key)
+  }
+  unpackKey(key: Buffer): KeyOut {
+    return this._keyEncoding.unpack(key)
+  }
+  packValue(val: ValIn): NativeValue {
+    return this._valueEncoding.pack(val)
+  }
+  unpackValue(val: Buffer): ValOut {
+    return this._valueEncoding.unpack(val)
+  }
+
   // You probably don't want to call any of these functions directly. Instead call db.transact(async tn => {...}).
   rawCommit(): Promise<void>
   rawCommit(cb: Callback<void>): void
@@ -217,6 +233,11 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
       })
       : this._tn.get(keyBuf, this.isSnapshot)
         .then(val => val == null ? null : this._valueEncoding.unpack(val))
+  }
+
+  exists(key: KeyIn): Promise<boolean> {
+    const keyBuf = this._keyEncoding.pack(key)
+    return this._tn.get(keyBuf, this.isSnapshot).then(val => val != null)
   }
 
   getKey(_sel: KeyIn | KeySelector<KeyIn>): Promise<KeyOut | null> {
@@ -447,8 +468,10 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
     this._tn.atomicOp(opType, this._keyEncoding.pack(key), this._valueEncoding.pack(oper))
   }
 
-  // Does little-endian addition on encoded values. Value transformer should encode to some
-  // little endian type.
+  /**
+   * Does little-endian addition on encoded values. Value transformer should encode to some
+   * little endian type.
+   */
   add(key: KeyIn, oper: ValIn) { this.atomicOp(MutationType.Add, key, oper) }
   max(key: KeyIn, oper: ValIn) { this.atomicOp(MutationType.Max, key, oper) }
   min(key: KeyIn, oper: ValIn) { this.atomicOp(MutationType.Min, key, oper) }
@@ -461,11 +484,19 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
   bitOrBuf(key: KeyIn, oper: Buffer) { this.atomicOpKB(MutationType.BitOr, key, oper) }
   bitXorBuf(key: KeyIn, oper: Buffer) { this.atomicOpKB(MutationType.BitXor, key, oper) }
 
-  // Performs lexicographic comparison of byte strings. Sets the value in the
-  // database to the lexographical min / max of its current value and the
-  // value supplied as a parameter. If the key does not exist in the database
-  // this is the same as set().
+  /*
+   * Performs lexicographic comparison of byte strings. Sets the value in the
+   * database to the lexographical min of its current value and the value
+   * supplied as a parameter. If the key does not exist in the database this is
+   * the same as set().
+   */
   byteMin(key: KeyIn, val: ValIn) { this.atomicOp(MutationType.ByteMin, key, val) }
+  /*
+   * Performs lexicographic comparison of byte strings. Sets the value in the
+   * database to the lexographical max of its current value and the value
+   * supplied as a parameter. If the key does not exist in the database this is
+   * the same as set().
+   */
   byteMax(key: KeyIn, val: ValIn) { this.atomicOp(MutationType.ByteMax, key, val) }
 
 

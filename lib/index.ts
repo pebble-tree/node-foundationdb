@@ -10,6 +10,7 @@ import {eachOption} from './opts'
 import {NetworkOptions, networkOptionData, DatabaseOptions} from './opts.g'
 import {Transformer} from './transformer'
 import {defaultSubspace} from './subspace'
+import {DirectoryLayer} from './directory'
 
 import * as apiVersion from './apiVersion'
 
@@ -49,6 +50,9 @@ export {default as keySelector, KeySelector} from './keySelector'
 export {default as Database} from './database'
 export {default as Transaction, Watch} from './transaction'
 export {default as Subspace, defaultSubspace} from './subspace'
+export {Directory, DirectoryLayer} from './directory'
+
+export const directory = new DirectoryLayer() // Convenient root directory
 
 export {
   NetworkOptions,
@@ -73,7 +77,6 @@ import {TupleItem} from './tuple'
 
 export {TupleItem, tuple}
 
-export {Directory, DirectoryLayer} from './directory'
 
 const id = (x: any) => x
 export const encoders = {
