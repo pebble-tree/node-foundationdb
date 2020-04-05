@@ -311,7 +311,7 @@ const encode = (into: BufferBuilder, item: TupleItem, versionstampPos: Versionst
         into.appendByte(Code.IntZero + (isNeg ? -len : len))
       } else if (len < 256) {
         into.appendByte(isNeg ? Code.NegIntStart : Code.PosIntEnd)
-        into.appendByte(len)
+        into.appendByte(isNeg ? len ^ 0xff : len)
       }
       into.appendBuffer(rawBytes)
     }
@@ -535,8 +535,9 @@ function decode(buf: Buffer, pos: {p: number}, vsAt: number, noCanonicalize: boo
           return decodeBigInt(buf, p, absByteLen, byteLen < 0)
         }
       } else if (code === Code.NegIntStart || code === Code.PosIntEnd) {
-        const len = buf[p++]
-        const bytes = Buffer.alloc(len)
+        const isNeg = code === Code.NegIntStart
+        let len = buf[p++]
+        if (isNeg) len ^= 0xff
         pos.p = p + len
         
         return decodeBigInt(buf, p, len, code === Code.NegIntStart)
