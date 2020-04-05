@@ -435,7 +435,7 @@ export class Directory<KeyIn = NativeValue, KeyOut = Buffer, ValIn = NativeValue
     return layer.removeIfExists(txnOrDb, this._partitionSubpath(path, layer))
   }
 
-  async exists(txnOrDb: TxnAny | DbAny, path?: PathIn): Promise<boolean> {
+  exists(txnOrDb: TxnAny | DbAny, path?: PathIn): Promise<boolean> {
     const layer = this.getLayerForPath(path)
     return layer.exists(txnOrDb, this._partitionSubpath(path, layer))
   }

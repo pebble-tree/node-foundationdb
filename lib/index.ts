@@ -52,8 +52,6 @@ export {default as Transaction, Watch} from './transaction'
 export {default as Subspace, defaultSubspace} from './subspace'
 export {Directory, DirectoryLayer} from './directory'
 
-export const directory = new DirectoryLayer() // Convenient root directory
-
 export {
   NetworkOptions,
   NetworkOptionCode,
@@ -77,6 +75,8 @@ import {TupleItem} from './tuple'
 
 export {TupleItem, tuple}
 
+// This must come after tuple is defined, above.
+export const directory = new DirectoryLayer() // Convenient root directory
 
 const id = (x: any) => x
 export const encoders = {

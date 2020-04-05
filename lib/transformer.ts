@@ -1,7 +1,7 @@
 // The transformer type is used to transparently translate keys and values
 // through an encoder and decoder function.
 
-import {asBuf, concat2} from './util'
+import {asBuf, concat2, strInc} from './util'
 import {UnboundStamp} from './versionstamp'
 
 export type Transformer<In, Out> = {
@@ -19,7 +19,7 @@ export type Transformer<In, Out> = {
   /// Range which includes all "children" of this item, or whatever that means
   /// for the type. Added primarily to make it easier to get a range with some
   /// tuple prefix.
-  range?(prefix: In): {begin: Buffer, end: Buffer},
+  range?(prefix: In): {begin: Buffer | string, end: Buffer | string},
 }
 
 const id = <T>(x: T) => x
@@ -27,6 +27,11 @@ export const defaultTransformer: Transformer<Buffer | string, Buffer> = {
   pack: id,
   unpack: id
 }
+
+export const defaultGetRange = <KeyIn, KeyOut>(prefix: KeyIn, keyXf: Transformer<KeyIn, KeyOut>): {begin: Buffer | string, end: Buffer | string} => ({
+  begin: keyXf.pack(prefix),
+  end: strInc(keyXf.pack(prefix)),
+})
 
 export const prefixTransformer = <In, Out>(prefix: string | Buffer, inner: Transformer<In, Out>): Transformer<In, Out> => {
   const _prefix = asBuf(prefix)
@@ -56,8 +61,8 @@ export const prefixTransformer = <In, Out>(prefix: string | Buffer, inner: Trans
   if (inner.range) transformer.range = prefix => {
     const innerRange = inner.range!(prefix)
     return {
-      begin: concat2(_prefix, innerRange.begin),
-      end: concat2(_prefix, innerRange.end),
+      begin: concat2(_prefix, asBuf(innerRange.begin)),
+      end: concat2(_prefix, asBuf(innerRange.end)),
     }
   }
 

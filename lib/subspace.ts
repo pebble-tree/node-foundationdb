@@ -3,9 +3,9 @@
 // it also includes kv transformers, so a subspace here will also automatically
 // encode and decode keys and values.
 
-import { Transformer, prefixTransformer, defaultTransformer } from "./transformer"
+import { Transformer, prefixTransformer, defaultTransformer, defaultGetRange } from "./transformer"
 import { NativeValue } from "./native"
-import { asBuf, concat2 } from "./util"
+import { asBuf, concat2, startsWith } from "./util"
 
 const EMPTY_BUF = Buffer.alloc(0)
 
@@ -26,12 +26,15 @@ export default class Subspace<KeyIn = NativeValue, KeyOut = Buffer, ValIn = Nati
 
   _bakedKeyXf: Transformer<KeyIn, KeyOut> // This is cached from _prefix + keyXf.
 
-  constructor(prefix: string | Buffer | null, keyXf: Transformer<KeyIn, KeyOut>, valueXf: Transformer<ValIn, ValOut>) {
+  constructor(prefix: string | Buffer | null, keyXf?: Transformer<KeyIn, KeyOut>, valueXf?: Transformer<ValIn, ValOut>) {
     this.prefix = prefix != null ? Buffer.from(prefix) : EMPTY_BUF
-    this.keyXf = keyXf
-    this.valueXf = valueXf
 
-    this._bakedKeyXf = prefix ? prefixTransformer(prefix, keyXf) : keyXf
+    // Ugh typing this is a mess. Usually this will be fine since if you say new
+    // Subspace() you'll get the default values for KI/KO/VI/VO.
+    this.keyXf = keyXf || (defaultTransformer as Transformer<any, any>)
+    this.valueXf = valueXf || (defaultTransformer as Transformer<any, any>)
+
+    this._bakedKeyXf = prefix ? prefixTransformer(prefix, this.keyXf) : this.keyXf
   }
 
   // All these template parameters make me question my life choices, but this is
@@ -64,6 +67,30 @@ export default class Subspace<KeyIn = NativeValue, KeyOut = Buffer, ValIn = Nati
 
   // GetSubspace implementation
   getSubspace() { return this }
+
+  // Helpers to inspect whats going on.
+  packKey(key: KeyIn): NativeValue {
+    return this._bakedKeyXf.pack(key)
+  }
+  unpackKey(key: Buffer): KeyOut {
+    return this._bakedKeyXf.unpack(key)
+  }
+  packValue(val: ValIn): NativeValue {
+    return this.valueXf.pack(val)
+  }
+  unpackValue(val: Buffer): ValOut {
+    return this.valueXf.unpack(val)
+  }
+
+  packRange(prefix: KeyIn): {begin: NativeValue, end: NativeValue} {
+    // if (this._bakedKeyXf.range) return this._bakedKeyXf.range(prefix)
+    // else return defaultGetRange(prefix, this._bakedKeyXf)
+    return (this._bakedKeyXf.range || defaultGetRange)(prefix, this._bakedKeyXf)
+  }
+
+  contains(key: NativeValue) {
+    return startsWith(asBuf(key), this.prefix)
+  }
 }
 
 export const defaultSubspace: Subspace = new Subspace(null, defaultTransformer, defaultTransformer)

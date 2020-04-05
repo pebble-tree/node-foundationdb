@@ -77,11 +77,6 @@ interface TxnCtx {
   toBake: null | BakeItem<any>[]
 }
 
-const defaultGetRange = <KeyIn, KeyOut>(prefix: KeyIn, keyXf: Transformer<KeyIn, KeyOut>): {begin: Buffer | string, end: Buffer | string} => ({
-  begin: keyXf.pack(prefix),
-  end: strInc(keyXf.pack(prefix)),
-})
-
 // NativeValue is string | Buffer because the C code accepts either format.
 // But all values returned from methods will actually just be Buffer.
 export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = NativeValue, ValOut = Buffer> {
@@ -99,15 +94,15 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
   
   /** NOTE: Do not call this directly. Instead transactions should be created via db.doTn(...) */
   constructor(tn: NativeTransaction, snapshot: boolean,
-      scope: Subspace<KeyIn, KeyOut, ValIn, ValOut>,
+      subspace: Subspace<KeyIn, KeyOut, ValIn, ValOut>,
       // keyEncoding: Transformer<KeyIn, KeyOut>, valueEncoding: Transformer<ValIn, ValOut>,
       opts?: TransactionOptions, ctx?: TxnCtx) {
     this._tn = tn
 
     this.isSnapshot = snapshot
-    this.subspace = scope
-    this._keyEncoding = scope._bakedKeyXf
-    this._valueEncoding = scope.valueXf
+    this.subspace = subspace
+    this._keyEncoding = subspace._bakedKeyXf
+    this._valueEncoding = subspace.valueXf
 
     // this._root = root || this
     if (opts) eachOption(transactionOptionData, opts, (code, val) => tn.setOption(code, val))
@@ -188,20 +183,6 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
   }
 
   getSubspace() { return this.subspace }
-
-  // Helpers to inspect whats going on.
-  packKey(key: KeyIn): NativeValue {
-    return this._keyEncoding.pack(key)
-  }
-  unpackKey(key: Buffer): KeyOut {
-    return this._keyEncoding.unpack(key)
-  }
-  packValue(val: ValIn): NativeValue {
-    return this._valueEncoding.pack(val)
-  }
-  unpackValue(val: Buffer): ValOut {
-    return this._valueEncoding.unpack(val)
-  }
 
   // You probably don't want to call any of these functions directly. Instead call db.transact(async tn => {...}).
   rawCommit(): Promise<void>
@@ -311,7 +292,7 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
     const startSelEnc = keySelector.from(_start)
     
     if (_end == null) {
-      const range = (this._keyEncoding.range || defaultGetRange)(startSelEnc.key, this._keyEncoding)
+      const range = this.subspace.packRange(startSelEnc.key)
       start = keySelector(range.begin, startSelEnc.orEqual, startSelEnc.offset)
       end = keySelector.firstGreaterOrEqual(range.end)
     } else {
@@ -380,7 +361,7 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
     // const _start = this._keyEncoding.pack(start)
 
     if (_end == null) {
-      const range = (this._keyEncoding.range || defaultGetRange)(_start, this._keyEncoding)
+      const range = this.subspace.packRange(_start)
       start = range.begin
       end = range.end
     } else {
