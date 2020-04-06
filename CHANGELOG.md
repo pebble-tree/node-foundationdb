@@ -15,6 +15,7 @@ Note that `db.at(['prefix']).set(['key'], 'value')` is equivalent to `db.at(['pr
 - Updated API to support foundationdb 620
 - Updated the binding tester to conform to version 620's changes
 - Fixed a spec conformance bug in the tuple encoder's handling of extremely large negative integers
+- Changed db.get() / txn.get() to return `undefined` rather than `null` if the object doesn't exist. This is because null is a valid tuple value.
 
 # 0.10.7
 

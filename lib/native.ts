@@ -33,8 +33,8 @@ export interface NativeTransaction {
 
   getApproximateSize(): Promise<number>
 
-  get(key: NativeValue, isSnapshot: boolean): Promise<Buffer | null>
-  get(key: NativeValue, isSnapshot: boolean, cb: Callback<Buffer | null>): void
+  get(key: NativeValue, isSnapshot: boolean): Promise<Buffer | undefined>
+  get(key: NativeValue, isSnapshot: boolean, cb: Callback<Buffer | undefined>): void
   getKey(key: NativeValue, orEqual: boolean, offset: number, isSnapshot: boolean): Promise<Buffer | null>
   getKey(key: NativeValue, orEqual: boolean, offset: number, isSnapshot: boolean, cb: Callback<Buffer | null>): void
   set(key: NativeValue, val: NativeValue): void

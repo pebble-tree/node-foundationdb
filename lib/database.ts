@@ -16,7 +16,7 @@ import {DatabaseOptions,
   MutationType,
 } from './opts.g'
 
-export type WatchWithValue<Value> = Watch & { value: Value | null }
+export type WatchWithValue<Value> = Watch & { value: Value | undefined }
 
 export default class Database<KeyIn = NativeValue, KeyOut = Buffer, ValIn = NativeValue, ValOut = Buffer> {
   _db: fdb.NativeDatabase
@@ -95,7 +95,7 @@ export default class Database<KeyIn = NativeValue, KeyOut = Buffer, ValIn = Nati
     return new Transaction<KeyIn, KeyOut, ValIn, ValOut>(this._db.createTransaction(), false, this.subspace, opts)
   }
 
-  get(key: KeyIn): Promise<ValOut | null> {
+  get(key: KeyIn): Promise<ValOut | undefined> {
     return this.doTransaction(tn => tn.snapshot().get(key))
   }
   getKey(selector: KeyIn | KeySelector<KeyIn>): Promise<KeyOut | null> {

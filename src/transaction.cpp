@@ -149,9 +149,15 @@ static uint64_t BEBytesToInt64(uint8_t* bytes) {
 
 // **** Extraction functions
 
+static MaybeValue wrap_undefined(napi_env env) {
+  MaybeValue result = {napi_ok, NULL};
+  TRY(napi_get_undefined(env, &result.value));
+  return result;
+}
+
 static MaybeValue ignoreResult(napi_env env, FDBFuture* future, fdb_error_t* errOut) {
   *errOut = fdb_future_get_error(future);
-  return wrap_null();
+  return wrap_undefined(env);
 }
 
 static MaybeValue getValue(napi_env env, FDBFuture* future, fdb_error_t* errOut) {
@@ -160,7 +166,8 @@ static MaybeValue getValue(napi_env env, FDBFuture* future, fdb_error_t* errOut)
   int valuePresent;
 
   *errOut = fdb_future_get_value(future, &valuePresent, &value, &len);
-  if (*errOut || !valuePresent) return wrap_null();
+  if (UNLIKELY(*errOut)) return wrap_null();
+  else if (!valuePresent) return wrap_undefined(env);
 
   // TODO
   // Its a bit yuck that we're copying so much memory here. It would be possible

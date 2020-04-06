@@ -204,16 +204,16 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
       : this._tn.onError(code)
   }
 
-  get(key: KeyIn): Promise<ValOut | null>
-  get(key: KeyIn, cb: Callback<ValOut | null>): void
-  get(key: KeyIn, cb?: Callback<ValOut | null>) {
+  get(key: KeyIn): Promise<ValOut | undefined>
+  get(key: KeyIn, cb: Callback<ValOut | undefined>): void
+  get(key: KeyIn, cb?: Callback<ValOut | undefined>) {
     const keyBuf = this._keyEncoding.pack(key)
     return cb
       ? this._tn.get(keyBuf, this.isSnapshot, (err, val) => {
-        cb(err, val == null ? null : this._valueEncoding.unpack(val))
+        cb(err, val == null ? undefined : this._valueEncoding.unpack(val))
       })
       : this._tn.get(keyBuf, this.isSnapshot)
-        .then(val => val == null ? null : this._valueEncoding.unpack(val))
+        .then(val => val == null ? undefined : this._valueEncoding.unpack(val))
   }
 
   exists(key: KeyIn): Promise<boolean> {
