@@ -549,7 +549,9 @@ const makeMachine = (db: Database, initialName: Buffer) => {
       const path = (await popNValues()) as string[]
       const layer = await popNullableBuf()
   
-      const dir = await getCurrentDirectoryOrLayer().open(oper, path, layer || undefined)
+      const parent = getCurrentDirectoryOrLayer()
+      const dir = await parent.open(oper, path, layer || undefined)
+      if (verbose) console.log('push new directory', dir.getPath(), 'at index', dirList.length, 'p', parent.getPath(), parent.constructor.name, path)
       dirList.push(dir)
     },
 
@@ -651,7 +653,7 @@ const makeMachine = (db: Database, initialName: Buffer) => {
         .at(dirIdx)
 
       let exists = await dir.exists(oper)
-      if (verbose) console.log('exists', exists)
+      if (verbose) console.log('type', dir.constructor.name)
       let children = exists ? await dir.listAll(oper) : []
       let layer = dir instanceof Directory ? dir.getLayerRaw() : Buffer.alloc(0)
 
@@ -660,6 +662,8 @@ const makeMachine = (db: Database, initialName: Buffer) => {
       await scopedOper.set('layer', layer)
       await scopedOper.set('exists', exists ? 1 : 0)
       await scopedOper.set('children', children)
+
+      if (verbose) console.log('path', dir.getPath(), 'layer', layer, 'exists', exists, 'children', children)
     },
 
     async DIRECTORY_STRIP_PREFIX() {

@@ -577,7 +577,8 @@ export class DirectoryLayer {
         // The directory exists. Open it!
         if (existing_node.isInPartition()) {
           const subpath = existing_node.getPartitionSubpath()
-          return existing_node.getContentsSync(this)!._directoryLayer._createOrOpenInternal(
+          // console.log('existing node is in partition at path', existing_node, existing_node.getPartitionSubpath())
+          return await existing_node.getContentsSync(this)!._directoryLayer._createOrOpenInternal(
             txn, subpath, layer, prefix, allowCreate, allowOpen
           )
         } else {
@@ -865,7 +866,8 @@ export class DirectoryLayer {
     if (layerBuf.equals(PARTITION_BUF)) {
       return new Directory(this, this._path.concat(path), contentSubspace, true)
     } else {
-      return new Directory(this, path, contentSubspace, false, layerBuf)
+      // We concat the path because even though the child might not be a partition, we might be.
+      return new Directory(this, this._path.concat(path), contentSubspace, false, layerBuf)
     }
   }
 
