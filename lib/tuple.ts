@@ -546,6 +546,9 @@ function decode(buf: Buffer, pos: {p: number}, vsAt: number, noCanonicalize: boo
   }
 }
 
+// For debugging.
+export const name = 'tuple'
+
 // TODO: Consider a bound version of this method.
 export function unpack(key: Buffer, noCanonicalize: boolean = false) {
   const pos = {p: 0}

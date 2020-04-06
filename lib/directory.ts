@@ -2,10 +2,20 @@ import Transaction from "./transaction";
 import { Database, tuple, TupleItem, util } from ".";
 import { Transformer, defaultTransformer } from "./transformer";
 import { TransactionOptionCode } from "./opts.g";
-import { concat2, startsWith, strInc } from "./util";
+import { concat2, startsWith, strInc, asBuf } from "./util";
 import Subspace, { defaultSubspace } from "./subspace";
 import { inspect } from "util";
 import { NativeValue, NativeTransaction } from "./native";
+// import FDBError from './error'
+
+export class DirectoryError extends Error {
+  constructor(description: string) {
+    super(description)
+
+    Object.setPrototypeOf(this, DirectoryError.prototype);
+    // Error.captureStackTrace(this, this.constructor);
+  }
+}
 
 // The directory layer provides a way to use key subspaces without needing to
 // make increasingly longer key prefixes over time.
@@ -59,7 +69,7 @@ const doTxn = <KeyIn, KeyOut, ValIn, ValOut, T>(
 export const counterEncoding: Transformer<number, number> = {
   pack(val) {
     const b = Buffer.alloc(8)
-    if (!Number.isSafeInteger(val)) throw Error('Invalid counter (number outside JS safe range)')
+    if (!Number.isSafeInteger(val)) throw new DirectoryError('Invalid counter (number outside JS safe range)')
 
     // If we're using node 12+ everywhere we could just call this:
     //b.writeBigUInt64LE(BigInt(val))
@@ -73,7 +83,7 @@ export const counterEncoding: Transformer<number, number> = {
   },
   unpack: (buf) => {
     const val = buf.readUInt32LE(0) + (buf.readUInt32LE(4) * 0x100000000)
-    if (!Number.isSafeInteger(val)) throw Error('Invalid counter (number outside JS safe range)')
+    if (!Number.isSafeInteger(val)) throw new DirectoryError('Invalid counter (number outside JS safe range)')
     return val
   },
 }
@@ -243,6 +253,7 @@ const DEFAULT_NODE_PREFIX = Buffer.from([0xfe])
 const HCA_PREFIX = Buffer.from('hca', 'ascii')
 const VERSION_KEY = Buffer.from('version', 'ascii')
 const LAYER_KEY = Buffer.from('layer', 'ascii')
+const PARTITION_BUF = Buffer.from('partition', 'ascii') // I hate this.
 const SUBDIRS_KEY = 0 // Why is this 0 when version / layers are byte strings? I have no idea. History, I assume.
 
 const EXPECTED_VERSION: Version = [1, 0, 0]
@@ -284,12 +295,16 @@ class Node {
   subspace: NodeSubspace | null
   path: Path
   target_path: Path
-  layer?: string // Filled in lazily. Careful - this will most often be an empty string.
+  // The layer should be defined as a string, but the binding tester insists on
+  // testing this with binary buffers which are invalid inside a string, so
+  // we'll use buffers internally and expose an API accepting either. Sigh.
+  layer: Buffer | null // Filled in lazily. Careful - this will most often be empty.
 
   constructor(subspace: NodeSubspace | null, path: Path, targetPath: Path) {
     this.subspace = subspace
     this.path = path
     this.target_path = targetPath
+    this.layer = null
   }
 
   exists(): boolean {
@@ -304,16 +319,25 @@ class Node {
   async getLayer(txn?: TxnAny) {
     if (this.layer == null) {
       // txn && console.log('key', txn!.at(this.subspace!).packKey(LAYER_KEY))
-      if (txn) this.layer = (await txn.at(this.subspace!).get(LAYER_KEY)!)!.toString()
-      else throw Error('Layer has not been read')
+      // if (txn) console.log('xxx', (await txn.at(this.subspace!).get(LAYER_KEY)), this.path, this.target_path)
+
+      // There's a semi-bug in the upstream code where layer won't be specified
+      // on the root of the directory structure (thats the only directory which
+      // has an implicit layer).
+      //
+      // What should the implicit layer be? The other bindings leave it as '',
+      // even though its kinda a directory partition, so it probably should be
+      // 'partition'.
+      if (txn) this.layer = (await txn.at(this.subspace!).get(LAYER_KEY)) || BUF_EMPTY
+      else throw new DirectoryError('Layer has not been read')
     }
 
-    return this.layer
+    return this.layer!
   }
 
   isInPartition(includeEmptySubpath: boolean = false) {
     return this.exists()
-      && this.layer === 'partition'
+      && this.layer && this.layer.equals(PARTITION_BUF)
       && (includeEmptySubpath || this.target_path.length > this.path.length)
   }
 
@@ -326,7 +350,7 @@ class Node {
   }
 
   getContentsSync(directoryLayer: DirectoryLayer) {
-    if (this.layer == null) throw Error('Node metadata has not been fetched')
+    if (this.layer == null) throw new DirectoryError('Node metadata has not been fetched.')
     return this.subspace == null ? null : directoryLayer._contentsOfNode(this.subspace, this.path, this.layer!)
   }
 }
@@ -341,18 +365,18 @@ export class Directory<KeyIn = NativeValue, KeyOut = Buffer, ValIn = NativeValue
   _path: Path
 
   _directoryLayer: DirectoryLayer
-  _layer?: string
+  _layer: Buffer | null
   content: Subspace<KeyIn, KeyOut, ValIn, ValOut>
 
   // If the directory is a partition, it also has a reference to the parent subspace.
   _parentDirectoryLayer?: DirectoryLayer
 
-  constructor(parentDirectoryLayer: DirectoryLayer, path: Path, contentSubspace: Subspace<KeyIn, KeyOut, ValIn, ValOut>, isPartition: boolean, layer?: string) {
+  constructor(parentDirectoryLayer: DirectoryLayer, path: Path, contentSubspace: Subspace<KeyIn, KeyOut, ValIn, ValOut>, isPartition: boolean, layer?: NativeValue) {
     this._path = path
     this.content = contentSubspace
 
     if (isPartition) {
-      if (layer != null) throw Error('Directory partitions cannot specify a layer.')
+      if (layer != null) throw new DirectoryError('Directory partitions cannot specify a layer.')
 
       // In partitions, the passed directory layer is the parent directory
       // layer. We create our own internally inside the partition.
@@ -363,12 +387,12 @@ export class Directory<KeyIn = NativeValue, KeyOut = Buffer, ValIn = NativeValue
       directoryLayer._path = path
   
       // super(directoryLayer, path, subspace, 'partition')
-      this._layer = 'partition'
+      this._layer = PARTITION_BUF
   
       this._directoryLayer = directoryLayer
       this._parentDirectoryLayer = parentDirectoryLayer  
     } else {
-      this._layer = layer
+      this._layer = layer ? asBuf(layer) : null
       this._directoryLayer = parentDirectoryLayer
       // this._parentDirectoryLayer is left as undefined for normal directories.
     }
@@ -385,21 +409,21 @@ export class Directory<KeyIn = NativeValue, KeyOut = Buffer, ValIn = NativeValue
     // Refusing getSubspace() calls on directory partitions is the safe option
     // here from an API standpoint. I'll consider relaxing this constraint if
     // people complain about it.
-    if (this.isPartition()) throw Error('Cannot use a directory partition as a subspace.')
+    if (this.isPartition()) throw new DirectoryError('Cannot use a directory partition as a subspace.')
     else return this.content
   }
 
   // TODO: Add withKeyEncoding / withValueEncoding here.
 
-  createOrOpen(txnOrDb: TxnAny | DbAny, path: PathIn, layer?: 'partition' | string) {
+  createOrOpen(txnOrDb: TxnAny | DbAny, path: PathIn, layer?: 'partition' | NativeValue) { // partition specified for autocomplete.
     return this._directoryLayer.createOrOpen(txnOrDb, this._partitionSubpath(path), layer)
   }
   
-  open(txnOrDb: TxnAny | DbAny, path: PathIn, layer?: 'partition' | string) {
+  open(txnOrDb: TxnAny | DbAny, path: PathIn, layer?: 'partition' | NativeValue) {
     return this._directoryLayer.open(txnOrDb, this._partitionSubpath(path), layer)
   }
 
-  create(txnOrDb: TxnAny | DbAny, path: PathIn, layer?: 'partition' | string, prefix?: Buffer) {
+  create(txnOrDb: TxnAny | DbAny, path: PathIn, layer?: 'partition' | NativeValue, prefix?: Buffer) {
     return this._directoryLayer.create(txnOrDb, this._partitionSubpath(path), layer, prefix)
   }
   
@@ -420,7 +444,7 @@ export class Directory<KeyIn = NativeValue, KeyOut = Buffer, ValIn = NativeValue
     const newAbsolutePath = normalize_path(_newAbsolutePath)
     const partition_len = directoryLayer._path.length
     const partition_path = newAbsolutePath.slice(0, partition_len)
-    if (!arrEq(partition_path, directoryLayer._path)) throw Error('Cannot move between partitions.')
+    if (!arrEq(partition_path, directoryLayer._path)) throw new DirectoryError('Cannot move between partitions.')
 
     return directoryLayer.move(txnOrDb, this._path.slice(partition_len), newAbsolutePath.slice(partition_len))
   }
@@ -443,6 +467,10 @@ export class Directory<KeyIn = NativeValue, KeyOut = Buffer, ValIn = NativeValue
 
   getLayer() {
     // will be 'partition' for partitions.
+    return this._layer ? this._layer.toString() : null
+  }
+
+  getLayerRaw() {
     return this._layer
   }
 
@@ -514,6 +542,8 @@ export class DirectoryLayer {
     this._path = []
   }
 
+  getPath() { return this._path }
+
   /**
    * Opens the directory with the given path.
    *
@@ -523,23 +553,25 @@ export class DirectoryLayer {
    * If layer is specified, it is checked against the layer of an existing
    * directory or set as the layer of a new directory.
    */
-  createOrOpen(txnOrDb: TxnAny | DbAny, path: PathIn, layer?: 'partition' | string) {
+  createOrOpen(txnOrDb: TxnAny | DbAny, path: PathIn, layer?: 'partition' | NativeValue) {
     return this._createOrOpenInternal(txnOrDb, path, layer)
   }
 
-  private async _createOrOpenInternal(txnOrDb: TxnAny | DbAny, _path: PathIn, layer: string = '', prefix?: Buffer, allowCreate: boolean = true, allowOpen: boolean = true): Promise<Directory> {
+  private async _createOrOpenInternal(txnOrDb: TxnAny | DbAny, _path: PathIn, layer: NativeValue = BUF_EMPTY, prefix?: Buffer, allowCreate: boolean = true, allowOpen: boolean = true): Promise<Directory> {
     const path = normalize_path(_path)
+    // For layers, an empty string is treated the same as a missing layer property.
+    const layerBuf = asBuf(layer)
     
     if (prefix != null && !this._allowManualPrefixes) {
-      if (path.length === 0) throw Error('Cannot specify a prefix unless manual prefixes are enabled.')
-      else throw Error('Cannot specify a prefix in a partition.')
+      if (path.length === 0) throw new DirectoryError('Cannot specify a prefix unless manual prefixes are enabled.')
+      else throw new DirectoryError('Cannot specify a prefix in a partition.')
     }
     
-    if (path.length === 0) throw Error('The root directory cannot be opened.')
+    if (path.length === 0) throw new DirectoryError('The root directory cannot be opened.')
     
     return doTxn(txnOrDb, async txn => {
       await this._checkVersion(txn, false)
-
+      
       const existing_node = await this.findWithMeta(txn, path)
       if (existing_node.exists()) {
         // The directory exists. Open it!
@@ -549,43 +581,44 @@ export class DirectoryLayer {
             txn, subpath, layer, prefix, allowCreate, allowOpen
           )
         } else {
-          if (!allowOpen) throw Error('The directory already exists.')
-          if (layer != null && existing_node.layer! !== layer) throw Error('The directory was created with an incompatible layer.')
+          if (!allowOpen) throw new DirectoryError('The directory already exists.')
+          // console.log('existing_node.layer', existing_node.layer, layerBuf)
+          if (layerBuf.length && !existing_node.layer!.equals(layerBuf)) throw new DirectoryError('The directory was created with an incompatible layer.')
 
           return existing_node.getContentsSync(this)!
         }
 
       } else {
         // The directory does not exist. Create it!
-        if (!allowCreate) throw Error('The directory does not exist.')
+        if (!allowCreate) throw new DirectoryError('The directory does not exist.')
         await this._checkVersion(txn, true)
 
         if (prefix == null) {
           // const subspace = this._contentSubspace.at(await this._allocator.allocate(txn))
           prefix = concat2(this._contentSubspace.prefix, await this._allocator.allocate(txn))
           if ((await txn.at(defaultSubspace).getRangeAllStartsWith(prefix, {limit: 1})).length > 0) {
-            throw Error('The database has keys stored at the prefix chosen by the automatic prefix allocator: ' + inspect(prefix))
+            throw new DirectoryError('The database has keys stored at the prefix chosen by the automatic prefix allocator: ' + inspect(prefix))
           }
 
           if (!await this._isPrefixFree(txn.snapshot(), prefix)) {
-            throw Error('The directory layer has manually allocated prefixes that conflict with the automatic prefix allocator.')
+            throw new DirectoryError('The directory layer has manually allocated prefixes that conflict with the automatic prefix allocator.')
           }
         } else if (!await this._isPrefixFree(txn, prefix)) {
-          throw Error('The given prefix is already in use.')
+          throw new DirectoryError('The given prefix is already in use.')
         }
 
         const parentNode = path.length > 1
           ? this._nodeWithPrefix((await this._createOrOpenInternal(txn, path.slice(0, -1))).content.prefix)
           : this._rootNode
         
-        if (parentNode == null) throw Error('The parent directory does not exist.')
+        if (parentNode == null) throw new DirectoryError('The parent directory does not exist.')
 
         const node = this._nodeWithPrefix(prefix)
         // Write metadata
         txn.at(parentNode).set([SUBDIRS_KEY, path[path.length - 1]], prefix)
-        txn.at(node).set(LAYER_KEY, layer)
+        txn.at(node).set(LAYER_KEY, layerBuf)
 
-        return this._contentsOfNode(node, path, layer)
+        return this._contentsOfNode(node, path, layerBuf)
       }
     })
   }
@@ -597,7 +630,7 @@ export class DirectoryLayer {
    * specified and a different layer was specified when the directory was
    * created.
    */
-  open(txnOrDb: TxnAny | DbAny, path: PathIn, layer: 'partition' | string = '') {
+  open(txnOrDb: TxnAny | DbAny, path: PathIn, layer: 'partition' | NativeValue = BUF_EMPTY) {
     return this._createOrOpenInternal(txnOrDb, path, layer, undefined, false, true)
   }
 
@@ -613,7 +646,7 @@ export class DirectoryLayer {
    * If layer is specified, it is recorded with the directory and will be
    * checked by future calls to open.
    */
-  create(txnOrDb: TxnAny | DbAny, path: PathIn, layer: 'partition' | string = '', prefix?: Buffer) {
+  create(txnOrDb: TxnAny | DbAny, path: PathIn, layer: 'partition' | NativeValue = BUF_EMPTY, prefix?: Buffer) {
     return this._createOrOpenInternal(txnOrDb, path, layer, prefix, true, false)
   }
   
@@ -631,7 +664,7 @@ export class DirectoryLayer {
     const newPath = normalize_path(_newPath)
 
     if (arrStartsWith(newPath, oldPath)) {
-      throw Error('The destination directory cannot be a subdirectory of the source directory.')
+      throw new DirectoryError('The destination directory cannot be a subdirectory of the source directory.')
     }
 
     return doTxn(txnOrDb, async txn => {
@@ -640,22 +673,22 @@ export class DirectoryLayer {
       const oldNode = await this.findWithMeta(txn, oldPath)
       const newNode = await this.findWithMeta(txn, newPath)
 
-      if (!oldNode.exists()) throw Error('The source directory does not exist.')
+      if (!oldNode.exists()) throw new DirectoryError('The source directory does not exist.')
 
       if (oldNode.isInPartition() || newNode.isInPartition()) {
         // This is allowed if and only if we're moving between two paths within the same partition.
         if (!oldNode.isInPartition() || !newNode.isInPartition() || !arrEq(oldNode.path, newNode.path)) {
-          throw Error('Cannot move between partitions.')
+          throw new DirectoryError('Cannot move between partitions.')
         }
 
         // Delegate to the partition.
         return newNode.getContentsSync(this)!.move(txn, oldNode.getPartitionSubpath(), newNode.getPartitionSubpath())
       }
 
-      if (newNode.exists()) throw Error('The destination directory already exists. Remove it first.')
+      if (newNode.exists()) throw new DirectoryError('The destination directory already exists. Remove it first.')
 
       const parentNode = await this.find(txn, newPath.slice(0, -1))
-      if (!parentNode.exists()) throw Error('The parent of the destination directory does not exist. Create it first.')
+      if (!parentNode.exists()) throw new DirectoryError('The parent of the destination directory does not exist. Create it first.')
 
       // Ok actually move.
       const oldPrefix = this.getPrefixForNode(oldNode.subspace!)
@@ -663,7 +696,7 @@ export class DirectoryLayer {
       txn.at(parentNode.subspace!).set([SUBDIRS_KEY, newPath[newPath.length - 1]], oldPrefix)
       await this._removeFromParent(txn, oldPath)
 
-      return this._contentsOfNode(oldNode.subspace!, newPath, oldNode.layer)
+      return this._contentsOfNode(oldNode.subspace!, newPath, oldNode.layer!)
     })
   }
 
@@ -695,12 +728,12 @@ export class DirectoryLayer {
     return doTxn(txnOrDb, async txn => {
       await this._checkVersion(txn, true)
       
-      if (path.length === 0) throw Error('The root directory cannot be removed.')
+      if (path.length === 0) throw new DirectoryError('The root directory cannot be removed.')
       
       const node = await this.findWithMeta(txn, path)
       
       if (!node.exists()) {
-        if (failOnNonexistent) throw Error('The directory does not exist.')
+        if (failOnNonexistent) throw new DirectoryError('The directory does not exist.')
         else return false
       }
       
@@ -725,7 +758,7 @@ export class DirectoryLayer {
   
     const path = normalize_path(_path)
     const node = await this.findWithMeta(txn, path)
-    if (!node.exists()) throw Error('The directory does not exist.')
+    if (!node.exists()) throw new DirectoryError('The directory does not exist.')
   
     if (node.isInPartition(true)) {
       yield* node.getContentsSync(this)!.list(txn, node.getPartitionSubpath())
@@ -740,7 +773,7 @@ export class DirectoryLayer {
    * Returns the names of the specified directory's subdirectories as a list of
    * strings.
    */
-  listAll(txnOrDb: TxnAny | DbAny, _path: PathIn): Promise<Buffer[]> {
+  listAll(txnOrDb: TxnAny | DbAny, _path: PathIn = []): Promise<Buffer[]> {
     return doTxn(txnOrDb, async txn => {
       const results = []
       for await (const path of this.list(txn, _path)) results.push(path)
@@ -751,7 +784,7 @@ export class DirectoryLayer {
   /**
    * Returns whether or not the specified directory exists.
    */
-  async exists(txnOrDb: TxnAny | DbAny, _path: PathIn): Promise<boolean> {
+  async exists(txnOrDb: TxnAny | DbAny, _path: PathIn = []): Promise<boolean> {
     return doTxn(txnOrDb, async txn => {
       await this._checkVersion(txn, false)
 
@@ -802,12 +835,15 @@ export class DirectoryLayer {
 
   private async find(txn: TxnAny, path: Path) {
     let node = new Node(this._rootNode, [], path)
+    // There's an interesting problem where the node at the root will not have
+    // the layer property set, because the layer in that case is implicit.
+    // if (this._path.length === 0) node.layer = ''
 
     for (let i = 0; i < path.length; i++) {
       const ref = await txn.at(node.subspace!).get([SUBDIRS_KEY, path[i]])
       node = new Node(ref == null ? null : this._nodeSubspace.at(ref), path.slice(0, i+1), path)
 
-      if (ref == null || (await node.getLayer(txn)) === 'partition') break
+      if (ref == null || (await node.getLayer(txn)).equals(PARTITION_BUF)) break
     }
 
     return node
@@ -819,16 +855,17 @@ export class DirectoryLayer {
     return node
   }
 
-  _contentsOfNode(nodeSubspace: NodeSubspace, path: Path, layer?: string): Directory {
+  _contentsOfNode(nodeSubspace: NodeSubspace, path: Path, layer: NativeValue = BUF_EMPTY): Directory {
     // This is some black magic. We have a reference to the node's subspace, but
     // what we really want is the prefix. So we want to do the inverse to
     // this._nodeSubspace.at(...).
     const contentSubspace = this.contentSubspaceForNode(nodeSubspace)
 
-    if (layer === 'partition') {
+    const layerBuf = asBuf(layer)
+    if (layerBuf.equals(PARTITION_BUF)) {
       return new Directory(this, this._path.concat(path), contentSubspace, true)
     } else {
-      return new Directory(this, path, contentSubspace, false, layer)
+      return new Directory(this, path, contentSubspace, false, layerBuf)
     }
   }
 
@@ -842,9 +879,9 @@ export class DirectoryLayer {
       const actualVersion = versionEncoder.unpack(actualRaw)
 
       if (actualVersion[0] > EXPECTED_VERSION[0]) {
-        throw Error(`Cannot load directory with version ${actualVersion.join('.')} using directory layer ${EXPECTED_VERSION.join('.')}`)
+        throw new DirectoryError(`Cannot load directory with version ${actualVersion.join('.')} using directory layer ${EXPECTED_VERSION.join('.')}`)
       } else if (actualVersion[1] > EXPECTED_VERSION[1] && writeAccess) {
-        throw Error(`Directory with version ${actualVersion.join('.')} is read-only when opened using directory layer ${EXPECTED_VERSION.join('.')}`)
+        throw new DirectoryError(`Directory with version ${actualVersion.join('.')} is read-only when opened using directory layer ${EXPECTED_VERSION.join('.')}`)
       }
     }
   }
@@ -873,7 +910,7 @@ export class DirectoryLayer {
 
   private async _removeRecursive(txn: TxnAny, node: NodeSubspace) {
     for await (const [name, subnode] of this._subdirNamesAndNodes(txn, node)) {
-      this._removeRecursive(txn, subnode)
+      await this._removeRecursive(txn, subnode)
     }
 
     // Clear content

@@ -26,15 +26,15 @@ export default class Subspace<KeyIn = NativeValue, KeyOut = Buffer, ValIn = Nati
 
   _bakedKeyXf: Transformer<KeyIn, KeyOut> // This is cached from _prefix + keyXf.
 
-  constructor(prefix: string | Buffer | null, keyXf?: Transformer<KeyIn, KeyOut>, valueXf?: Transformer<ValIn, ValOut>) {
-    this.prefix = prefix != null ? Buffer.from(prefix) : EMPTY_BUF
+  constructor(rawPrefix: string | Buffer | null, keyXf?: Transformer<KeyIn, KeyOut>, valueXf?: Transformer<ValIn, ValOut>) {
+    this.prefix = rawPrefix != null ? Buffer.from(rawPrefix) : EMPTY_BUF
 
     // Ugh typing this is a mess. Usually this will be fine since if you say new
     // Subspace() you'll get the default values for KI/KO/VI/VO.
     this.keyXf = keyXf || (defaultTransformer as Transformer<any, any>)
     this.valueXf = valueXf || (defaultTransformer as Transformer<any, any>)
 
-    this._bakedKeyXf = prefix ? prefixTransformer(prefix, this.keyXf) : this.keyXf
+    this._bakedKeyXf = rawPrefix ? prefixTransformer(rawPrefix, this.keyXf) : this.keyXf
   }
 
   // All these template parameters make me question my life choices, but this is
@@ -89,6 +89,7 @@ export default class Subspace<KeyIn = NativeValue, KeyOut = Buffer, ValIn = Nati
   }
 
   contains(key: NativeValue) {
+    // TODO: This is a little dangerous - we should check if the key exists between this.keyXf.range().
     return startsWith(asBuf(key), this.prefix)
   }
 }

@@ -165,7 +165,8 @@ withEachDb(db => describe('directory layer', () => {
       const dirA = await dl.create(db, 'dir', 'layer a')
       await dl.open(db, 'dir', 'layer a') // <-- layer matches. should be ok.
       assert.rejects(dl.open(db, 'dir', 'layer b'), 'layer mismatch. Should throw')
-      assert.rejects(dl.open(db, 'dir'), 'layer mismatch. Should throw')
+      // Actually the other bindings allow this. I'm not sure it *should* be allowed, but there you go.
+      // assert.rejects(dl.open(db, 'dir'), 'layer mismatch. Should throw')
     })
   })
 }))

@@ -5,6 +5,8 @@ import {asBuf, concat2, strInc} from './util'
 import {UnboundStamp} from './versionstamp'
 
 export type Transformer<In, Out> = {
+  name?: string, // For debugging.
+
   // The tuple type supports embedding versionstamps, but the versionstamp
   // isn't known until the transaction has been committed.
 
@@ -36,6 +38,8 @@ export const defaultGetRange = <KeyIn, KeyOut>(prefix: KeyIn, keyXf: Transformer
 export const prefixTransformer = <In, Out>(prefix: string | Buffer, inner: Transformer<In, Out>): Transformer<In, Out> => {
   const _prefix = asBuf(prefix)
   const transformer: Transformer<In, Out> = {
+    name: inner.name ? 'prefixed ' + inner.name : 'prefixTransformer',
+
     pack(v: In): Buffer | string {
       // If you heavily nest these it'll get pretty inefficient.
       const innerVal = inner.pack(v)

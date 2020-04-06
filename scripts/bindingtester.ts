@@ -10,7 +10,7 @@
 
 import * as fdb from '../lib'
 import {
-  Transaction, Database,
+  Transaction, Database, Directory, DirectoryLayer, Subspace,
   tuple, TupleItem,
   keySelector,
   StreamingMode, MutationType,
@@ -20,11 +20,14 @@ import {
 
 // TODO: Expose these in lib
 import {packPrefixedVersionstamp} from '../lib/versionstamp'
+import { concat2, startsWith } from '../lib/util'
+import {DirectoryError} from '../lib/directory'
 
 import assert = require('assert')
 import nodeUtil = require('util')
 import * as chalk from 'chalk'
 import fs = require('fs')
+import { Transformer } from '../lib/transformer'
 
 let verbose = false
 
@@ -43,6 +46,12 @@ const toStr = (val: any): string => (
   : nodeUtil.inspect(val)
 )
 
+const tupleStrict: Transformer<TupleItem | TupleItem[], TupleItem[]> = {
+  ...tuple,
+  name: 'tuple strict',
+  unpack: val => tuple.unpack(val, true),
+}
+
 const colors = [chalk.blueBright, chalk.red, chalk.cyan, chalk.greenBright, chalk.grey]
 const makeMachine = (db: Database, initialName: Buffer) => {
   type StackItem = {instrId: number, data: any}
@@ -54,6 +63,11 @@ const makeMachine = (db: Database, initialName: Buffer) => {
   const threadColor = colors.pop()!
   colors.unshift(threadColor)
 
+  // Directory stuff
+  const dirList: (Subspace<any, any, any, any> | Directory<any, any, any, any> | fdb.DirectoryLayer | null)[] = [fdb.directory]
+  let dirIdx = 0
+  let dirErrIdx = 0
+
   const tnNameKey = () => tnName.toString('hex')
 
   const catchFdbErr = (e: Error) => {
@@ -64,13 +78,13 @@ const makeMachine = (db: Database, initialName: Buffer) => {
     } else throw e
   }
 
-  const unwrapNull = <T>(val: T | null) => val == null ? Buffer.from('RESULT_NOT_PRESENT') : val
+  const unwrapNull = <T>(val: T | null | undefined) => val === undefined ? Buffer.from('RESULT_NOT_PRESENT') : val
   const wrapP = <T>(p: T | Promise<T>) => (p instanceof Promise) ? p.then(unwrapNull, catchFdbErr) : unwrapNull(p)
 
   const popValue = async () => {
     assert(stack.length, 'popValue when stack is empty')
     if (verbose) {
-      console.log(chalk.green('pop value'), stack[stack.length-1].instrId, stack[stack.length-1].data)
+      console.log(chalk.green('pop value'), stack[stack.length-1].instrId, 'value:', stack[stack.length-1].data)
     }
     return stack.pop()!.data
   }
@@ -83,8 +97,11 @@ const makeMachine = (db: Database, initialName: Buffer) => {
   const popStr = () => chk<string>(val => typeof val === 'string', 'string')
   const popBool = () => chk<boolean>(val => val === 0 || val === 1, 'bool').then(x => !!x)
   const popInt = () => chk<number | bigint>(val => Number.isInteger(val) || typeof val === 'bigint', 'int')
+  const popSmallInt = () => chk<number>(val => Number.isInteger(val), 'int')
   const popBuffer = () => chk<Buffer>(Buffer.isBuffer, 'buf')
   const popStrBuf = () => chk<string | Buffer>(val => typeof val === 'string' || Buffer.isBuffer(val), 'buf|str')
+  const popNullableBuf = () => chk<Buffer | null>(val => val == null || Buffer.isBuffer(val), 'buf|null')
+  
   const popSelector = async () => {
     const key = await popBuffer()
     const orEqual = await popBool()
@@ -99,12 +116,18 @@ const makeMachine = (db: Database, initialName: Buffer) => {
   }
 
   const pushValue = (data: any) => {
-    if (verbose) console.log('pushValue', instrId, data)
+    if (verbose) console.log(chalk.green('push value'), instrId, 'value:', data)
     stack.push({instrId, data})
   }
+  const pushArrItems = (data: any[]) => {
+    for (let i = 0; i < data.length; i++) pushValue(data[i])
+  }
   const pushTupleItem = (data: TupleItem) => pushValue(data)
-  const pushLiteral = (data: string) => pushValue(Buffer.from(data, 'ascii'))
-  const maybePush = (data: Promise<void> | void) => {
+  const pushLiteral = (data: string) => {
+    if (verbose) console.log(chalk.green('(literal:'), data, chalk.green(')'))
+    pushValue(Buffer.from(data, 'ascii'))
+  }
+  const maybePush = (data: Promise<any> | any) => {
     if (data) pushValue(wrapP(data))
   }
 
@@ -112,6 +135,38 @@ const makeMachine = (db: Database, initialName: Buffer) => {
   const bufBeginsWith = (buf: Buffer, prefix: Buffer) => (
     prefix.length <= buf.length && buf.compare(prefix, 0, prefix.length, 0, prefix.length) === 0
   )
+
+  // Directory helpers
+  const getCurrentDirectory = (): Directory => {
+    const val = dirList[dirIdx] as Directory
+    assert(val instanceof Directory)
+    return val
+  }
+  const getCurrentSubspace = (): Subspace => {
+    const val = dirList[dirIdx] as Directory | Subspace
+    assert(val instanceof Directory || val instanceof Subspace)
+    return val.getSubspace()
+  }
+  const getCurrentDirectoryOrLayer = (): Directory | DirectoryLayer => {
+    const val = dirList[dirIdx] as Directory | DirectoryLayer
+    assert(val instanceof Directory || val instanceof DirectoryLayer)
+    return val
+  }
+  // const errOrNull = async <T>(fn: (() => Promise<T>)): Promise<T | null> => {
+  //   try {
+  //     const val = fn()
+  //     return val
+  //   } catch (e) {
+  //     return null
+  //   }
+  // }
+  const errOrNull = async <T>(promiseOrFn: Promise<T> | (() => Promise<T>)): Promise<T | null> => {
+    try {
+      return await (typeof promiseOrFn === 'function' ? promiseOrFn() : promiseOrFn)
+    } catch (e) {
+      return null
+    }
+  }
 
   const operations: {[op: string]: (operand: Database | Transaction, ...args: TupleItem[]) => any} = {
     // Stack operations
@@ -169,7 +224,7 @@ const makeMachine = (db: Database, initialName: Buffer) => {
     },
     async USE_TRANSACTION() {
       tnName = await popBuffer()
-      console.log('using tn', tnName)
+      if (verbose) console.log('using tn', tnName)
       if (transactions[tnNameKey()] == null) transactions[tnNameKey()] = db.rawCreateTransaction()
       // transactions[tnNameKey()].setOption(fdb.TransactionOptionCode.TransactionLoggingEnable, Buffer.from('x '+instrId))
     },
@@ -443,6 +498,180 @@ const makeMachine = (db: Database, initialName: Buffer) => {
 
     // TODO: Invoke mocha here
     UNIT_TESTS() {},
+
+
+    // **** Directory stuff ****
+    async DIRECTORY_CREATE_SUBSPACE() {
+      const path = (await popNValues()) as string[]
+      const rawPrefix = await popStrBuf()
+      if (verbose) console.log('path', path, 'rawprefix', rawPrefix)
+      const subspace = new Subspace(rawPrefix).withKeyEncoding(tupleStrict).at(path)
+      dirList.push(subspace)
+    },
+
+    async DIRECTORY_CREATE_LAYER() {
+      const index1 = await popSmallInt()
+      const index2 = await popSmallInt()
+      const allowManualPrefixes = await popBool()
+      
+      const nodeSubspace = dirList[index1] as Subspace | null
+      const contentSubspace = dirList[index2] as Subspace | null
+      if (verbose) console.log('dcl', index1, index2, allowManualPrefixes)
+
+      dirList.push(
+        (nodeSubspace == null || contentSubspace == null) ? null
+        : new fdb.DirectoryLayer({
+          nodeSubspace,
+          contentSubspace,
+          allowManualPrefixes,
+        })
+      )
+    },
+
+    async DIRECTORY_CREATE_OR_OPEN(oper) {
+      const path = (await popNValues()) as string[]
+      const layer = await popNullableBuf()
+
+      const dir = await getCurrentDirectoryOrLayer().createOrOpen(oper, path, layer || undefined)
+      dirList.push(dir)
+    },
+    async DIRECTORY_CREATE(oper) {
+      const path = (await popNValues()) as string[]
+      const layer = await popNullableBuf()
+      const prefix = (await popValue()) as Buffer | null || undefined
+  
+      if (verbose) console.log('path', path, layer, prefix)
+      // console.log(dirList[dirIdx])
+      const dir = await getCurrentDirectoryOrLayer().create(oper, path, layer || undefined, prefix)
+      dirList.push(dir)
+    },
+    async DIRECTORY_OPEN(oper) {
+      const path = (await popNValues()) as string[]
+      const layer = await popNullableBuf()
+  
+      const dir = await getCurrentDirectoryOrLayer().open(oper, path, layer || undefined)
+      dirList.push(dir)
+    },
+
+    async DIRECTORY_CHANGE() {
+      dirIdx = await popSmallInt()
+      if (dirList[dirIdx] == null) dirIdx = dirErrIdx
+      const result = dirList[dirIdx]
+      if (verbose) console.log('Changed directory index to', dirIdx, result == null ? 'null' : result.constructor.name)
+    },
+    async DIRECTORY_SET_ERROR_INDEX() {
+      dirErrIdx = await popSmallInt()
+      if (verbose) console.log('Changed directory error index to', dirErrIdx)
+    },
+
+    async DIRECTORY_MOVE(oper) {
+      const oldPath = (await popNValues()) as string[]
+      const newPath = (await popNValues()) as string[]
+      if (verbose) console.log('move', oldPath, newPath)
+      dirList.push(await getCurrentDirectoryOrLayer().move(oper, oldPath, newPath))
+    },
+    async DIRECTORY_MOVE_TO(oper) {
+      const dir = await getCurrentDirectoryOrLayer()
+      const newAbsPath = (await popNValues()) as string[]
+
+      // There's no moveTo method to call in DirectoryLayer - but this is what it would do if there were.
+      if (dir instanceof DirectoryLayer) throw new DirectoryError('The root directory cannot be moved.')
+
+      // console.log('move_to', dirIdx, dirList[dirIdx])
+      // console.log('move to', newAbsPath)
+      dirList.push(await getCurrentDirectory().moveTo(oper, newAbsPath))
+    },
+    async DIRECTORY_REMOVE(oper) {
+      const count = await popSmallInt() // either 0 or 1
+      const path = count === 1
+        ? (await popNValues()) as string[]
+        : undefined
+      await getCurrentDirectoryOrLayer().remove(oper, path)
+    },
+    async DIRECTORY_REMOVE_IF_EXISTS(oper) {
+      const count = await popSmallInt() // either 0 or 1
+      const path = count === 1
+        ? (await popNValues()) as string[]
+        : undefined
+      await getCurrentDirectoryOrLayer().removeIfExists(oper, path)
+    },
+    async DIRECTORY_LIST(oper) {
+      const count = await popSmallInt() // either 0 or 1
+      const path = count === 1
+        ? (await popNValues()) as string[]
+        : undefined
+      
+      const children = tuple.pack(await getCurrentDirectoryOrLayer().listAll(oper, path))
+      pushValue(children)
+    },
+    async DIRECTORY_EXISTS(oper) {
+      const count = await popSmallInt() // either 0 or 1
+      const path = count === 0
+        ? undefined
+        : (await popNValues()) as string[]
+
+      pushValue(await getCurrentDirectoryOrLayer().exists(oper, path) ? 1 : 0)
+    },
+
+    async DIRECTORY_PACK_KEY() {
+      const keyTuple = await popNValues()
+      pushValue(getCurrentSubspace().withKeyEncoding(tupleStrict).packKey(keyTuple))
+    },
+    async DIRECTORY_UNPACK_KEY() {
+      const key = await popBuffer()
+      const tup = getCurrentSubspace().withKeyEncoding(tupleStrict).unpackKey(key)
+      if (verbose) console.log('unpack key', key, tup)
+      pushArrItems(tup)
+    },
+    async DIRECTORY_RANGE() {
+      const keyTuple = await popNValues()
+      const {begin, end} = getCurrentSubspace().withKeyEncoding(tupleStrict).packRange(keyTuple)
+      pushValue(begin); pushValue(end)
+    },
+    async DIRECTORY_CONTAINS() {
+      const key = await popStrBuf()
+      pushValue(getCurrentSubspace().contains(key) ? 1 : 0)
+    },
+    async DIRECTORY_OPEN_SUBSPACE() {
+      const childPrefix = await popNValues()
+      dirList.push(getCurrentSubspace().withKeyEncoding(tupleStrict).at(childPrefix))
+    },
+
+    async DIRECTORY_LOG_SUBSPACE(oper) {
+      const prefix = await popBuffer()
+      await oper.set(concat2(prefix, tuple.pack(dirIdx)), getCurrentSubspace().prefix)
+    },
+    async DIRECTORY_LOG_DIRECTORY(oper) {
+      const dir = await getCurrentDirectoryOrLayer()
+
+      const prefix = await popBuffer()
+      const logSubspace = new Subspace(prefix)
+        .withKeyEncoding(tupleStrict)
+        .withValueEncoding(tupleStrict)
+        .at(dirIdx)
+
+      let exists = await dir.exists(oper)
+      if (verbose) console.log('exists', exists)
+      let children = exists ? await dir.listAll(oper) : []
+      let layer = dir instanceof Directory ? dir.getLayerRaw() : Buffer.alloc(0)
+
+      const scopedOper = (oper instanceof Database) ? oper.at(logSubspace) : oper.at(logSubspace) // lolscript.
+      await scopedOper.set('path', dir.getPath())
+      await scopedOper.set('layer', layer)
+      await scopedOper.set('exists', exists ? 1 : 0)
+      await scopedOper.set('children', children)
+    },
+
+    async DIRECTORY_STRIP_PREFIX() {
+      const byteArray = await popBuffer()
+      if (verbose) console.log('strip prefix', dirList[dirIdx])
+      const prefix = getCurrentSubspace().prefix
+      if (!startsWith(byteArray, prefix)) {
+        throw Error('String does not start with raw prefix')
+      } else {
+        pushValue(byteArray.slice(prefix.length))
+      }
+    },
   }
 
   return {
@@ -481,8 +710,28 @@ const makeMachine = (db: Database, initialName: Buffer) => {
       try {
         await operations[opcode](operand, ...oper)
       } catch (e) {
-        const err = catchFdbErr(e)
-        pushValue(err)
+        if (opcode.startsWith('DIRECTORY_')) {
+          if (!(e instanceof DirectoryError)) throw e
+          if (verbose) console.log('Database exception', e.message)
+
+          if (([
+            'DIRECTORY_CREATE_SUBSPACE',
+            'DIRECTORY_CREATE_LAYER',
+            'DIRECTORY_CREATE_OR_OPEN',
+            'DIRECTORY_CREATE',
+            'DIRECTORY_OPEN',
+            'DIRECTORY_MOVE',
+            'DIRECTORY_MOVE_TO',
+            'DIRECTORY_OPEN_SUBSPACE'
+          ]).includes(opcode)) {
+            dirList.push(null)
+          }
+
+          pushLiteral('DIRECTORY_ERROR')
+        } else {
+          const err = catchFdbErr(e)
+          pushValue(err)
+        }
       }
 
       if (verbose) {
