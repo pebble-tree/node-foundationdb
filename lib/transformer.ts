@@ -1,7 +1,7 @@
 // The transformer type is used to transparently translate keys and values
 // through an encoder and decoder function.
 
-import {asBuf, concat2, strInc} from './util'
+import {asBuf, concat2, strInc, startsWith} from './util'
 import {UnboundStamp} from './versionstamp'
 
 export type Transformer<In, Out> = {
@@ -46,6 +46,7 @@ export const prefixTransformer = <In, Out>(prefix: string | Buffer, inner: Trans
       return concat2(_prefix, asBuf(innerVal))
     },
     unpack(buf: Buffer) {
+      if (!startsWith(buf, _prefix)) throw Error('Cannot unpack key outside of prefix range.')
       return inner.unpack(buf.slice(_prefix.length))
     },
   }

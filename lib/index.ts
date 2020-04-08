@@ -129,8 +129,8 @@ export function open(clusterFile?: string, dbOpts?: DatabaseOptions) {
 
 // *** Some deprecated stuff to remove:
 
-/** @deprecated Async database connection has been removed from FDB. Call open() directly. */
-export const openSync = deprecate(open, 'Async database connection has been removed from FDB. Call open() directly.')
+/** @deprecated This method will be removed in a future version. Call fdb.open() directly - it is syncronous too. */
+export const openSync = deprecate(open, 'This method will be removed in a future version. Call fdb.open() directly - it is syncronous too.')
 
 // Previous versions of this library allowed you to create a cluster and then
 // create database objects from it. This was all removed from the C API. We'll

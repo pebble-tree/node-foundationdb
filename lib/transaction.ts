@@ -29,7 +29,6 @@ import {
 import {
   UnboundStamp,
   packVersionstamp,
-  packPrefixedVersionstamp,
   packVersionstampPrefixSuffix
 } from './versionstamp'
 import Subspace, { GetSubspace } from './subspace'
@@ -77,22 +76,66 @@ interface TxnCtx {
   toBake: null | BakeItem<any>[]
 }
 
-// NativeValue is string | Buffer because the C code accepts either format.
-// But all values returned from methods will actually just be Buffer.
+/**
+ * This class wraps a foundationdb transaction object. All interaction with the
+ * data in a foundationdb database happens through a transaction. For more
+ * detail about how to model your queries, see the [transaction chapter of the
+ * FDB developer
+ * guide](https://apple.github.io/foundationdb/developer-guide.html?#transaction-basics).
+ *
+ * You should never create transactions directly. Instead, open a database and
+ * call `await db.doTn(async tn => {...})`.
+ *
+ * ```javascript
+ * const db = fdb.open()
+ * const val = await db.doTn(async tn => {
+ *   // Use the transaction in this block. The transaction will be automatically
+ *   // committed (and potentially retried) after this block returns.
+ *   tn.set('favorite color', 'hotpink')
+ *   return await tn.get('another key')
+ * })
+ * ```
+ *
+ * ---
+ *
+ * This class has 4 template parameters - which is kind of messy. They're used
+ * to make the class typesafe in the face of key and value transformers. These
+ * parameters should be automatically inferred, but sometimes you will need to
+ * specify them explicitly. They are:
+ *
+ * @param KeyIn The type for keys passed by the user into functions (eg `get(k:
+ * KeyIn)`). Defaults to string | Buffer. Change this by scoping the transaction
+ * with a subspace with a key transformer. Eg
+ * `txn.at(fdb.root.withKeyEncoding(fdb.tuple)).get([1, 2, 3])`.
+ * @param KeyOut The type of keys returned by methods which return keys - like
+ * `getKey(..) => Promise<KeyOut?>`. Unless you have a KV transformer, this will
+ * be Buffer.
+ * @param ValIn The type of values passed into transaction functions, like
+ * `txn.set(key, val: ValIn)`. By default this is string | Buffer. Override this
+ * by applying a value transformer to your subspace.
+ * @param ValOut The type of database values returned by functions. Eg,
+ * `txn.get(...) => Promise<ValOut | undefined>`. Defaults to Buffer, but if you
+ * apply a value transformer this will change.
+ */
 export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = NativeValue, ValOut = Buffer> {
-  _tn: NativeTransaction
+  /** @internal */ _tn: NativeTransaction
   
   isSnapshot: boolean
   subspace: Subspace<KeyIn, KeyOut, ValIn, ValOut>
 
   // Copied out from scope for convenience, since these are so heavily used. Not
   // sure if this is a good idea.
-  _keyEncoding: Transformer<KeyIn, KeyOut>
-  _valueEncoding: Transformer<ValIn, ValOut>
+  private _keyEncoding: Transformer<KeyIn, KeyOut>
+  private _valueEncoding: Transformer<ValIn, ValOut>
   
-  _ctx: TxnCtx
+  private _ctx: TxnCtx
   
-  /** NOTE: Do not call this directly. Instead transactions should be created via db.doTn(...) */
+  /**
+   * NOTE: Do not call this directly. Instead transactions should be created
+   * via db.doTn(...)
+   * 
+   * @internal
+   */
   constructor(tn: NativeTransaction, snapshot: boolean,
       subspace: Subspace<KeyIn, KeyOut, ValIn, ValOut>,
       // keyEncoding: Transformer<KeyIn, KeyOut>, valueEncoding: Transformer<ValIn, ValOut>,
@@ -115,6 +158,8 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
 
   // Internal method to actually run a transaction retry loop. Do not call
   // this directly - instead use Database.doTn().
+
+  /** @internal */
   async _exec<T>(body: (tn: Transaction<KeyIn, KeyOut, ValIn, ValOut>) => Promise<T>, opts?: TransactionOptions): Promise<T> {
     // Logic described here:
     // https://apple.github.io/foundationdb/api-c.html#c.fdb_transaction_on_error
@@ -182,6 +227,7 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
     return this.at(db)
   }
 
+  /** Get the current subspace */
   getSubspace() { return this.subspace }
 
   // You probably don't want to call any of these functions directly. Instead call db.transact(async tn => {...}).
@@ -204,6 +250,12 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
       : this._tn.onError(code)
   }
 
+  /**
+   * Get the value for the specified key in the database.
+   *
+   * @returns the value for the specified key, or `undefined` if the key does
+   * not exist in the database.
+   */
   get(key: KeyIn): Promise<ValOut | undefined>
   get(key: KeyIn, cb: Callback<ValOut | undefined>): void
   get(key: KeyIn, cb?: Callback<ValOut | undefined>) {
@@ -216,17 +268,38 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
         .then(val => val == null ? undefined : this._valueEncoding.unpack(val))
   }
 
+  /** Checks if the key exists in the database. This is just a shorthand for
+   * tn.get() !== undefined.
+   */
   exists(key: KeyIn): Promise<boolean> {
     const keyBuf = this._keyEncoding.pack(key)
-    return this._tn.get(keyBuf, this.isSnapshot).then(val => val != null)
+    return this._tn.get(keyBuf, this.isSnapshot).then(val => val != undefined)
   }
 
-  getKey(_sel: KeyIn | KeySelector<KeyIn>): Promise<KeyOut | null> {
+  /**
+   * Find and return the first key which matches the specified key selector
+   * inside the given subspace. Returns undefined if no key matching the
+   * selector falls inside the current subspace.
+   *
+   * If you pass a key instead of a selector, this method will find the first
+   * key >= the specified key. Aka `getKey(someKey)` is the equivalent of
+   * `getKey(keySelector.firstGreaterOrEqual(somekey))`.
+   *
+   * Note that this method is a little funky in the root subspace:
+   *
+   * - We cannot differentiate between "no smaller key found" and "found the
+   *   empty key ('')". To make the API more consistent, we assume you aren't
+   *   using the empty key in your dataset.
+   * - If your key selector looks forward in the dataset, this method may find
+   *   and return keys in the system portion (starting with '\xff').
+   */
+  getKey(_sel: KeySelector<KeyIn> | KeyIn): Promise<KeyOut | undefined> {
     const sel = keySelector.from(_sel)
     return this._tn.getKey(this._keyEncoding.pack(sel.key), sel.orEqual, sel.offset, this.isSnapshot)
-      .then(keyOrNull => (
-        keyOrNull != null ? this._keyEncoding.unpack(keyOrNull) : null
-      ))
+      .then(key => {
+        if (key.length === 0 || !this.subspace.contains(key)) return undefined
+        else return this._keyEncoding.unpack(key)
+      })
   }
 
   /** Set the specified key/value pair in the database */
@@ -246,7 +319,7 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
   }
 
   // This just destructively edits the result in-place.
-  _encodeRangeResult(r: [Buffer, Buffer][]): [KeyOut, ValOut][] {
+  private _encodeRangeResult(r: [Buffer, Buffer][]): [KeyOut, ValOut][] {
     // This is slightly faster but I have to throw away the TS checks in the process. :/
     for (let i = 0; i < r.length; i++) {
       ;(r as any)[i][0] = this._keyEncoding.unpack(r[i][0])
@@ -277,6 +350,24 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
     .then(r => ({more: r.more, results: this._encodeRangeResult(r.results)}))
   }
 
+  /**
+   * This method is functionally the same as *getRange*, but values are returned
+   * in the batches they're delivered in from the database. This method is
+   * present because it may be marginally faster than `getRange`.
+   * 
+   * Example:
+   * 
+   * ```
+   * for await (const batch of tn.getRangeBatch(0, 1000)) {
+   *   for (let k = 0; k < batch.length; k++) {
+   *     const [key, val] = batch[k]
+   *     // ...
+   *   }
+   * }
+   * ```
+   * 
+   * @see Transaction.getRange
+   */
   async *getRangeBatch(
       _start: KeyIn | KeySelector<KeyIn>, // Consider also supporting string / buffers for these.
       _end?: KeyIn | KeySelector<KeyIn>, // If not specified, start is used as a prefix.
@@ -326,6 +417,46 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
 
   // TODO: getRangeBatchStartsWith
 
+  /**
+   * Get all key value pairs within the specified range. This method returns an
+   * async generator, which can be iterated over in a `for await(...)` loop like
+   * this:
+   *
+   * ```
+   * for await (const [key, value] of tn.getRange('a', 'z')) {
+   *  // ...
+   * }
+   * ```
+   *
+   * The values will be streamed from the database as they are read.
+   *
+   * Key value pairs will be yielded in the order they are present in the
+   * database - from lowest to highest key. (Or the reverse order if
+   * `reverse:true` is set in options).
+   *
+   * Note that transactions are [designed to be short
+   * lived](https://apple.github.io/foundationdb/developer-guide.html?#long-running-transactions),
+   * and will error if the read operation takes more than 5 seconds.
+   *
+   * The end of the range is optional. If missing, this method will use the
+   * first parameter as a prefix and fetch all key value pairs starting with
+   * that key.
+   *
+   * The start or the end can be specified using KeySelectors instead of raw
+   * keys in order to specify offsets and such.
+   *
+   * getRange also takes an optional extra options object parameter. Valid
+   * options are:
+   *
+   * - **limit:** (number) Maximum number of items returned by the call to
+   *   getRange
+   * - **reverse:** (boolean) Flag to reverse the iteration, and instead search
+   *   from `end` to `start`. Key value pairs will be returned from highest key
+   *   to lowest key.
+   * - **streamingMode:** (enum StreamingMode) *(rarely used)* The policy for
+   *   how eager FDB should be about prefetching data. See enum StreamingMode in
+   *   opts.
+   */
   async *getRange(
       start: KeyIn | KeySelector<KeyIn>, // Consider also supporting string / buffers for these.
       end?: KeyIn | KeySelector<KeyIn>,
@@ -337,6 +468,15 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
 
   // TODO: getRangeStartsWtih
 
+  /**
+   * Same as getRange, but prefetches and returns all values in an array rather
+   * than streaming the values over the wire. This is often more convenient, and
+   * makes sense when dealing with a small range.
+   * 
+   * @see Transaction.getRange
+   *
+   * @returns array of [key, value] pairs
+   */
   async getRangeAll(
       start: KeyIn | KeySelector<KeyIn>,
       end?: KeyIn | KeySelector<KeyIn>, // if undefined, start is used as a prefix.
@@ -355,7 +495,12 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
     return this.getRangeAll(prefix, undefined, opts)
   }
   
-  // If end is not specified, clears entire range starting with prefix.
+  /**
+   * Removes all key value pairs from the database in between start and end.
+   *
+   * End parameter is optional. If not specified, this removes all keys with
+   * *start* as a prefix.
+   */
   clearRange(_start: KeyIn, _end?: KeyIn) {
     let start: NativeValue, end: NativeValue
     // const _start = this._keyEncoding.pack(start)
@@ -371,7 +516,8 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
     // const _end = end == null ? strInc(_start) : this._keyEncoding.pack(end)
     this._tn.clearRange(start, end)
   }
-  // Just an alias for unary clearRange.
+
+  /** An alias for unary clearRange */
   clearRangeStartsWith(prefix: KeyIn) {
     this.clearRange(prefix)
   }
@@ -485,7 +631,7 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
 
   getNextTransactionID() { return this._ctx.nextCode++ }
 
-  _bakeCode(into: UnboundStamp) {
+  private _bakeCode(into: UnboundStamp) {
     if (this.isSnapshot) throw new Error('Cannot use this method in a snapshot transaction')
     if (into.codePos != null) {
       // We edit the buffer in-place but leave the codepos as is so if the txn
@@ -509,7 +655,7 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
     this.atomicOpNative(MutationType.SetVersionstampedKey, key, this._valueEncoding.pack(value))
   }
 
-  _addBakeItem<T>(item: T, transformer: Transformer<T, any>, code: Buffer | null) {
+  private _addBakeItem<T>(item: T, transformer: Transformer<T, any>, code: Buffer | null) {
     if (transformer.bakeVersionstamp) {
       const scope = this._ctx
       if (scope.toBake == null) scope.toBake = []
@@ -559,19 +705,23 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
     if (bakeAfterCommit) this._addBakeItem(value, this._valueEncoding, code)
   }
 
-  // Set key = [10 byte versionstamp, value in bytes]. This function leans on
-  // the value transformer to pack & unpack versionstamps. An extra value
-  // prefix is only supported on API version 520+.
+  /**
+   * Set key = [10 byte versionstamp, value in bytes]. This function leans on
+   * the value transformer to pack & unpack versionstamps. An extra value
+   * prefix is only supported on API version 520+.
+   */
   setVersionstampPrefixedValue(key: KeyIn, value?: ValIn, prefix?: Buffer) {
     const valBuf = value !== undefined ? asBuf(this._valueEncoding.pack(value)) : undefined
     const val = packVersionstampPrefixSuffix(prefix, valBuf, false)
     this.atomicOpKB(MutationType.SetVersionstampedValue, key, val)
   }
 
-  // Helper to get the specified key and split out the stamp and value pair.
-  // This requires that the stamp is at offset 0 (the start) of the value.
-  // This is designed to work with setVersionstampPrefixedValue. If you're
-  // using setVersionstampedValue with tuples or something, just call get().
+  /**
+   * Helper to get the specified key and split out the stamp and value pair.
+   * This requires that the stamp is at offset 0 (the start) of the value.
+   * This is designed to work with setVersionstampPrefixedValue. If you're
+   * using setVersionstampedValue with tuples, just call get().
+   */
   async getVersionstampPrefixedValue(key: KeyIn): Promise<{stamp: Buffer, value?: ValOut} | null> {
     const val = await this._tn.get(this._keyEncoding.pack(key), this.isSnapshot)
     return val == null ? null

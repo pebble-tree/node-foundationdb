@@ -1,4 +1,16 @@
-# HEAD
+# 1.0.0
+
+## API-BREAKING CHANGES
+
+- Changed `fdb.open()` to return a directory reference *synchronously*. This matches the semantics of the new client API.
+- Removed support for the older nan-based native module. The newer napi code works on all officially supported versions of nodejs, as well as node 8.16. If you're using a version of nodejs older than that, its past time to upgrade.
+- Changed `db.get()` / `txn.get()` to return `undefined` rather than `null` if the object doesn't exist. This is because null is a valid tuple value.
+- Changed `db.getKey()` / `txn.getKey()` to return `undefined` if the requested key is not in the db / transaction's subspace
+- Deprecated `tn.scopedTo`. Use `tn.at()`.
+
+---
+
+### Other changes
 
 - Pulled out database / transaction scope information (prefix and key value transformers) into a separate class 'subspace' to more closely match the other bindings. This is currently internal-only but it will be exposed when I'm more confident about the API.
 - Added support in the tuple encoder for non-array values, which are functionally equivalent to their array-wrapped versions. Eg this will now work:
@@ -11,12 +23,12 @@ Note that `db.at(['prefix']).set(['key'], 'value')` is equivalent to `db.at(['pr
 
 (The mental model is that tuple.pack(arr1) + tuple.pack(arr2) is always equivalent to tuple.pack(arr1 + arr2), so `[]` encodes to an empty byte string, but `[null]` encodes to `[0]`).
 
-- Removed support for the older nan-based native module. The newer napi code works on all officially supported versions of nodejs, as well as node 8.16. So this should be pretty safe at this point.
 - Updated API to support foundationdb 620
 - Updated the binding tester to conform to version 620's changes
 - Fixed a spec conformance bug in the tuple encoder's handling of extremely large negative integers
-- Changed db.get() / txn.get() to return `undefined` rather than `null` if the object doesn't exist. This is because null is a valid tuple value.
 - Added the directory layer (!!)
+- Added doc comments for a lot of methods in Transaction
+
 
 # 0.10.7
 

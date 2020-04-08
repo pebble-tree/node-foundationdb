@@ -725,9 +725,13 @@ const makeMachine = (db: Database, initialName: Buffer) => {
       try {
         await operations[opcode](operand, ...oper)
       } catch (e) {
+        if (verbose) console.log('Exception:', e.message)
         if (opcode.startsWith('DIRECTORY_')) {
-          if (!(e instanceof DirectoryError)) throw e
-          if (verbose) console.log('Database exception', e.message)
+          // For some reason we absorb all errors here rather than just
+          // directory errors. This is probably a bug in the fuzzer, but eh. See
+          // seed 3079719521.
+          
+          // if (!(e instanceof DirectoryError)) throw e
 
           if (([
             'DIRECTORY_CREATE_SUBSPACE',

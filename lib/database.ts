@@ -98,7 +98,7 @@ export default class Database<KeyIn = NativeValue, KeyOut = Buffer, ValIn = Nati
   get(key: KeyIn): Promise<ValOut | undefined> {
     return this.doTransaction(tn => tn.snapshot().get(key))
   }
-  getKey(selector: KeyIn | KeySelector<KeyIn>): Promise<KeyOut | null> {
+  getKey(selector: KeyIn | KeySelector<KeyIn>): Promise<KeyOut | undefined> {
     return this.doTransaction(tn => tn.snapshot().getKey(selector))
   }
   getVersionstampPrefixedValue(key: KeyIn): Promise<{stamp: Buffer, value?: ValOut} | null> {

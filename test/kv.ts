@@ -7,7 +7,7 @@ import {
   bufToNum,
   withEachDb,
 } from './util'
-import {MutationType, tuple, TupleItem, encoders, Watch} from '../lib'
+import {MutationType, tuple, TupleItem, encoders, Watch, keySelector} from '../lib'
 
 process.on('unhandledRejection', err => { throw err })
 
@@ -37,6 +37,16 @@ withEachDb(db => describe('key value functionality', () => {
       const result = await tn.get('xxx')
       assert.deepStrictEqual(result, val)
     })
+  })
+
+  it.skip("returns undefined when keys don't exist in get() and getKey", async () => {
+    await db.doTn(async tn => {
+      console.log(await tn.getKey('doesnotexist'))
+      // assert.strictEqual(await tn.get('doesnotexist'), undefined)
+      assert.strictEqual(await tn.getKey('doesnotexist'), undefined)
+    })
+    // assert.strictEqual(await db.get('doesnotexist'), undefined)
+    // assert.strictEqual(await db.getKey('doesnotexist'), undefined)
   })
 
   it('reads its writes in separate transactions', async () => {
@@ -109,6 +119,31 @@ withEachDb(db => describe('key value functionality', () => {
     // more attempts than there were increments, the database is running
     // serially and this test is doing nothing.
     assert(txnAttempts > concurrentWrites)
+  })
+
+  describe('getKey', () => {
+    it('returns the exact key requested', async () => {
+      await db.set('x', 'y')
+      assert.strictEqual((await db.getKey('x'))?.toString(), 'x')
+    })
+
+    it('returns undefined if there is no key that matches', async () => {
+      assert.strictEqual(await db.getKey('doesnotexist'), undefined)
+    })
+
+    it('returns the key that matches if a key selector is passed', async () => {
+      await db.set('a', 'y')
+      await db.set('b', 'y')
+      assert.strictEqual((await db.getKey(keySelector.firstGreaterThan('a')))?.toString(), 'b')
+    })
+
+    it('returns undefined if the key selector matches outside of the subspace range', async () => {
+      await db.at('b').set('key', 'val')
+
+      const _db = db.at('a')
+
+      assert.strictEqual(await _db.getKey(keySelector('', true, 0)), undefined)
+    })
   })
 
   describe('version stamps', () => {
@@ -279,9 +314,9 @@ withEachDb(db => describe('key value functionality', () => {
   })
 
   describe('watch', () => {
-    it('getAndWatch returns null for empty keys', async () => {
+    it('getAndWatch returns undefined for empty keys', async () => {
       const watch = await db.getAndWatch('hi')
-      assert.equal(watch.value, null)
+      assert.strictEqual(watch.value, undefined)
       await db.set('hi', 'yo')
       assert.strictEqual(true, await watch.promise)
     })

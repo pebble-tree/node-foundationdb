@@ -35,8 +35,10 @@ export interface NativeTransaction {
 
   get(key: NativeValue, isSnapshot: boolean): Promise<Buffer | undefined>
   get(key: NativeValue, isSnapshot: boolean, cb: Callback<Buffer | undefined>): void
-  getKey(key: NativeValue, orEqual: boolean, offset: number, isSnapshot: boolean): Promise<Buffer | null>
-  getKey(key: NativeValue, orEqual: boolean, offset: number, isSnapshot: boolean, cb: Callback<Buffer | null>): void
+  // getKey always returns a value - but it will return the empty buffer or a
+  // buffer starting in '\xff' if there's no other keys to find.
+  getKey(key: NativeValue, orEqual: boolean, offset: number, isSnapshot: boolean): Promise<Buffer>
+  getKey(key: NativeValue, orEqual: boolean, offset: number, isSnapshot: boolean, cb: Callback<Buffer>): void
   set(key: NativeValue, val: NativeValue): void
   clear(key: NativeValue): void
 

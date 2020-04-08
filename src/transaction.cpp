@@ -184,6 +184,13 @@ static MaybeValue getKey(napi_env env, FDBFuture* future, fdb_error_t* errOut) {
   *errOut = fdb_future_get_key(future, &key, &len);
   if (UNLIKELY(*errOut)) return wrap_null();
 
+  // get_key can't / doesn't differentiate between returning the empty key ("")
+  // or returning *no* key (ie, nothing exists which matches the given
+  // selector). I'm not sure what the behaviour should be if you call getKey()
+  // and we return an empty string here - that could either match the empty key,
+  // or match *no* key.
+  // There is a note about this here:
+  // https://apple.github.io/foundationdb/developer-guide.html?#key-selectors
   napi_value result;
   TRY(napi_create_buffer_copy(env, (size_t)len, (void *)key, NULL, &result));
   return wrap_ok(result);
