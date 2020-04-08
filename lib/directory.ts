@@ -664,13 +664,17 @@ export class DirectoryLayer {
     const oldPath = normalize_path(_oldPath)
     const newPath = normalize_path(_newPath)
 
-    if (arrStartsWith(newPath, oldPath)) {
-      throw new DirectoryError('The destination directory cannot be a subdirectory of the source directory.')
-    }
-
     return doTxn(txnOrDb, async txn => {
+      // Ideally this call should only write the version information to the
+      // database after performing the other checks, to make sure the input here
+      // is valid. But that would be inconsistent with the other bindings, and
+      // it matters because that inconsistency causes the binding tester to
+      // fail: https://github.com/apple/foundationdb/issues/2925
       await this._checkVersion(txn, true)
 
+      if (arrStartsWith(newPath, oldPath)) {
+        throw new DirectoryError('The destination directory cannot be a subdirectory of the source directory.')
+      }
       const oldNode = await this.findWithMeta(txn, oldPath)
       const newNode = await this.findWithMeta(txn, newPath)
 
@@ -693,7 +697,6 @@ export class DirectoryLayer {
 
       // Ok actually move.
       const oldPrefix = this.getPrefixForNode(oldNode.subspace!)
-      // console.log('move prefix', oldPrefix)
       txn.at(parentNode.subspace!).set([SUBDIRS_KEY, newPath[newPath.length - 1]], oldPrefix)
       await this._removeFromParent(txn, oldPath)
 
@@ -871,11 +874,12 @@ export class DirectoryLayer {
     }
   }
 
-  private async _checkVersion(tn: TxnAny, writeAccess: boolean) {
-    const actualRaw = await tn.at(this._rootNode).get(VERSION_KEY)
+  private async _checkVersion(_tn: TxnAny, writeAccess: boolean) {
+    const tn = _tn.at(this._rootNode)
+    const actualRaw = await tn.get(VERSION_KEY)
 
     if (actualRaw == null) {
-      if (writeAccess) this._initializeDirectory(tn)
+      if (writeAccess) tn.set(VERSION_KEY, versionEncoder.pack(EXPECTED_VERSION))
     } else {
       // Check the version matches the version of this directory implementation.
       const actualVersion = versionEncoder.unpack(actualRaw)
@@ -886,10 +890,6 @@ export class DirectoryLayer {
         throw new DirectoryError(`Directory with version ${actualVersion.join('.')} is read-only when opened using directory layer ${EXPECTED_VERSION.join('.')}`)
       }
     }
-  }
-
-  private _initializeDirectory(tn: TxnAny) {
-    tn.at(this._rootNode).set(VERSION_KEY, versionEncoder.pack(EXPECTED_VERSION))
   }
 
   private async* _subdirNamesAndNodes(txn: TxnAny, node: NodeSubspace) {

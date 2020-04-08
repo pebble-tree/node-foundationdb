@@ -122,7 +122,10 @@ const makeMachine = (db: Database, initialName: Buffer) => {
   const pushArrItems = (data: any[]) => {
     for (let i = 0; i < data.length; i++) pushValue(data[i])
   }
-  const pushTupleItem = (data: TupleItem) => pushValue(data)
+  const pushTupleItem = (data: TupleItem) => {
+    pushValue(data)
+    if (verbose) console.log(chalk.green('(encodes to)'), tuple.pack(data))
+  }
   const pushLiteral = (data: string) => {
     if (verbose) console.log(chalk.green('(literal:'), data, chalk.green(')'))
     pushValue(Buffer.from(data, 'ascii'))
@@ -219,8 +222,16 @@ const makeMachine = (db: Database, initialName: Buffer) => {
 
     // Transactions
     NEW_TRANSACTION() {
-      transactions[tnNameKey()] = db.rawCreateTransaction()
-      // transactions[tnNameKey()].setOption(fdb.TransactionOptionCode.TransactionLoggingEnable, Buffer.from(''+instrId))
+      // We're setting the trannsaction identifier so if you turn on tracing at
+      // the bottom of the file, we'll be able to track individual transactions.
+      // This is helpful for debugging write conflicts, and things like that.
+      const opts: fdb.TransactionOptions = {
+        debug_transaction_identifier: `${instrId}`,
+        log_transaction: true,
+      }
+
+      transactions[tnNameKey()] = db.rawCreateTransaction(instrId > 430 ? undefined : opts)
+      ;(transactions[tnNameKey()] as any)._instrId = instrId
     },
     async USE_TRANSACTION() {
       tnName = await popBuffer()
@@ -432,22 +443,22 @@ const makeMachine = (db: Database, initialName: Buffer) => {
     },
     async ENCODE_FLOAT() {
       const buf = await popBuffer()
-      // DataView avoids Buffer's canonicalization of NaN.
-      const value = new DataView(buf.buffer).getFloat32(0, false)
+      
+      // Note the byte representation of nan isn't stable, so even though we can
+      // use DataView to read the "right" nan value here and avoid
+      // canonicalization, we still can't use it because v8 might change the
+      // representation of the passed nan value under the hood. More:
+      // https://github.com/nodejs/node/issues/32697
+      const value = buf.readFloatBE(0)
 
-      // console.log('bt encode_float', buf, value)
-      // Could just pushValue({type: 'float', value})
-      pushValue({type: 'float', value})
-      // pushValue(tuple.unpack(tuple.pack([{type: 'float', value}]), true)[0])
-      // pushTupleItem({type: 'float', value, rawEncoding: buf})
+      pushTupleItem(isNaN(value) ? {type: 'float', value, rawEncoding:buf} : {type: 'float', value})
     },
     async ENCODE_DOUBLE() {
       const buf = await popBuffer()
-      const value = new DataView(buf.buffer).getFloat64(0, false)
-      // console.log('bt encode_double', buf, value)
-      pushValue({type: 'double', value})
-      // pushValue(tuple.unpack(tuple.pack([{type: 'double', value}]), true)[0])
-      // pushTupleItem({type: 'double', value: 0, rawEncoding: buf})
+      const value = buf.readDoubleBE(0)
+      if (verbose) console.log('bt encode_double', buf, value, buf.byteOffset)
+
+      pushTupleItem(isNaN(value) ? {type: 'double', value, rawEncoding:buf} : {type: 'double', value})
     },
     async DECODE_FLOAT() {
       // These are both super gross. Not sure what to do about that.
@@ -683,14 +694,14 @@ const makeMachine = (db: Database, initialName: Buffer) => {
       const instruction = fdb.tuple.unpack(instrBuf, true)
       let [opcode, ...oper] = instruction as [string, TupleItem[]]
 
-      const txnOps = [
-        'NEW_TRANSACTION',
-        'USE_TRANSACTION',
-        'ON_ERROR',
-        'COMMIT',
-        'CANCEL',
-        'RESET',
-      ]
+      // const txnOps = [
+      //   'NEW_TRANSACTION',
+      //   'USE_TRANSACTION',
+      //   'ON_ERROR',
+      //   'COMMIT',
+      //   'CANCEL',
+      //   'RESET',
+      // ]
       // if (verbose || (instrId > 25000 && instrId < 28523 && txnOps.includes(opcode))) {
       if (verbose) {
         if (oper.length) console.log(chalk.magenta(opcode as string), instrId, threadColor(initialName.toString('ascii')), oper, instrBuf.toString('hex'))
@@ -793,6 +804,8 @@ if (require.main === module) (async () => {
   fdb.setAPIVersion(requestedAPIVersion)
   fdb.configNetwork({
     // trace_enable: 'trace',
+    trace_log_group: 'debug',
+    // trace_format: 'json',
     // external_client_library: '~/3rdparty/foundationdb/lib/libfdb_c.dylib-debug',
   })
   const db = fdb.open(clusterFile)
