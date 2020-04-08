@@ -2,8 +2,6 @@
 
 Node bindings for [FoundationDB](https://foundationdb.org)!
 
-These bindings are stable, but they're missing the directory layer from the other bindings. [See progress below](#revival-progress).
-
 - [Getting started](#usage)
 - [Connecting to your database cluster](#connecting-to-your-cluster)
 - [Database Transactions](#database-transactions)
