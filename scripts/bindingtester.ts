@@ -257,7 +257,8 @@ const makeMachine = (db: Database, initialName: Buffer) => {
       const keySel = await popSelector()
       const prefix = await popBuffer()
 
-      const result = (await oper.getKey(keySel)) as Buffer
+      const result = ((await oper.getKey(keySel)) || Buffer.from([])) as Buffer
+
       // if (verbose) {
       //   console.log('get_key prefix', nodeUtil.inspect(prefix.toString('ascii')), result!.compare(prefix))
       //   console.log('get_key result', nodeUtil.inspect(result!.toString('ascii')), result!.compare(prefix))
