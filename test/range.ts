@@ -12,12 +12,17 @@ withEachDb(db => describe('key value functionality', () => {
     batch.map(([k,v]) => [k.toString(), v.toString()])
   )
 
-  it('returns all values through getRange iteration', async () => {
+  const prefill = async () => {
     const _db = db.at(null, numXF, numXF)
     await _db.doTransaction(async tn => {
       for (let i = 0; i < 100; i++) tn.set(i, i)
     })
 
+    return _db
+  }
+
+  it('returns all values through getRange iteration', async () => {
+    const _db = await prefill()
     await _db.doTransaction(async tn => {
       let i = 0
       for await (const [key, val] of tn.getRange(0, 1000)) {
@@ -29,13 +34,22 @@ withEachDb(db => describe('key value functionality', () => {
       assert.strictEqual(i, 100)
     })
   })
+  
+  it('can correctly reverse the range query', async () => {
+    const _db = await prefill()
+    await _db.doTransaction(async tn => {
+      let i = 100
+      for await (const [key, val] of tn.getRange(0, 1000, {reverse: true})) {
+        i--
+        assert.strictEqual(key, i)
+        assert.strictEqual(val, i)
+      }
+      assert.strictEqual(i, 0)
+    })
+  })
 
   it('returns all values through getRangeBatch', async () => {
-    const _db = db.at(null, numXF, numXF)
-    await _db.doTransaction(async tn => {
-      for (let i = 0; i < 100; i++) tn.set(i, i)
-    })
-
+    const _db = await prefill()
     await _db.doTransaction(async tn => {
       let i = 0
       for await (const batch of tn.getRangeBatch(0, 1000)) {
