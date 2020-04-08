@@ -128,7 +128,7 @@ export function open(clusterFile?: string, dbOpts?: DatabaseOptions) {
   // Users of the previous version of the API would expect the object returned
   // here to be a promise. I'm still breaking backwards compatibility by
   // returning synchronously now but ...
-  ;(db as any).next = deprecate((fn: any) => {
+  ;(db as any).then = deprecate((fn: any) => {
     setImmediate(fn, db)
   }, 'fdb.open() returns a database synchronously. No need to use open().next(...)')
 
