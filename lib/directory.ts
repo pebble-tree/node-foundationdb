@@ -3,7 +3,7 @@ import { Database, tuple, TupleItem, util } from ".";
 import { Transformer, defaultTransformer } from "./transformer";
 import { TransactionOptionCode } from "./opts.g";
 import { concat2, startsWith, strInc, asBuf } from "./util";
-import Subspace, { defaultSubspace } from "./subspace";
+import Subspace, { root } from "./subspace";
 import { inspect } from "util";
 import { NativeValue, NativeTransaction } from "./native";
 // import FDBError from './error'
@@ -597,7 +597,7 @@ export class DirectoryLayer {
         if (prefix == null) {
           // const subspace = this._contentSubspace.at(await this._allocator.allocate(txn))
           prefix = concat2(this._contentSubspace.prefix, await this._allocator.allocate(txn))
-          if ((await txn.at(defaultSubspace).getRangeAllStartsWith(prefix, {limit: 1})).length > 0) {
+          if ((await txn.at(root).getRangeAllStartsWith(prefix, {limit: 1})).length > 0) {
             throw new DirectoryError('The database has keys stored at the prefix chosen by the automatic prefix allocator: ' + inspect(prefix))
           }
 

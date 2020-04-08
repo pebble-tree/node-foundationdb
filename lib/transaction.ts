@@ -296,10 +296,11 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
   getKey(_sel: KeySelector<KeyIn> | KeyIn): Promise<KeyOut | undefined> {
     const sel = keySelector.from(_sel)
     return this._tn.getKey(this._keyEncoding.pack(sel.key), sel.orEqual, sel.offset, this.isSnapshot)
-      .then(key => {
-        if (key.length === 0 || !this.subspace.contains(key)) return undefined
-        else return this._keyEncoding.unpack(key)
-      })
+      .then(key => (
+        (key.length === 0 || !this.subspace.contains(key))
+          ? undefined
+          : this._keyEncoding.unpack(key)
+      ))
   }
 
   /** Set the specified key/value pair in the database */

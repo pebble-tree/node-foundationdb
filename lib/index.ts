@@ -9,7 +9,7 @@ import Database from './database'
 import {eachOption} from './opts'
 import {NetworkOptions, networkOptionData, DatabaseOptions} from './opts.g'
 import {Transformer} from './transformer'
-import {defaultSubspace} from './subspace'
+import {root} from './subspace'
 import {DirectoryLayer} from './directory'
 
 import * as apiVersion from './apiVersion'
@@ -49,7 +49,7 @@ export {default as keySelector, KeySelector} from './keySelector'
 // always be constructed using open or via a cluster object.
 export {default as Database} from './database'
 export {default as Transaction, Watch} from './transaction'
-export {default as Subspace, defaultSubspace} from './subspace'
+export {default as Subspace, root} from './subspace'
 export {Directory, DirectoryLayer} from './directory'
 
 export {
@@ -122,7 +122,7 @@ export function configNetwork(netOpts: NetworkOptions) {
 export function open(clusterFile?: string, dbOpts?: DatabaseOptions) {
   init()
 
-  const db = new Database(nativeMod.createDatabase(clusterFile), defaultSubspace)
+  const db = new Database(nativeMod.createDatabase(clusterFile), root)
   if (dbOpts) db.setNativeOptions(dbOpts)
   return db
 }

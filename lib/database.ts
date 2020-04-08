@@ -1,14 +1,9 @@
 import * as fdb from './native'
-import Transaction, {
-  RangeOptions,
-  Watch,
-  WatchOptions,
-} from './transaction'
+import Transaction, { RangeOptions, Watch } from './transaction'
 import {Transformer, defaultTransformer} from './transformer'
 import {NativeValue} from './native'
 import {KeySelector} from './keySelector'
-import Subspace, { defaultSubspace, GetSubspace, isGetSubspace } from './subspace'
-import {asBuf} from './util'
+import Subspace, { root, GetSubspace, isGetSubspace } from './subspace'
 import {eachOption} from './opts'
 import {DatabaseOptions,
   TransactionOptions,
@@ -38,7 +33,7 @@ export default class Database<KeyIn = NativeValue, KeyOut = Buffer, ValIn = Nati
   // **** Scoping functions
   
   getRoot(): Database {
-    return new Database(this._db, defaultSubspace)
+    return new Database(this._db, root)
   }
 
   getSubspace() { return this.subspace }

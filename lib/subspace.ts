@@ -94,7 +94,7 @@ export default class Subspace<KeyIn = NativeValue, KeyOut = Buffer, ValIn = Nati
   }
 }
 
-export const defaultSubspace: Subspace = new Subspace(null, defaultTransformer, defaultTransformer)
+export const root: Subspace = new Subspace(null, defaultTransformer, defaultTransformer)
 
 export interface GetSubspace<KI, KO, VI, VO> {
   getSubspace(): Subspace<KI, KO, VI, VO>
