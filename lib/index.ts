@@ -50,7 +50,7 @@ export {default as keySelector, KeySelector} from './keySelector'
 export {default as Database} from './database'
 export {default as Transaction, Watch} from './transaction'
 export {default as Subspace, root} from './subspace'
-export {Directory, DirectoryLayer} from './directory'
+export {Directory, DirectoryLayer, DirectoryError} from './directory'
 
 export {
   NetworkOptions,
