@@ -35,6 +35,10 @@ Note that `db.at(['prefix']).set(['key'], 'value')` is equivalent to `db.at(['pr
 - Added doc comments for a lot of methods in Transaction
 
 
+# 0.10.8
+
+- Backported an important fix to the tuple layer encoding logic for very large negative numbers from fdb 1.0.0
+
 # 0.10.7
 
 - Fixed another [critical bug](https://github.com/josephg/node-foundationdb/issues/41) which can cause nodejs to hang (deadlock) under heavy load.
