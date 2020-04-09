@@ -1,3 +1,7 @@
+# HEAD
+
+- Deprecated callback-oriented API, for the few methods for which I've added callback variant methods.
+
 # 1.0.0
 
 ## API-BREAKING CHANGES
@@ -7,6 +11,7 @@
 - Changed `db.get()` / `txn.get()` to return `undefined` rather than `null` if the object doesn't exist. This is because null is a valid tuple value.
 - Changed `db.getKey()` / `txn.getKey()` to return `undefined` if the requested key is not in the db / transaction's subspace
 - Deprecated `tn.scopedTo`. Use `tn.at()`.
+- Deprecated callback-oriented API, for the few methods for which I've added callback variant methods.
 
 ---
 

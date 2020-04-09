@@ -231,7 +231,12 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
   getSubspace() { return this.subspace }
 
   // You probably don't want to call any of these functions directly. Instead call db.transact(async tn => {...}).
+
+  /**
+   * This uses the raw API to commit a transaction. 99% of users shouldn't touch this, and should instead use `db.doTn(async tn => {...})`, which will automatically commit the transaction and retry if necessary.
+   */
   rawCommit(): Promise<void>
+  /** @deprecated - Use promises API instead. */
   rawCommit(cb: Callback<void>): void
   rawCommit(cb?: Callback<void>) {
     return cb
@@ -242,8 +247,9 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
   rawReset() { this._tn.reset() }
   rawCancel() { this._tn.cancel() }
 
-  rawOnError(code: number, cb: Callback<void>): void
   rawOnError(code: number): Promise<void>
+  /** @deprecated - Use promises API instead. */
+  rawOnError(code: number, cb: Callback<void>): void
   rawOnError(code: number, cb?: Callback<void>) {
     return cb
       ? this._tn.onError(code, cb)
@@ -257,6 +263,7 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
    * not exist in the database.
    */
   get(key: KeyIn): Promise<ValOut | undefined>
+  /** @deprecated - Use promises API instead. */
   get(key: KeyIn, cb: Callback<ValOut | undefined>): void
   get(key: KeyIn, cb?: Callback<ValOut | undefined>) {
     const keyBuf = this._keyEncoding.pack(key)
@@ -550,7 +557,9 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
   // version must be 8 bytes
   setReadVersion(v: Version) { this._tn.setReadVersion(v) }
 
+  /** Get the database version used to perform reads in this transaction. */
   getReadVersion(): Promise<Version>
+  /** @deprecated - Use promises API instead. */
   getReadVersion(cb: Callback<Version>): void
   getReadVersion(cb?: Callback<Version>) {
     return cb ? this._tn.getReadVersion(cb) : this._tn.getReadVersion()
@@ -561,6 +570,7 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
   // Note: This promise can't be directly returned via the return value of a
   // transaction.
   getVersionstamp(): {promise: Promise<Buffer>}
+  /** @deprecated - Use promises API instead. */
   getVersionstamp(cb: Callback<Buffer>): void
   getVersionstamp(cb?: Callback<Buffer>) {
     if (cb) return this._tn.getVersionstamp(cb)

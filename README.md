@@ -971,43 +971,11 @@ Read more about the [multi-versioned client design here](https://apple.github.io
 Note that the API version number is different from the version of FDB you have installed. The API version is what you pass to `fdb.setAPIVersion`. This version number can be lower than the supported API version of foundationdb. In practice, The API version only needs to be incremented when you want to use new foundationdb features. See FDB [release notes](https://apple.github.io/foundationdb/release-notes.html) for information on what has changed between versions.
 
 
-## Caveats
-
-The API also entirely depends on node Promises. The C part of the bindings supports doing almost everything via callbacks but a callback-oriented API hasn't been written. If this is important to you for some reason, I think the best architecture would be to split out the native C backend into a `foundationdb-native` library and have an alternate callback-oriented frontend. Raise an issue if this is important to you. I'd be particularly interested in benchmarks showing how promise- or callback- oriented APIs perform.
-
-## Revival progress
-
-- [x] Get it building on modern node / v8
-- [x] Make all transaction primitives support promises
-- [x] Native code works
-- [x] Core rewritten in TS
-- [x] Primitive transactions working from node
-- [x] Transaction retry loop working
-- [x] Basic read range support
-- [x] Read range callback iterator support
-- [x] Read range async iterator
-- [x] Test on linux (& fix any issues that arise)
-- [x] Test on windows (& fix any issues that arise)
-- [x] Tuple support
-- [x] Add testing harness
-- [x] Port basic tests
-- [x] Testing integrated with the harness for the other bindings
-- [x] Subspace support
-- [x] Configure prebuilds so users don't need a local development environment to `npm install` this library
-- [x] Add proper tuple support for versionstamps
-- [x] Directory layer support
-- [ ] API documentation for options (and TS types for them)
-- [ ] API documentation for all transaction methods (get, set, getKey, etc)
-- [ ] Cut 1.0
-- [x] Move to NAPI
-- [ ] Figure out a decent way to bundle the native `libfdb_c` code so users don't need to download their own copy
-
-
 ## History
 
 These bindings are based on an old version of FDB's bindings from years ago, with contributions form @skozin and others.
 
-- The native binding code has been updated to work with modern versions of v8, and return promises in all cases if a callback is not provided.
+- The native binding code has been updated to work with modern versions of v8, and work with promises rather than callbacks.
 - The javascript code has been almost entirely rewritten. It has been modernized, ported from JS to Typescript and changed to use promises throughout.
 
 ## License
