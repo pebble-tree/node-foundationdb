@@ -9,6 +9,7 @@ Node bindings for [FoundationDB](https://foundationdb.org)!
 - [Range reads](#range-reads)
 - [Key selectors](#key-selectors)
 - [Watches](#watches)
+- [Tuple encoder](#tuple-encoder)
 - [Directories](#directories)
 
 
