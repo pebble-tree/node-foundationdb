@@ -9,6 +9,7 @@ Node bindings for [FoundationDB](https://foundationdb.org)!
 - [Range reads](#range-reads)
 - [Key selectors](#key-selectors)
 - [Watches](#watches)
+- [Directories](#directories)
 
 
 ## Usage
@@ -435,7 +436,7 @@ db.doTransaction(async tn => {
 })
 ```
 
-[Async iteration](https://github.com/tc39/proposal-async-iteration) is a new javascript feature. It is available in NodeJS 10+, Typescript, Babel, and node 8 and 9 with the `node --harmony-async-iteration` flag. You can also [iterate an async iterator manually](#manual-async-iteration).
+[Async iteration](https://github.com/tc39/proposal-async-iteration) is a recent javascript feature. It is available in NodeJS 10+, Typescript and Babel. You can also [iterate an async iterator manually](#manual-async-iteration).
 
 *Danger 💣:* Remember that your transaction body may be executed multiple times. This can especially be a problem for range reads because they can easily overflow the transaction read limit (default 1M) or time limit (default 5s). Bulk operations need to be more complex than a loop in a transaction. [More information here](https://apple.github.io/foundationdb/known-limitations.html#large-transactions)
 
@@ -563,7 +564,7 @@ tn.getRange(
 )
 ```
 
-> **Note ⛑** The naming is weird at the end of the range. FDB range queries are *always* non-inclusive of the end of their range. In the above example FDB will find the next key greater than `end`, then *not include this key in the results*.
+> **Note ⛑** The semantics are weird for specifying the end of the range. FDB range queries are *always* non-inclusive of the end of their range. In the above example FDB will find the next key greater than `end`, then *not include this key in the results*.
 
 You can add or subtract an offset from a key selector using `fdb.keySelector.add(sel, offset)`. This counts *in keys*. For example, to find the key thats exactly 10 keys after key `'a'`:
 
@@ -893,6 +894,101 @@ const val = await db.doTransaction(async tn => {
 Internally snapshot transaction objects are just shallow clones of the original transaction object, but with a flag set. They share the underlying FDB transaction with their originator. Inside a `doTransaction` block you can use the original transaction and snapshot transaction objects interchangeably as desired.
 
 
+## Tuple encoder
+
+> It probably makes sense to pull the fdb tuple type code out into a separate node module. Please file a github issue if you care about this.
+
+FDB tuples are the recommended way to encode keys in foundationdb. They carry some important benefits compared to using JSON:
+
+- Every tuple has a canonical byte encoding. JSON allows many ways for the same object can be converted to bytes (eg an object's keys can be reordered). So you might store a value with a key, then later be unable to fetch or update your value if your JSON encoder arbitrarily changes which bytes it uses to represent your key.
+- FDB tuples are usually smaller than JSON, which makes fdb more efficient.
+- The bytes produced by the tuple encoder can be (sensibly) lexographically compared. For example, the bytes used to store the tuples `[-1]`, `[0]`, `[2]`, `[10]` will sort in that order. This is important for range reads.
+- The tuple encoder has the property that pack(concat(a, b)) == concat(pack(a), pack(b)). This makes subspace scoping much easier - since `db.at(['x']).get(['y'])` is the same as `db.get(['x', 'y'])`.
+- Unlike JSON, FDB tuples natively support bigints (up to 255 bytes) and byte arrays
+- The tuple encoder allows special version placeholders to be embedded, which (on save) are replaced with information about the committed database version.
+
+FDB tuples are interoperable with the bindings in other languages - but the tuple type certainly wasn't designed with specifically javascript in mind. Weaknesses compared to using JSON:
+
+- The tuple encoder does not support javascript objects or maps
+- The encoding format is a binary format. Its not human readable like JSON.
+- The types for numbers don't really match up to native javascript number types.
+- The tuple encoder has no concept of a 'bare' value. A tuple value is always an array, even if that array only contains 1 element.
+
+The spec for the encoding format itself is [documented here](https://github.com/apple/foundationdb/blob/master/design/tuple.md).
+
+| JS value | Example | Encoding format | Note |
+| -- | -- | -- | -- |
+| Boolean | true / false | True / False  | |
+| string | 'hi', 'Rad ⛄️' | Unicode string | 1 |
+| Buffer | `Buffer.from([1,2,3])` | Byte string | |
+| Child array | \[1, \['hi', 'ho'\], 3\] | Nested tuple | |
+| Safe JS integers (where \|x\| < 2**53) | 17, -3 | Integer | |
+| Non-integers | 4.7, Math.PI | IEEE Double | |
+| Numbers outside the JS safe range | Math.E ** 300 | IEEE Double | 2 |
+| BigInts up to 255 bytes | -3n, 2n ** 256n | Integer | 3 |
+| `{type:'float', value:__}` | `{type:'float', value:13}` | IEEE Float | 4 |
+| `{type:'double', value:__}` | `{type:'double', value:13}` | IEEE Double | 4 |
+| `{type:'versionstamp', value:Buffer}` | `{type:'versionstamp', value:Buffer.from(...)}` | 96 Bit Versionstamp | 5 |
+| `tuple.unboundVersionstamp()` | `tuple.unboundVersionstamp()` | 96 Bit Versionstamp | 6 |
+
+#### Notes:
+
+1. All JS strings are encoded using the tuple unicode format, even if all characters are ASCII.
+2. 💣 Everything outside the safe range is encoded to a double - even integers outside the safe range.
+3. Bigints larger than 255 bytes are not supported. Also 💣 **Danger**: The tuple wire format doesn't differentiate between a bigint and any other integer. As a result, `3n` encodes to the same bytes as `3`. Any bigints you encode within the safe integer range will be decoded back into normal javascript numbers.
+4. These formats are provided to force IEEE float or double encoding of a number. This can be useful when you need compatibility with other bindings. Or if you're mixing integers and non-integers in keys, and want getRange() to work correctly. (See below.
+5. Used by set/get versionstamp methods
+6. Placeholder for a versionstamp for use with `tn.setVersionstampedKey()` / `tn.setVersionstampedValue()` methods. The placeholder will be replaced with the actual versionstamp when the transaction is committed. A tuple can recursively only contain 1 unbound versionstamp.
+
+
+The details of how JS numbers map to tuple numbers is a bit of a mess:
+
+*Danger 💣:* If you mix integers and floats in your database keys, getRange will not work correctly. The tuple encoding sorts *all* floating point numbers after *all* integers. So if your values have keys `[0.9]`, `[1]`, `[1.1]`, your keys will sort in the wrong order (you'll get `[1]`, `[0.9]`, `[1.1]`). And if you call `tn.getRange([0], [2])`, you will only get `[1]`. You can force these tuple items to always encode to floating point values using `tn.set([{type: 'double', value: 1}], ...)`.
+
+*More Danger 💣:* The encoding for bigints will not preserve the bigint-ness of a number. unpack(pack(\[3n\])) === \[3\] not \[3n\]. This is only a problem for safe JS integers. Any integer larger than 2^53 (or smaller than -2^53) will decode to a bigint automatically.
+
+
+### Tuple API
+
+The simplest way to use the tuple encoder is to set the key encoder to fdb.tuple:
+
+```javascript
+const fdb = require('fdb')
+
+const db = fdb.open()
+  .withKeyEncoding(fdb.encoders.tuple)
+  .withValueEncoding(fdb.encoders.json)
+
+await db.set('version', 6) // Equivalent to db.set(['version'], 6)
+await db.set(['class', [6, 'a']], {teacher: 'fred', room: '101a'})
+```
+
+Once you have a subspace with tuple encoding, you can use .at() to scope it:
+
+```javascript
+const fdb = require('fdb')
+const db = fdb.open()
+
+const class = fdb.root.withKeyEncoding(fdb.tuple)
+  .at('class')
+
+// equivalent to .set(['class', [6, 'a']]).
+await db.at(class).set([[6, 'a']], {teacher: 'fred', room: '101a'})
+```
+
+Note the embedded tuple key `[[6, 'a']]` is double array wrapped in this example. This is because tuple values are concatenated, and in this case the user wants the key `['class', [6, 'a']]`, not `['class', 6, 'a']`.
+
+You can also encode and decode values directly using `tuple.pack` and `tuple.unpack` methods of the API:
+
+```javascript
+const fdb = require('fdb')
+const packed = fdb.tuple.pack(['hi', 'there']) // <Buffer 02 68 69 00 02 74 68 65 72 65 00>
+console.log(fdb.tuple.unpack(packed)) // [ 'hi', 'there' ]
+```
+
+If you just want to tuple encode a single value, you don't need to wrap it in an array. Unless `x` is an array, `tuple.pack(x)` == `tuple.pack([x])`.
+
+
 ## Directories
 
 Key prefixes can get very long, and they waste a lot of space when you have a lot of objects which share most of their key! For this reason its often useful to group together similar keys into a *directory*. A directory is basically an alias to a short name, which is then used as the prefix for your keys. So instead of having keys:
@@ -927,7 +1023,7 @@ await db.at(messagesDir).doTn(async txn => {
 })
 ```
 
-> TODO: Flesh out the documentation here. The API methods available are extremely similar to their equivalents in python / ruby.
+> TODO: Flesh out the directory layer documentation here. The API is almost identical to the equivalent API in python / ruby.
 
 
 ## Notes on API versions
