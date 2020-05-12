@@ -123,6 +123,16 @@ describe('tuple', () => {
     assertEncodesAs(-BigInt('0xffffffffffffffff'), [0x0C, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00])
   })
 
+  it('throws when asked to encode a bigint larger than 255 bytes', () => {
+    tuple.pack(BigInt(256) ** BigInt(254)) // should be ok
+
+    // What about 255? That currently throws and I'm not sure if that behaviour is correct or not. TODO.
+
+    assert.throws(() => {
+      tuple.pack(BigInt(256) ** BigInt(256))
+    })
+  })
+
   it('preserves encoding of values in strict mode', () => {
     // There's a few ways NaN is encoded.
     assertRoundTripBytes(Buffer.from('210007ffffffffffff', 'hex'), true) // double
