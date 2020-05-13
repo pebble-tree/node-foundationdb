@@ -1,6 +1,7 @@
 # HEAD
 
 - Deprecated callback-oriented API, for the few methods for which I've added callback variant methods.
+- Moved the tuple encoder out into its [own module](https://github.com/josephg/fdb-tuple). Its still re-exported here via `fdb.tuple`.
 
 # 1.0.0
 
