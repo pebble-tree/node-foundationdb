@@ -68,10 +68,8 @@ export {
 import {strInc} from './util'
 export const util = {strInc}
 
-// TODO: Remove tuple from the root API. Tuples should be in a separate module.
-import * as tuple from './tuple'
-import {TupleItem} from './tuple'
-// import * as tuple from './tuple'
+import * as tuple from 'fdb-tuple'
+import {TupleItem} from 'fdb-tuple'
 
 export {TupleItem, tuple}
 

@@ -29,6 +29,7 @@
     "prebuild": "prebuildify -t 12.1.0 --napi --strip"
   },
   "dependencies": {
+    "fdb-tuple": "^1.0.0",
     "node-gyp-build": "^4.2.0"
   },
   "devDependencies": {
