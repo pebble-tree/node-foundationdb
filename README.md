@@ -34,21 +34,35 @@ npm install --save foundationdb
 
 #### Step 3
 
+Use it!
+
 ```javascript
 const fdb = require('foundationdb')
 fdb.setAPIVersion(620) // Must be called before database is opened
 
-const db = fdb.open() // or open('/path/to/fdb.cluster')
-  .at('myapp.') // Use the 'myapp.' database prefix for all operations
-  .withValueEncoding(fdb.encoders.json) // automatically encode & decode values using JSON
+;(async () => {
+  const dbRoot = fdb.open() // or open('/path/to/fdb.cluster')
 
-db.doTransaction(async tn => {
-  console.log('key hi has value', await tn.get('hi'))
-  tn.set('hi', [1, 2, 3, 'echidna'])
-}) // returns a promise.
+  // Scope all of your application's data inside the 'myapp' directory in your database
+  const db = dbRoot.at(await fdb.directory.createOrOpen(dbRoot, 'myapp'))
+    .withKeyEncoding(fdb.encoders.tuple) // automatically encode & decode keys using tuples
+    .withValueEncoding(fdb.encoders.json) // and values using JSON
+
+  await db.doTransaction(async tn => {
+    console.log('Book 123 is', await tn.get(['books', 123])) // Book 123 is undefined
+
+    tn.set(['books', 123], {
+      title: 'Reinventing Organizations',
+      author: 'Laloux'
+    })
+  })
+  
+  console.log('now book 123 is', await db.get(['books', 123])) // shorthand for db.doTransaction(...)
+  // now book 123 is { title: 'Reinventing Organizations', author: 'Laloux' }
+})()
 ```
 
-> Note: You must set the FDB API version before using this library. You can specify any version number ≤ the version of FDB you are using in your cluster. If in doubt, set to the version of FoundationDB you have installed.
+> Note: You must set the FDB API version before using this library. You can specify any version number ≤ the version of FDB you are using in your cluster. If in doubt, set it to 620.
 
 
 # API
@@ -122,7 +136,7 @@ await db.doTransaction(async tn => {
 })
 ```
 
-To cut down on work, most simple operations are aliased on the database object, so they can be called more easily. For example:
+For simplicity, most transaction operations are aliased on the database object. For example:
 
 ```javascript
 const val = await db.get('key')
@@ -132,6 +146,8 @@ const val = db.doTransaction(async tn => await tn.get('key'))
 ```
 
 The db helper functions always return a promise, wheras many of the transaction functions are syncronous (eg *set*, *clear*, etc).
+
+Using methods directly on the database object may seem lighter weight than creating a transaction, but these calls still create and commit transactions internally. If you do more than one database operation when processing an event, wrapping those operations in an explicit fdb transaction will be safer *and* more efficient at runtime.
 
 
 ### Getting values
@@ -200,7 +216,7 @@ Each database and transaction object has a [*subspace*](https://apple.github.io/
 - A *key transformer*, which is a `pack` & `unpack` function pair for interacting with keys
 - A *value transformer*, which is a `pack` & `unpack` function pair for interacting with values
 
-If you are used to other bindings, note that subspaces in python/ruby/etc only contain a prefix and not transformers.
+If you are used to other bindings, note that subspaces in python/ruby/etc only contain a prefix and do not reference transformers.
 
 Subspaces can be created implicitly, by scoping your database object with `db.at()` or explicitly - by creating a subspace.
 
@@ -227,7 +243,7 @@ const app = db.at('myapp.')
 const books = app.at('books.') // Equivalent to root.at('myapp.books.')
 ```
 
-Beware of prefixes getting too long. The byte size of a prefix is paid during each API call, so you should keep your prefixes short. If you want complex subdivisions, consider using [directories](https://apple.github.io/foundationdb/developer-guide.html#directories) instead.
+Beware of prefixes getting too long. The byte size of a prefix is paid during each API call, (and it can get particularly expensive when doing a lot of large range queries) so you should keep your prefixes short. If you want complex subdivisions, consider using [directories](#directories) instead of subspaces whenever you can. More information about this tradeoff is in [the FDB developer guide](https://apple.github.io/foundationdb/developer-guide.html#directory-partitions).
 
 You can also configure a subspace explicitly like this:
 
@@ -238,6 +254,13 @@ const app = db.at(subspace)
 
 const books = subspace.at('books.')
 const booksDb = db.at(books)
+```
+
+The fdb library exposes an empty subspace at `fdb.root` for convenience. The above code could instead use:
+
+```javascript
+const subspace = fdb.root.at('myapp.')
+// ...
 ```
 
 
@@ -251,16 +274,9 @@ You can configure a database to always automatically transform keys and values v
 - `fdb.encoders.`**string**: UTF-8 string encoding
 - `fdb.encoders.`**buffer**: Buffer encoding. This doesn't actually do anything, but it can be handy to suppress typescript warnings when you're dealing with binary data.
 - `fdb.encoders.`**json**: JSON encoding using the built-in JSON.stringify. This is not suitable for key encoding.
-- `fdb.encoders.`**tuple**: Encode values using the standard FDB [tuple encoding](https://apple.github.io/foundationdb/data-modeling.html#tuples). [Spec here](https://github.com/apple/foundationdb/blob/master/design/tuple.md).
+- `fdb.encoders.`**tuple**: Encode values using the standard FDB [tuple encoding](https://apple.github.io/foundationdb/data-modeling.html#tuples). [Spec here](https://github.com/apple/foundationdb/blob/master/design/tuple.md). [See Tuple Encoder section below](#tuple-encoder)
 
-**Beware** JSON encoding is generally unsuitable as a key encoding method because:
-
-- JSON objects have no guaranteed encoding order. Eg `{a:4, b:3}` could be encoded as `{"a":4,"b":3}` or `{"b":3,"a":4}`. FDB compares strings to fetch values, so you might find your data is gone when you go to fetch your data again later.
-- When performing range queries, JSON-encoded values aren't ordered in any sensible way. For example, `2` is lexographically after `10`.
-
-These problems are addressed by using [FDB tuple encoding](https://apple.github.io/foundationdb/data-modeling.html#tuples). Tuple encoding is also supported by all FDB frontends, it formally (and carefully) defines ordering for all objects. It also supports transparent concatenation (tuple.pack(`'a'`) + tuple.pack(`'b'`) === tuple.pack(`['a', 'b']`)), so tuple values can be easily used as key prefixes without worrying too much.
-
-JSON is only troublesome for key encoding. JSON works great for encoding FDB values.
+**Beware** JSON encoding is generally unsuitable as a key encoding. [See below for details](#tuple-encoder). JSON is only troublesome for key encoding - it works great for encoding FDB values.
 
 
 Examples:
@@ -897,9 +913,16 @@ Internally snapshot transaction objects are just shallow clones of the original 
 
 ## Tuple encoder
 
-Foundationdb keys can be arbitrary byte arrays, but unless you have a good reason, we recommend using [fdb tuples](https://apple.github.io/foundationdb/data-modeling.html#tuples) in most applications. If you use JSON for your keys, you can run into issues because of the lack of canonical JSON encoding. (Is the key `{"a":5,"b":6}` or `{"b":6,"a":5}`? And you can run into issues where range queries won't behave as expected. (Eg JSON encodes "10" < "2"). The tuple encoding format fixes these issues for keys.
+Foundationdb keys can be arbitrary byte arrays, but byte arrays are awkward to work with in non-trivial databases. For most applications we recommend using [fdb tuples](https://apple.github.io/foundationdb/data-modeling.html#tuples) to encode your keys.
 
-You can use the tuple encoder for database values too if you like, but the benefits the tuple encoder brings matter a lot less for values themselves. JSON / [msgpack](https://msgpack.org/index.html) / [protobuf](https://developers.google.com/protocol-buffers) are often more convenient for value encoding because they're more versitile and they don't restrict you to using lists for everything.
+The tuple encoder is strongly recommended over JSON for key encoding because:
+
+- JSON does not specify a canonical encoding. For example, `{a:4, b:3}` could be encoded as `{"a":4,"b":3}` or `{"b":3,"a":4}`. `1000000` could be encoded as `1e6`, `'⛄️'` could be encoded as `"⛄️"` or `"\u26c4"` and so on. Because FDB compares bytes in the key to fetch values, if the JSON encoder changes how it encodes your key, your data might vanish when you try to fetch it again later!
+- When performing range queries, JSON-encoded values aren't ordered in any sensible way. For example, 10 is lexographically between 1 and 2.
+
+These problems are addressed by using [FDB tuple encoding](https://apple.github.io/foundationdb/data-modeling.html#tuples). Tuple encoding is also supported by all FDB frontends, it formally (and carefully) defines ordering for all objects. It also supports transparent concatenation (tuple.pack(`'a'`) + tuple.pack(`'b'`) === tuple.pack(`['a', 'b']`)), so tuple values can be easily used as key prefixes without worrying too much.
+
+You can use the tuple encoder for database values too if you like, the tuple encoding doesn't support objects so it can be more awkward to use compared to JSON / [msgpack](https://msgpack.org/index.html) / [protobuf](https://developers.google.com/protocol-buffers) / etc. And the unique benefits of the tuple encoder don't matter for value encoding.
 
 The javascript foundationdb tuple encoder lives in [its own library](https://github.com/josephg/fdb-tuple), but it is depended on and re-exposed here. You can access the tuple encoder via `fdb.tuple.pack()`, `fdb.tuple.unpack()`, etc.
 
