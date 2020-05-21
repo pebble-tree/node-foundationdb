@@ -17,6 +17,8 @@ Node bindings for [FoundationDB](https://foundationdb.org)!
 
 **You need to [download the FDB client library](https://www.foundationdb.org/download/) on your machine before you can use this node module**. This is also true on any machines you deploy to. I'm sorry about that. We've been [discussing it in the forums](https://forums.foundationdb.org/t/how-do-bindings-get-an-appropriate-copy-of-fdb-c/311/1) [and on the issue tracker](https://github.com/josephg/node-foundationdb/issues/22).
 
+This library only supports foundationdb 6.2.0 or later.
+
 #### Step 1
 
 [Install foundationdb](https://www.foundationdb.org/download/).

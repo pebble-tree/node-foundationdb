@@ -13,6 +13,7 @@
 - Changed `db.getKey()` / `txn.getKey()` to return `undefined` if the requested key is not in the db / transaction's subspace
 - Deprecated `tn.scopedTo`. Use `tn.at()`.
 - Deprecated callback-oriented API, for the few methods for which I've added callback variant methods.
+- Bumped the default API version to 620, so you should use foundationdb 6.2 or greater to use this API.
 
 ---
 
