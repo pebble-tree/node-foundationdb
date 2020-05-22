@@ -370,6 +370,33 @@ withEachDb(db => describe('key value functionality', () => {
     })
   })
 
+  describe('callback API', () => {
+    // Unless benchmarking shows a significant difference, this will be removed
+    // in a future version of this library.
+    it('allows tn.get() with a callback', async () => {
+      let called = false
+      await db.doTransaction(async tn => {
+        tn.set('xxx', 'hi')
+
+        // Ok now fetch it. I'm wrapping this in an awaited promise so we don't
+        // commit the transaction before .get() has resolved.
+        await new Promise((resolve, reject) => {
+          tn.get('xxx', (err, data) => {
+            try {
+              assert(!called)
+              called = true
+              if (err) throw err
+              assert.deepStrictEqual(data, Buffer.from('hi'))
+              resolve()
+            } catch (e) { reject(e) }
+          })
+        })
+      })
+      assert(called)
+    })
+    
+  })
+
   describe('regression', () => {
     it('does not trim off the end of a string', async () => {
       // https://github.com/josephg/node-foundationdb/issues/40

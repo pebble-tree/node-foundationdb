@@ -4,6 +4,8 @@
 #include "utils.h"
 #include "future.h"
 
+// #include <cstdio>
+
 // #include <v8.h>
 
 // #include "Version.h"
@@ -178,13 +180,21 @@ MaybeValue fdbFutureToCallback(napi_env env, FDBFuture *f, napi_value cbFunc, Ex
     NAPI_OK_OR_RETURN_STATUS(env, napi_get_reference_value(env, ctx->cbFunc, &callback));
     NAPI_OK_OR_RETURN_STATUS(env, napi_reference_unref(env, ctx->cbFunc, NULL));
 
-    napi_value args[2] = {}; // (err, value).
-    if (errcode != 0) NAPI_OK_OR_RETURN_STATUS(env, wrap_fdb_error(env, errcode, &args[0]));
-    else if (value.status != napi_ok) NAPI_OK_OR_RETURN_STATUS(env, napi_get_and_clear_last_exception(env, &args[0]));
-    else args[1] = value.value;
+    size_t argc = 1; // In case of error we just won't populate argv[1].
+    napi_value argv[2] = {}; // (err, value).
 
-    // If this throws it'll bubble up to the node uncaught exception handler, which is what we want.
-    napi_call_function(env, NULL, callback, 2, args, NULL);
+    if (errcode != 0) NAPI_OK_OR_RETURN_STATUS(env, wrap_fdb_error(env, errcode, &argv[0]));
+    else if (value.status != napi_ok) NAPI_OK_OR_RETURN_STATUS(env, napi_get_and_clear_last_exception(env, &argv[0]));
+    else {
+      argc = 2;
+      NAPI_OK_OR_RETURN_STATUS(env, napi_get_undefined(env, &argv[0]));
+      argv[1] = value.value;
+    }
+
+    napi_value global;
+    NAPI_OK_OR_RETURN_STATUS(env, napi_get_global(env, &global));
+    // We're discarding the return value here.
+    NAPI_OK_OR_RETURN_STATUS(env, napi_call_function(env, global, callback, argc, argv, NULL));
 
     return napi_ok;
   });
