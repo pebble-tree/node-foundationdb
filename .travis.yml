@@ -35,4 +35,4 @@ deploy:
   on:
     tags: true
     node: node
-  cleanup: true
+  cleanup: false
