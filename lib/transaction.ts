@@ -321,7 +321,7 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
     this._tn.clear(pack)
   }
 
-  /** Alias for clear to match naming in Map/Set/etc */
+  /** Alias for `tn.clear()` to match semantics of javascripts Map/Set/etc classes */
   delete(key: KeyIn) {
     return this.clear(key)
   }
