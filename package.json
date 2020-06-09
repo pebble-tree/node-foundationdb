@@ -19,7 +19,8 @@
   "files": [
     "dist",
     "prebuilds",
-    "binding.gyp"
+    "binding.gyp",
+    "src"
   ],
   "scripts": {
     "install": "node-gyp-build",
