@@ -35,4 +35,4 @@ deploy:
   on:
     tags: true
     node: 14
-  cleanup: false
+  skip_cleanup: true
