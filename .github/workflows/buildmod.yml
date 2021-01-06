@@ -52,6 +52,9 @@ jobs:
 
   windows:
     runs-on: windows-latest
+    env:
+      FOUNDATIONDB_INSTALL_PATH: "C:\Program Files\\FoundationDB"
+
     # env:
       # PATH: C:\Program Files (x86)\Microsoft Visual Studio 14.0\VC\bin;C:\Program Files\foundationdb\bin;%PATH%
 
@@ -66,13 +69,13 @@ jobs:
     - run: dir c:\foundationdb.msi
     - run: msiexec /i c:\foundationdb.msi /quiet /passive /norestart /log install.log | Out-Null
 
-    - run: set FOUNDATIONDB_INSTALL_PATH="C:\Program Files\foundationdb\"
+    - run: set FOUNDATIONDB_INSTALL_PATH="C:\Program Files\foundationdb"
     # - run: set PATH="C:\Program Files (x86)\Microsoft Visual Studio 14.0\VC\bin;%FOUNDATIONDB_INSTALL_PATH%bin;%PATH%"
     - run: ($env:PATH).split(";")
-    - run: $OLDPATH = [System.Environment]::GetEnvironmentVariable('PATH','machine')
-    - run: $NEWPATH = "$OLDPATH;C:\Program Files\foundationdb\bin"
-    - run: [Environment]::SetEnvironmentVariable("PATH", "$NEWPATH", "Machine")
-    - run: ($env:PATH).split(";")
+    # - run: $OLDPATH = [System.Environment]::GetEnvironmentVariable('PATH','machine')
+    # - run: $NEWPATH = "$OLDPATH;C:\Program Files\foundationdb\bin"
+    # - run: [Environment]::SetEnvironmentVariable("PATH", "$NEWPATH", "Machine")
+    # - run: ($env:PATH).split(";")
 
     - run: yarn
     - run: yarn prebuild
