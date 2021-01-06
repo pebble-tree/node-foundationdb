@@ -70,7 +70,7 @@ jobs:
     # - run: set PATH="C:\Program Files (x86)\Microsoft Visual Studio 14.0\VC\bin;%FOUNDATIONDB_INSTALL_PATH%bin;%PATH%"
     - run: ($env:PATH).split(";")
     - run: $OLDPATH = [System.Environment]::GetEnvironmentVariable('PATH','machine')
-    - run: $NEWPATH = "$OLDPATH;$INCLUDE"
+    - run: $NEWPATH = "$OLDPATH;C:\Program Files\foundationdb\bin"
     - run: [Environment]::SetEnvironmentVariable("PATH", "$NEWPATH", "Machine")
     - run: ($env:PATH).split(";")
 
