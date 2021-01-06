@@ -80,8 +80,10 @@ jobs:
 
     - run: yarn
     - run: yarn prebuild
+    
+    # For some reason this test fails - it can't find the prebuild even though its *right there*!!
     # - run: yarn test
-    - run: Get-ChildItem -Recurse
+    # - run: Get-ChildItem -Recurse prebuild
 
     - name: Upload artifacts
       uses: actions/upload-artifact@v2
