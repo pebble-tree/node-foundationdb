@@ -1,5 +1,8 @@
 # HEAD
 
+# 1.0.3
+
+- Fixed small memory leak (we were leaking a few bytes with each transaction in native code). Thanks @aikoven!
 
 # 1.0.2
 

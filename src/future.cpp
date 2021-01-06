@@ -125,7 +125,7 @@ MaybeValue fdbFutureToJSPromise(napi_env env, FDBFuture *f, ExtractValueFn *extr
     napi_deferred deferred;
     ExtractValueFn *extractFn;
   };
-  Ctx *ctx = new Ctx;
+  Ctx *ctx = new Ctx; // Ownership passed to resolveFutureInMainLoop.
   ctx->extractFn = extractFn;
 
   napi_value promise;
