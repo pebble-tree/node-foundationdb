@@ -26,7 +26,7 @@
     "install": "node-gyp-build",
     "test": "mocha -r ts-node/register test/*.ts",
     "prepare": "rm -rf dist && tsc -p .",
-    "prepublishOnly": "rm -rf prebuilds && prebuildify-ci download",
+    "prepublishOnly": "ls -ld prebuilds/win32-x64/node.napi.node prebuilds/linux-x64/node.napi.node prebuilds/darwin-x64/node.napi.node",
     "prebuild": "prebuildify -t 12.1.0 --napi --strip"
   },
   "dependencies": {
@@ -41,7 +41,6 @@
     "chalk": "^4.0.0",
     "mocha": "^8.2.1",
     "prebuildify": "^3.0.4",
-    "prebuildify-ci": "^1.0.5",
     "ts-node": "^9.1.1",
     "typescript": "^4.1.3",
     "xml2js": "^0.4.23"

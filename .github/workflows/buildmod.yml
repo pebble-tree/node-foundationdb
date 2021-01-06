@@ -1,10 +1,11 @@
-name: compile native module
+name: deploy
 
 on:
-  push
+  release:
+    types: [created]
 
 jobs:
-  linux:
+  prebuild-linux:
     runs-on: ubuntu-latest
 
     steps:
@@ -27,8 +28,9 @@ jobs:
       with:
         name: linux-prebuild
         path: prebuilds/
+        retention-days: 5
 
-  macos:
+  prebuild-macos:
     runs-on: macos-latest
 
     steps:
@@ -49,8 +51,9 @@ jobs:
       with:
         name: macos-prebuild
         path: prebuilds/
+        retention-days: 5
 
-  windows:
+  prebuild-windows:
     runs-on: windows-latest
     env:
       FOUNDATIONDB_INSTALL_PATH: "C:\\Program Files\\FoundationDB"
@@ -69,14 +72,14 @@ jobs:
     - run: dir c:\foundationdb.msi
     - run: msiexec /i c:\foundationdb.msi /quiet /passive /norestart /log install.log | Out-Null
 
-    - run: set FOUNDATIONDB_INSTALL_PATH="C:\Program Files\foundationdb"
+    # - run: set FOUNDATIONDB_INSTALL_PATH="C:\Program Files\foundationdb"
     # - run: set PATH="C:\Program Files (x86)\Microsoft Visual Studio 14.0\VC\bin;%FOUNDATIONDB_INSTALL_PATH%bin;%PATH%"
-    - run: ($env:PATH).split(";")
+    # - run: ($env:PATH).split(";")
     # - run: $OLDPATH = [System.Environment]::GetEnvironmentVariable('PATH','machine')
     # - run: $NEWPATH = "$OLDPATH;C:\Program Files\foundationdb\bin"
     # - run: [Environment]::SetEnvironmentVariable("PATH", "$NEWPATH", "Machine")
     # - run: ($env:PATH).split(";")
-    - run: echo "$PATH"
+    # - run: echo "$PATH"
     - run: echo "C:\\Program Files\\FoundationDB\bin" >> $GITHUB_PATH
 
     - run: yarn
@@ -87,3 +90,26 @@ jobs:
       with:
         name: windows-prebuild
         path: prebuilds/
+        retention-days: 5
+
+  build:
+    needs: [prebuild-windows, prebuild-macos, prebuild-linux]
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v2
+    - uses: actions/setup-node@v2
+      with:
+        node-version: 14
+        registry-url: 'https://registry.npmjs.org'
+
+    - uses: actions/download-artifact@v2
+      with:
+        path: prebuilds
+
+    - run: ls -R prebuilds
+
+    - run: yarn
+    - run: npm publish
+      env:
+        NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
