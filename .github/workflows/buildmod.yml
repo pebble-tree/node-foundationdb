@@ -5,9 +5,9 @@ on:
     types: [created]
   workflow_dispatch:
     inputs:
-      version:
-        description: 'Name of version (ie 5.5.0)'
-        required: true
+      # version:
+      #   description: 'Name of version (ie 5.5.0)'
+      #   required: true
 
 jobs:
   prebuild-linux:
@@ -31,8 +31,8 @@ jobs:
     - name: Upload artifacts
       uses: actions/upload-artifact@v2
       with:
-        name: linux-prebuild
-        path: prebuilds/
+        name: linux-x64
+        path: prebuilds/linux-x64
         retention-days: 5
 
   prebuild-macos:
@@ -54,8 +54,8 @@ jobs:
     - name: Upload artifacts
       uses: actions/upload-artifact@v2
       with:
-        name: macos-prebuild
-        path: prebuilds/
+        name: darwin-x64
+        path: prebuilds/darwin-x64
         retention-days: 5
 
   prebuild-windows:
@@ -93,8 +93,8 @@ jobs:
     - name: Upload artifacts
       uses: actions/upload-artifact@v2
       with:
-        name: windows-prebuild
-        path: prebuilds/
+        name: win32-x64
+        path: prebuilds/win32-x64
         retention-days: 5
 
   build:
