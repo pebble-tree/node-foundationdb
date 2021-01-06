@@ -18,9 +18,9 @@ static int num_outstanding = 0;
 std::thread::id node_main_thread;
 
 
-template<class T> struct CtxBase {
+template<class CtxType> struct CtxBase {
   FDBFuture *future;
-  napi_status (*fn)(napi_env, FDBFuture*, T*);
+  napi_status (*fn)(napi_env, FDBFuture*, CtxType*);
 
   // This is a little dirty, since we don't want to hold a reference to env.
   // This is here so when fdb_future_set_callback calls the callback directly we
@@ -50,6 +50,7 @@ static void trigger(napi_env env, napi_value _js_callback, void* _context, void*
   }
 
   fdb_future_destroy(ctx->future);
+  delete ctx;
 }
 
 napi_value unused_func;
@@ -86,14 +87,12 @@ void closeFuture(napi_env env) {
 }
 
 
-template<class T> static napi_status resolveFutureInMainLoop(napi_env env, FDBFuture *f, T* ctx, napi_status (*fn)(napi_env env, FDBFuture *f, T*)) {
+template<class CtxType> static napi_status resolveFutureInMainLoop(napi_env env, FDBFuture *f, CtxType* ctx, napi_status (*fn)(napi_env env, FDBFuture *f, CtxType*)) {
   ctx->future = f;
   ctx->fn = fn;
   ctx->env = env;
 
   // Prevent node from closing until the future has resolved.
-  // NAPI_OK_OR_RETURN_STATUS(env, napi_ref_threadsafe_function(env, tsf));
-
   if (num_outstanding == 0) {
     NAPI_OK_OR_RETURN_STATUS(env, napi_ref_threadsafe_function(env, tsf));
   }
@@ -101,7 +100,7 @@ template<class T> static napi_status resolveFutureInMainLoop(napi_env env, FDBFu
 
   assert(0 == fdb_future_set_callback(f, [](FDBFuture *f, void *_ctx) {
     // raise(SIGTRAP);
-    T* ctx = static_cast<T*>(_ctx);
+    CtxType* ctx = static_cast<CtxType*>(_ctx);
 
     // Foundationdb will sometimes resolve this callback in the main thread. In
     // that case, we can't block because doing so could cause a deadlock - see
@@ -136,17 +135,20 @@ MaybeValue fdbFutureToJSPromise(napi_env env, FDBFuture *f, ExtractValueFn *extr
     fdb_error_t errcode = 0;
     MaybeValue value = ctx->extractFn(env, f, &errcode);
 
+    napi_deferred deferred = ctx->deferred;
+    // delete ctx;
+
     if (errcode != 0) {
       napi_value err;
       NAPI_OK_OR_RETURN_STATUS(env, wrap_fdb_error(env, errcode, &err));
-      NAPI_OK_OR_RETURN_STATUS(env, napi_reject_deferred(env, ctx->deferred, err));
+      NAPI_OK_OR_RETURN_STATUS(env, napi_reject_deferred(env, deferred, err));
     } else if (value.status != napi_ok) {
       napi_value err;
       NAPI_OK_OR_RETURN_STATUS(env, napi_get_and_clear_last_exception(env, &err));
-      NAPI_OK_OR_RETURN_STATUS(env, napi_reject_deferred(env, ctx->deferred, err));
+      NAPI_OK_OR_RETURN_STATUS(env, napi_reject_deferred(env, deferred, err));
     } else {
       if (value.value == NULL) NAPI_OK_OR_RETURN_STATUS(env, napi_get_null(env, &value.value));
-      NAPI_OK_OR_RETURN_STATUS(env, napi_resolve_deferred(env, ctx->deferred, value.value));
+      NAPI_OK_OR_RETURN_STATUS(env, napi_resolve_deferred(env, deferred, value.value));
     }
 
     // Needed to work around a bug where the promise doesn't actually resolve.

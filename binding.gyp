@@ -31,6 +31,12 @@
           'include_dirs': ['/usr/local/include'],
           'link_settings': { 'libraries': ['-lfdb_c', '-L/usr/local/lib'] },
         }],
+        # [ 'OS=="linux" or OS=="freebsd" or OS=="openbsd" or OS=="solaris"',
+        #   {
+        #     'cflags_cc!': ['-fno-rtti'],
+        #     'cflags_cc+': ['-frtti'],
+        #   }
+        # ]
       ],
     }
   ]
