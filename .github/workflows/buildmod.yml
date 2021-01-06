@@ -66,8 +66,9 @@ jobs:
     - run: dir c:\foundationdb.msi
     - run: msiexec /i c:\foundationdb.msi /quiet /passive /norestart /log install.log | Out-Null
 
-    - run: set FOUNDATIONDB_INSTALL_PATH=C:\Program Files\foundationdb\
-    - run: set PATH=C:\Program Files (x86)\Microsoft Visual Studio 14.0\VC\bin;%FOUNDATIONDB_INSTALL_PATH%bin;%PATH%
+    - run: set FOUNDATIONDB_INSTALL_PATH="C:\Program Files\foundationdb\"
+    - run: set PATH="C:\Program Files (x86)\Microsoft Visual Studio 14.0\VC\bin;%FOUNDATIONDB_INSTALL_PATH%bin;%PATH%"
+    - run: echo %PATH%
 
     - run: yarn
     - run: yarn prebuild
