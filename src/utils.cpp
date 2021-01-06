@@ -45,6 +45,7 @@ napi_status throw_if_not_ok(napi_env env, napi_status status) {
     default:
       fprintf(stderr, "throw_if_not_ok %d\n", status);
       assert(0);
+      return napi_invalid_arg; // Unreachable but silences a vcc warning.
   }
 }
 
