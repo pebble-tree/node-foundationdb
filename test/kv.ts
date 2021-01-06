@@ -380,7 +380,7 @@ withEachDb(db => describe('key value functionality', () => {
 
         // Ok now fetch it. I'm wrapping this in an awaited promise so we don't
         // commit the transaction before .get() has resolved.
-        await new Promise((resolve, reject) => {
+        await new Promise<void>((resolve, reject) => {
           tn.get('xxx', (err, data) => {
             try {
               assert(!called)
