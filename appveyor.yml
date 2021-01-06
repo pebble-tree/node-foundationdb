@@ -14,7 +14,7 @@ platform:
 
 install:
   - ps: Update-NodeJsInstallation (Get-NodeJsLatestBuild $env:nodejs_version) $env:PLATFORM
-  - ps: (new-object net.webclient).DownloadFile('https://www.foundationdb.org/downloads/6.2.11/windows/installers/foundationdb-6.2.11-x64.msi', 'c:\foundationdb.msi')
+  - ps: (new-object net.webclient).DownloadFile('https://www.foundationdb.org/downloads/6.2.28/windows/installers/foundationdb-6.2.28-x64.msi', 'c:\foundationdb.msi')
   - ps: dir c:\foundationdb.msi
   - ps: msiexec /i c:\foundationdb.msi /quiet /passive /norestart /log install.log | Out-Null
   - set FOUNDATIONDB_INSTALL_PATH=C:\Program Files\foundationdb\

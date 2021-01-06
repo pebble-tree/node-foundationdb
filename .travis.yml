@@ -6,13 +6,13 @@ addons:
 before_install:
   - |
     if [ $TRAVIS_OS_NAME = linux ]; then
-      wget "https://www.foundationdb.org/downloads/6.2.11/ubuntu/installers/foundationdb-clients_6.2.11-1_amd64.deb"
-      sudo dpkg -i foundationdb-clients_6.2.11-1_amd64.deb
-      wget "https://www.foundationdb.org/downloads/6.2.11/ubuntu/installers/foundationdb-server_6.2.11-1_amd64.deb"
-      sudo dpkg -i foundationdb-server_6.2.11-1_amd64.deb
+      wget "https://www.foundationdb.org/downloads/6.2.28/ubuntu/installers/foundationdb-clients_6.2.28-1_amd64.deb"
+      sudo dpkg -i foundationdb-clients_6.2.28-1_amd64.deb
+      wget "https://www.foundationdb.org/downloads/6.2.28/ubuntu/installers/foundationdb-server_6.2.28-1_amd64.deb"
+      sudo dpkg -i foundationdb-server_6.2.28-1_amd64.deb
     else
-      wget "https://www.foundationdb.org/downloads/6.2.11/macOS/installers/FoundationDB-6.2.11.pkg"
-      sudo installer -pkg FoundationDB-6.2.11.pkg -target /
+      wget "https://www.foundationdb.org/downloads/6.2.28/macOS/installers/FoundationDB-6.2.28.pkg"
+      sudo installer -pkg FoundationDB-6.2.28.pkg -target /
     fi
 node_js:
   - '10'
