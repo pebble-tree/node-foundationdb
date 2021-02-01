@@ -13,9 +13,6 @@
   "license": "MIT",
   "main": "dist/lib/index.js",
   "types": "dist/lib/index.d.ts",
-  "cpu": [
-    "x64"
-  ],
   "files": [
     "dist",
     "prebuilds",
