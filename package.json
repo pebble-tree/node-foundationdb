@@ -27,7 +27,7 @@
     "test": "mocha -r ts-node/register test/*.ts",
     "prepare": "rm -rf dist && tsc -p .",
     "prepublishOnly": "ls -ld prebuilds/win32-x64/node.napi.node prebuilds/linux-x64/node.napi.node prebuilds/darwin-x64/node.napi.node",
-    "prebuild": "prebuildify -t 12.1.0 --napi --strip"
+    "prebuild": "prebuildify --napi --strip"
   },
   "dependencies": {
     "fdb-tuple": "^1.0.0",

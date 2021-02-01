@@ -51,6 +51,11 @@ jobs:
 
     - run: yarn
     - run: yarn prebuild
+
+    # Build for apple M1 and make sure the prebuilt module actually has arm64 code
+    - run: yarn prebuild --arch arm64
+    - run: lipo -archs prebuilds/darwin-arm64/node.napi.node | grep -q arm64
+
     - run: yarn test
 
     - name: Upload artifacts
