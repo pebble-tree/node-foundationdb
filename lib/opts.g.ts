@@ -9,6 +9,8 @@ export type NetworkOptions = {
   trace_max_logs_size?: number  // max total size of trace files
   trace_log_group?: string  // value of the LogGroup attribute
   trace_format?: string  // Format of trace files
+  trace_clock_source?: string  // Trace clock source
+  trace_file_identifier?: string  // The identifier that will be part of all trace file names
   knob?: string  // knob_name=knob_value
   TLS_plugin?: string // DEPRECATED
   TLS_cert_bytes?: Buffer  // certificates
@@ -28,8 +30,10 @@ export type NetworkOptions = {
   external_client_library?: string  // path to client library
   external_client_directory?: string  // path to directory containing client libraries
   disable_local_client?: true
+  client_threads_per_version?: number  // Number of client threads to be spawned.  Each cluster will be serviced by a single client thread.
   disable_client_statistics_logging?: true
-  enable_slow_task_profiling?: true
+  enable_slow_task_profiling?: true // DEPRECATED
+  enable_run_loop_profiling?: true
   client_buggify_enable?: true
   client_buggify_disable?: true
   client_buggify_section_activated_probability?: number  // probability expressed as a percentage between 0 and 100
@@ -79,6 +83,18 @@ export enum NetworkOptionCode {
    * supported.
    */
   TraceFormat = 34,
+
+  /**
+   * Select clock source for trace files. now (the default) or realtime are
+   * supported.
+   */
+  TraceClockSource = 35,
+
+  /**
+   * Once provided, this string will be used to replace the port/PID in the
+   * log file names.
+   */
+  TraceFileIdentifier = 36,
 
   /**
    * Set internal tuning or debugging knobs
@@ -179,10 +195,16 @@ export enum NetworkOptionCode {
 
   /**
    * Prevents connections through the local client, allowing only
-   * connections through externally loaded client libraries. Intended
-   * primarily for testing.
+   * connections through externally loaded client libraries.
    */
   DisableLocalClient = 64,
+
+  /**
+   * Spawns multiple worker threads for each version of the client that is
+   * loaded.  Setting this to a number greater than one implies
+   * disable_local_client.
+   */
+  ClientThreadsPerVersion = 65,
 
   /**
    * Disables logging of client statistics, such as sampled transaction
@@ -190,12 +212,15 @@ export enum NetworkOptionCode {
    */
   DisableClientStatisticsLogging = 70,
 
+  // DEPRECATED
+  EnableSlowTaskProfiling = 71,
+
   /**
-   * Enables debugging feature to perform slow task profiling. Requires
+   * Enables debugging feature to perform run loop profiling. Requires
    * trace logging to be enabled. WARNING: this feature is not recommended
    * for use in production.
    */
-  EnableSlowTaskProfiling = 71,
+  EnableRunLoopProfiling = 71,
 
   /**
    * Enable client buggify - will make requests randomly fail (intended for
@@ -349,8 +374,8 @@ export enum DatabaseOptionCode {
 
   /**
    * Addresses returned by get_addresses_for_key include the port when
-   * enabled. This will be enabled by default in api version 700, and this
-   * option will be deprecated.
+   * enabled. As of api version 630, this option is enabled by default and
+   * setting this has no effect.
    */
   TransactionIncludePortInAddress = 505,
 
@@ -380,6 +405,7 @@ export type TransactionOptions = {
   debug_transaction_identifier?: string  // String identifier to be used when tracing or profiling this transaction. The identifier must not exceed 100 characters.
   log_transaction?: true
   transaction_logging_max_field_length?: number  // Maximum length of escaped key and value fields.
+  server_request_tracing?: true
   timeout?: number  // value in milliseconds of timeout
   retry_limit?: number  // number of times to retry
   max_retry_delay?: number  // value in milliseconds of maximum delay
@@ -391,6 +417,10 @@ export type TransactionOptions = {
   read_lock_aware?: true
   first_in_batch?: true
   use_provisional_proxies?: true
+  report_conflicting_keys?: true
+  special_key_space_relaxed?: true
+  tag?: string  // String identifier used to associated this transaction with a throttling group. Must not exceed 16 characters.
+  auto_throttle_tag?: string  // String identifier used to associated this transaction with a throttling group. Must not exceed 16 characters.
 }
 
 export enum TransactionOptionCode {
@@ -411,8 +441,8 @@ export enum TransactionOptionCode {
 
   /**
    * Addresses returned by get_addresses_for_key include the port when
-   * enabled. This will be enabled by default in api version 700, and this
-   * option will be deprecated.
+   * enabled. As of api version 630, this option is enabled by default and
+   * setting this has no effect.
    */
   IncludePortInAddress = 23,
 
@@ -520,6 +550,16 @@ export enum TransactionOptionCode {
    * field will be truncated. A negative value disables truncation.
    */
   TransactionLoggingMaxFieldLength = 405,
+
+  /**
+   * Sets an identifier for server tracing of this transaction. When
+   * committed, this identifier triggers logging when each part of the
+   * transaction authority encounters it, which is helpful in diagnosing
+   * slowness in misbehaving clusters. The identifier is randomly
+   * generated. When there is also a debug_transaction_identifier, both IDs
+   * are logged together.
+   */
+  ServerRequestTracing = 406,
 
   /**
    * Set a timeout in milliseconds which, when elapsed, will cause the
@@ -636,6 +676,35 @@ export enum TransactionOptionCode {
    * configuration.
    */
   UseProvisionalProxies = 711,
+
+  /**
+   * The transaction can retrieve keys that are conflicting with other
+   * transactions.
+   */
+  ReportConflictingKeys = 712,
+
+  /**
+   * By default, the special key space will only allow users to read from
+   * exactly one module (a subspace in the special key space). Use this
+   * option to allow reading from zero or more modules. Users who set this
+   * option should be prepared for new modules, which may have different
+   * behaviors than the modules they're currently reading. For example, a
+   * new module might block or return an error.
+   */
+  SpecialKeySpaceRelaxed = 713,
+
+  /**
+   * Adds a tag to the transaction that can be used to apply manual
+   * targeted throttling. At most 5 tags can be set on a transaction.
+   */
+  Tag = 800,
+
+  /**
+   * Adds a tag to the transaction that can be used to apply manual or
+   * automatic targeted throttling. At most 5 tags can be set on a
+   * transaction.
+   */
+  AutoThrottleTag = 801,
 
 }
 
@@ -937,6 +1006,20 @@ export const networkOptionData: OptionData = {
     paramDescription: "Format of trace files",
   },
 
+  trace_clock_source: {
+    code: 35,
+    description: "Select clock source for trace files. now (the default) or realtime are supported.",
+    type: 'string',
+    paramDescription: "Trace clock source",
+  },
+
+  trace_file_identifier: {
+    code: 36,
+    description: "Once provided, this string will be used to replace the port/PID in the log file names.",
+    type: 'string',
+    paramDescription: "The identifier that will be part of all trace file names",
+  },
+
   knob: {
     code: 40,
     description: "Set internal tuning or debugging knobs",
@@ -1062,8 +1145,15 @@ export const networkOptionData: OptionData = {
 
   disable_local_client: {
     code: 64,
-    description: "Prevents connections through the local client, allowing only connections through externally loaded client libraries. Intended primarily for testing.",
+    description: "Prevents connections through the local client, allowing only connections through externally loaded client libraries.",
     type: 'none',
+  },
+
+  client_threads_per_version: {
+    code: 65,
+    description: "Spawns multiple worker threads for each version of the client that is loaded.  Setting this to a number greater than one implies disable_local_client.",
+    type: 'int',
+    paramDescription: "Number of client threads to be spawned.  Each cluster will be serviced by a single client thread.",
   },
 
   disable_client_statistics_logging: {
@@ -1074,7 +1164,14 @@ export const networkOptionData: OptionData = {
 
   enable_slow_task_profiling: {
     code: 71,
-    description: "Enables debugging feature to perform slow task profiling. Requires trace logging to be enabled. WARNING: this feature is not recommended for use in production.",
+    description: "Deprecated",
+    deprecated: true,
+    type: 'none',
+  },
+
+  enable_run_loop_profiling: {
+    code: 71,
+    description: "Enables debugging feature to perform run loop profiling. Requires trace logging to be enabled. WARNING: this feature is not recommended for use in production.",
     type: 'none',
   },
 
@@ -1210,7 +1307,7 @@ export const databaseOptionData: OptionData = {
 
   transaction_include_port_in_address: {
     code: 505,
-    description: "Addresses returned by get_addresses_for_key include the port when enabled. This will be enabled by default in api version 700, and this option will be deprecated.",
+    description: "Addresses returned by get_addresses_for_key include the port when enabled. As of api version 630, this option is enabled by default and setting this has no effect.",
     type: 'none',
   },
 
@@ -1237,7 +1334,7 @@ export const transactionOptionData: OptionData = {
 
   include_port_in_address: {
     code: 23,
-    description: "Addresses returned by get_addresses_for_key include the port when enabled. This will be enabled by default in api version 700, and this option will be deprecated.",
+    description: "Addresses returned by get_addresses_for_key include the port when enabled. As of api version 630, this option is enabled by default and setting this has no effect.",
     type: 'none',
   },
 
@@ -1362,6 +1459,12 @@ export const transactionOptionData: OptionData = {
     paramDescription: "Maximum length of escaped key and value fields.",
   },
 
+  server_request_tracing: {
+    code: 406,
+    description: "Sets an identifier for server tracing of this transaction. When committed, this identifier triggers logging when each part of the transaction authority encounters it, which is helpful in diagnosing slowness in misbehaving clusters. The identifier is randomly generated. When there is also a debug_transaction_identifier, both IDs are logged together.",
+    type: 'none',
+  },
+
   timeout: {
     code: 500,
     description: "Set a timeout in milliseconds which, when elapsed, will cause the transaction automatically to be cancelled. Valid parameter values are ``[0, INT_MAX]``. If set to 0, will disable all timeouts. All pending and any future uses of the transaction will throw an exception. The transaction can be used again after it is reset. Prior to API version 610, like all other transaction options, the timeout must be reset after a call to ``onError``. If the API version is 610 or greater, the timeout is not reset after an ``onError`` call. This allows the user to specify a longer timeout on specific transactions than the default timeout specified through the ``transaction_timeout`` database option without the shorter database timeout cancelling transactions that encounter a retryable error. Note that at all API versions, it is safe and legal to set the timeout each time the transaction begins, so most code written assuming the older behavior can be upgraded to the newer behavior without requiring any modification, and the caller is not required to implement special logic in retry loops to only conditionally set this option.",
@@ -1430,6 +1533,32 @@ export const transactionOptionData: OptionData = {
     code: 711,
     description: "This option should only be used by tools which change the database configuration.",
     type: 'none',
+  },
+
+  report_conflicting_keys: {
+    code: 712,
+    description: "The transaction can retrieve keys that are conflicting with other transactions.",
+    type: 'none',
+  },
+
+  special_key_space_relaxed: {
+    code: 713,
+    description: "By default, the special key space will only allow users to read from exactly one module (a subspace in the special key space). Use this option to allow reading from zero or more modules. Users who set this option should be prepared for new modules, which may have different behaviors than the modules they're currently reading. For example, a new module might block or return an error.",
+    type: 'none',
+  },
+
+  tag: {
+    code: 800,
+    description: "Adds a tag to the transaction that can be used to apply manual targeted throttling. At most 5 tags can be set on a transaction.",
+    type: 'string',
+    paramDescription: "String identifier used to associated this transaction with a throttling group. Must not exceed 16 characters.",
+  },
+
+  auto_throttle_tag: {
+    code: 801,
+    description: "Adds a tag to the transaction that can be used to apply manual or automatic targeted throttling. At most 5 tags can be set on a transaction.",
+    type: 'string',
+    paramDescription: "String identifier used to associated this transaction with a throttling group. Must not exceed 16 characters.",
   },
 
 }
