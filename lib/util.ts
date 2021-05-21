@@ -1,5 +1,3 @@
-import * as apiVersion from './apiVersion'
-
 // String increment. Find the next string (well, buffer) after this buffer.
 export const strInc = (val: string | Buffer): Buffer => {
   const buf = typeof val === 'string' ? Buffer.from(val) : val
