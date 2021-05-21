@@ -1,5 +1,10 @@
 # HEAD
 
+# 1.1.0
+
+- Moved CI to github actions (this should have no effect on downstream consumers)
+- Regenerated options to add support for features added in API version 630 [pr](https://github.com/josephg/node-foundationdb/pull/53) (thanks @ex3ndr!)
+
 # 1.0.3
 
 - Fixed small memory leak (we were leaking a few bytes with each transaction in native code). Thanks @aikoven!
