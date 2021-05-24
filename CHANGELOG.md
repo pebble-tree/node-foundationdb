@@ -1,5 +1,9 @@
 # HEAD
 
+# 1.1.1
+
+- Updated max api version to 630
+
 # 1.1.0
 
 - Moved CI to github actions (this should have no effect on downstream consumers)
