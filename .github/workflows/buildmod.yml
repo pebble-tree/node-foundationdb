@@ -20,11 +20,11 @@ jobs:
       with:
         node-version: 14
 
-    - run: wget "https://www.foundationdb.org/downloads/6.3.12/ubuntu/installers/foundationdb-clients_6.3.12-1_amd64.deb"
-    - run: sudo dpkg -i foundationdb-clients_6.3.12-1_amd64.deb
+    - run: wget "https://www.foundationdb.org/downloads/6.3.13/ubuntu/installers/foundationdb-clients_6.3.13-1_amd64.deb"
+    - run: sudo dpkg -i foundationdb-clients_6.3.13-1_amd64.deb
     - run: sudo mkdir -p /var/lib/foundationdb/data
-    - run: wget "https://www.foundationdb.org/downloads/6.3.12/ubuntu/installers/foundationdb-server_6.3.12-1_amd64.deb"
-    - run: sudo dpkg -i foundationdb-server_6.3.12-1_amd64.deb
+    - run: wget "https://www.foundationdb.org/downloads/6.3.13/ubuntu/installers/foundationdb-server_6.3.13-1_amd64.deb"
+    - run: sudo dpkg -i foundationdb-server_6.3.13-1_amd64.deb
 
     - run: yarn
     - run: yarn prebuild
@@ -47,8 +47,8 @@ jobs:
       with:
         node-version: 14
 
-    - run: wget "https://www.foundationdb.org/downloads/6.3.12/macOS/installers/FoundationDB-6.3.12.pkg"
-    - run: sudo installer -pkg FoundationDB-6.3.12.pkg -target /
+    - run: wget "https://www.foundationdb.org/downloads/6.3.13/macOS/installers/FoundationDB-6.3.13.pkg"
+    - run: sudo installer -pkg FoundationDB-6.3.13.pkg -target /
 
     - run: yarn
     - run: yarn prebuild
@@ -79,7 +79,7 @@ jobs:
       with:
         node-version: 14
 
-    - run: (new-object net.webclient).DownloadFile('https://www.foundationdb.org/downloads/6.3.12/windows/installers/foundationdb-6.3.12-x64.msi', 'c:\foundationdb.msi')
+    - run: (new-object net.webclient).DownloadFile('https://www.foundationdb.org/downloads/6.3.13/windows/installers/foundationdb-6.3.13-x64.msi', 'c:\foundationdb.msi')
     - run: dir c:\foundationdb.msi
     - run: msiexec /i c:\foundationdb.msi /quiet /passive /norestart /log install.log | Out-Null
 
@@ -117,8 +117,8 @@ jobs:
     - run: ls -R prebuilds
 
     # Ideally I shouldn't need this...
-    - run: wget "https://www.foundationdb.org/downloads/6.3.12/ubuntu/installers/foundationdb-clients_6.3.12-1_amd64.deb"
-    - run: sudo dpkg -i foundationdb-clients_6.3.12-1_amd64.deb
+    - run: wget "https://www.foundationdb.org/downloads/6.3.13/ubuntu/installers/foundationdb-clients_6.3.13-1_amd64.deb"
+    - run: sudo dpkg -i foundationdb-clients_6.3.13-1_amd64.deb
 
     # And I could just run the linux script last anyway.
     - run: yarn
