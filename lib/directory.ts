@@ -557,12 +557,12 @@ export class DirectoryLayer {
     return this._createOrOpenInternal(txnOrDb, path, layer)
   }
 
-  private async _createOrOpenInternal(txnOrDb: TxnAny | DbAny, _path: PathIn, layer: NativeValue = BUF_EMPTY, prefix?: Buffer, allowCreate: boolean = true, allowOpen: boolean = true): Promise<Directory> {
+  private async _createOrOpenInternal(txnOrDb: TxnAny | DbAny, _path: PathIn, layer: NativeValue = BUF_EMPTY, reqPrefix?: Buffer, allowCreate: boolean = true, allowOpen: boolean = true): Promise<Directory> {
     const path = normalize_path(_path)
     // For layers, an empty string is treated the same as a missing layer property.
     const layerBuf = asBuf(layer)
     
-    if (prefix != null && !this._allowManualPrefixes) {
+    if (reqPrefix != null && !this._allowManualPrefixes) {
       if (path.length === 0) throw new DirectoryError('Cannot specify a prefix unless manual prefixes are enabled.')
       else throw new DirectoryError('Cannot specify a prefix in a partition.')
     }
@@ -579,7 +579,7 @@ export class DirectoryLayer {
           const subpath = existing_node.getPartitionSubpath()
           // console.log('existing node is in partition at path', existing_node, existing_node.getPartitionSubpath())
           return await existing_node.getContentsSync(this)!._directoryLayer._createOrOpenInternal(
-            txn, subpath, layer, prefix, allowCreate, allowOpen
+            txn, subpath, layer, reqPrefix, allowCreate, allowOpen
           )
         } else {
           if (!allowOpen) throw new DirectoryError('The directory already exists.')
@@ -594,29 +594,35 @@ export class DirectoryLayer {
         if (!allowCreate) throw new DirectoryError('The directory does not exist.')
         await this._checkVersion(txn, true)
 
-        if (prefix == null) {
+        // We need to preserve the passed in prefix argument so if the prefix is null and we
+        // generate a txn conflict, we generate a new prefix in the next retry attempt.
+        let actualPrefix
+        if (reqPrefix == null) {
           // const subspace = this._contentSubspace.at(await this._allocator.allocate(txn))
-          prefix = concat2(this._contentSubspace.prefix, await this._allocator.allocate(txn))
-          if ((await txn.at(root).getRangeAllStartsWith(prefix, {limit: 1})).length > 0) {
-            throw new DirectoryError('The database has keys stored at the prefix chosen by the automatic prefix allocator: ' + inspect(prefix))
+          actualPrefix = concat2(this._contentSubspace.prefix, await this._allocator.allocate(txn))
+          if ((await txn.at(root).getRangeAllStartsWith(actualPrefix, {limit: 1})).length > 0) {
+            throw new DirectoryError('The database has keys stored at the prefix chosen by the automatic prefix allocator: ' + inspect(actualPrefix))
           }
 
-          if (!await this._isPrefixFree(txn.snapshot(), prefix)) {
+          if (!await this._isPrefixFree(txn.snapshot(), actualPrefix)) {
             throw new DirectoryError('The directory layer has manually allocated prefixes that conflict with the automatic prefix allocator.')
           }
-        } else if (!await this._isPrefixFree(txn, prefix)) {
-          throw new DirectoryError('The given prefix is already in use.')
+        } else {
+          if (!await this._isPrefixFree(txn, reqPrefix)) {
+            throw new DirectoryError('The given prefix is already in use.')
+          }
+          actualPrefix = reqPrefix
         }
 
         const parentNode = path.length > 1
           ? this._nodeWithPrefix((await this._createOrOpenInternal(txn, path.slice(0, -1))).content.prefix)
           : this._rootNode
-        
+
         if (parentNode == null) throw new DirectoryError('The parent directory does not exist.')
 
-        const node = this._nodeWithPrefix(prefix)
+        const node = this._nodeWithPrefix(actualPrefix)
         // Write metadata
-        txn.at(parentNode).set([SUBDIRS_KEY, path[path.length - 1]], prefix)
+        txn.at(parentNode).set([SUBDIRS_KEY, path[path.length - 1]], actualPrefix)
         txn.at(node).set(LAYER_KEY, layerBuf)
 
         return this._contentsOfNode(node, path, layerBuf)
