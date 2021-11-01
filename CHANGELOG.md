@@ -1,5 +1,9 @@
 # HEAD
 
+# 1.1.3
+
+- Fixed a bug creating directory prefixes when the database is under load (#63 - thanks @aikoven)
+
 # 1.1.1
 
 - Updated max api version to 630
