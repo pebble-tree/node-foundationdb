@@ -16,7 +16,7 @@ jobs:
 
     strategy:
       matrix:
-        node-version: [10, 12, 14]
+        node-version: [14, 16, 18]
         # See supported Node.js release schedule at https://nodejs.org/en/about/releases/
 
     steps:
@@ -26,11 +26,11 @@ jobs:
       with:
         node-version: ${{ matrix.node-version }}
 
-    - run: wget "https://www.foundationdb.org/downloads/6.3.13/ubuntu/installers/foundationdb-clients_6.3.13-1_amd64.deb"
-    - run: sudo dpkg -i foundationdb-clients_6.3.13-1_amd64.deb
-    - run: sudo mkdir -p /var/lib/foundationdb/data    
-    - run: wget "https://www.foundationdb.org/downloads/6.3.13/ubuntu/installers/foundationdb-server_6.3.13-1_amd64.deb"
-    - run: sudo dpkg -i foundationdb-server_6.3.13-1_amd64.deb
+    - run: wget "https://github.com/apple/foundationdb/releases/download/7.1.27/foundationdb-clients_7.1.27-1_amd64.deb"
+    - run: sudo dpkg -i foundationdb-clients_7.1.27-1_amd64.deb
+    - run: sudo mkdir -p /var/lib/foundationdb/data
+    - run: wget "https://github.com/apple/foundationdb/releases/download/7.1.27/foundationdb-server_7.1.27-1_amd64.deb"
+    - run: sudo dpkg -i foundationdb-server_7.1.27-1_amd64.deb
 
     - run: yarn
     - run: yarn test
