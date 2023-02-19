@@ -8,6 +8,7 @@ import {
   withEachDb,
 } from './util'
 import {MutationType, tuple, TupleItem, encoders, Watch, keySelector} from '../lib'
+import { Transformer } from '../lib/transformer'
 
 process.on('unhandledRejection', err => { throw err })
 
@@ -119,6 +120,23 @@ withEachDb(db => describe('key value functionality', () => {
     // more attempts than there were increments, the database is running
     // serially and this test is doing nothing.
     assert(txnAttempts > concurrentWrites)
+  })
+
+  describe('native encoding', () => {
+    // This is a test for a regression.
+    const setGetAssertEqual = async (val: any, valueEncoding: Transformer<any, any>) => {
+      await db.withKeyEncoding(encoders.string).withValueEncoding(valueEncoding).doTransaction(async tn => {
+        tn.set('xxx', val)
+        const result = await tn.get('xxx')
+        assert.deepStrictEqual(result, val)
+      })
+    }
+
+    for (const jsonStringifyLength of [1023,1024,1025]) {
+      it(`handles ${jsonStringifyLength} length json`, async () => {
+        await setGetAssertEqual(Array.from({length: jsonStringifyLength - 2}, (_, x) => (x % 10) + '').join(''), encoders.json)
+      })
+    }
   })
 
   describe('getKey', () => {

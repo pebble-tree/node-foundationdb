@@ -94,7 +94,9 @@ static napi_status toStringParams(napi_env env, napi_value value, StringParams *
     // First get the length.
     NAPI_OK_OR_RETURN_STATUS(env, napi_get_value_string_utf8(env, value, NULL, 0, &result->len));
 
-    if (!buf_in_use && result->len <= sizeof(sp_buf)) {
+    // This needs to be strictly less than, because a \0 is appended to the string.
+    // See https://github.com/josephg/node-foundationdb/pull/69 for details.
+    if (!buf_in_use && result->len < sizeof(sp_buf)) {
       result->owned = false;
       result->str = sp_buf;
       NAPI_OK_OR_RETURN_STATUS(env, napi_get_value_string_utf8(env, value, (char *)sp_buf, sizeof(sp_buf), NULL));
