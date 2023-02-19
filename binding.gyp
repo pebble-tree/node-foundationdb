@@ -25,7 +25,7 @@
         }],
         ['OS=="win"', {
           'link_settings': { 'libraries': ['<!(echo %FOUNDATIONDB_INSTALL_PATH%)\\lib\\foundationdb\\fdb_c.lib'] },
-          'include_dirs': ['<!(echo %FOUNDATIONDB_INSTALL_PATH%)\\include', '<!(echo %FOUNDATIONDB_INSTALL_PATH%)\\include\\foundationdb'],
+          'include_dirs': ['<!(echo %FOUNDATIONDB_INSTALL_PATH%)\\include'],
         }],
         ['OS=="freebsd"', {
           'include_dirs': ['/usr/local/include'],

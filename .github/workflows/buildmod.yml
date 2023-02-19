@@ -79,9 +79,8 @@ jobs:
       with:
         node-version: 18
 
-    - run: (new-object net.webclient).DownloadFile('https://github.com/apple/foundationdb/releases/download/7.1.27/foundationdb-7.1.27-x64.msi', 'c:\foundationdb.msi')
-    # For some reason I'm getting errors downloading from the official foundationdb website through GH actions O_o
-    # - run: (new-object net.webclient).DownloadFile('https://josephg.com/foundationdb-6.3.12-x64.msi', 'c:\foundationdb.msi')
+    # - run: (new-object net.webclient).DownloadFile('https://github.com/apple/foundationdb/releases/download/7.1.27/foundationdb-7.1.27-x64.msi', 'c:\foundationdb.msi')
+    - run: (new-object net.webclient).DownloadFile('https://github.com/apple/foundationdb/releases/download/6.3.24/foundationdb-6.3.24-x64.msi', 'c:\foundationdb.msi')
     - run: dir c:\foundationdb.msi
     - run: msiexec /i c:\foundationdb.msi /quiet /passive /norestart /log install.log | Out-Null
 
