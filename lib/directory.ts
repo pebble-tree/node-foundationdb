@@ -32,6 +32,8 @@ type DbAny = Database<any, any, any, any>
 type TxnAny = Transaction<any, any, any, any>
 type SubspaceAny = Subspace<any, any, any, any>
 
+type DbOrTxn<KeyIn, KeyOut, ValIn, ValOut> = Database<KeyIn, KeyOut, ValIn, ValOut> | Transaction<KeyIn, KeyOut, ValIn, ValOut>
+
 type TupleIn = undefined | TupleItem | TupleItem[]
 /** Node subspaces have tuple keys like [SUBDIRS, (bytes)] and [b'layer']. */
 type NodeSubspace = Subspace<TupleIn, TupleItem[], NativeValue, Buffer>
@@ -345,13 +347,13 @@ class Node {
     return this.target_path.slice(this.path.length)
   }
 
-  async getContents(directoryLayer: DirectoryLayer, txn?: TxnAny) {
-    return this.subspace == null ? null : directoryLayer._contentsOfNode(this.subspace, this.path, await this.getLayer(txn))
+  async getContents<KeyIn, KeyOut, ValIn, ValOut>(directoryLayer: DirectoryLayer, keyXf: Transformer<KeyIn, KeyOut>, valueXf: Transformer<ValIn, ValOut>, txn?: TxnAny) {
+    return this.subspace == null ? null : directoryLayer._contentsOfNode(this.subspace, this.path, await this.getLayer(txn), keyXf, valueXf)
   }
 
-  getContentsSync(directoryLayer: DirectoryLayer) {
+  getContentsSync<KeyIn, KeyOut, ValIn, ValOut>(directoryLayer: DirectoryLayer, keyXf: Transformer<any, any> = defaultTransformer, valueXf: Transformer<any, any> = defaultTransformer) {
     if (this.layer == null) throw new DirectoryError('Node metadata has not been fetched.')
-    return this.subspace == null ? null : directoryLayer._contentsOfNode(this.subspace, this.path, this.layer!)
+    return this.subspace == null ? null : directoryLayer._contentsOfNode(this.subspace, this.path, this.layer!, keyXf, valueXf)
   }
 }
 
@@ -553,15 +555,16 @@ export class DirectoryLayer {
    * If layer is specified, it is checked against the layer of an existing
    * directory or set as the layer of a new directory.
    */
-  createOrOpen(txnOrDb: TxnAny | DbAny, path: PathIn, layer?: 'partition' | NativeValue) {
+  createOrOpen<KeyIn, KeyOut, ValIn, ValOut>(txnOrDb: DbOrTxn<KeyIn, KeyOut, ValIn, ValOut>, path: PathIn, layer?: 'partition' | NativeValue): Promise<Directory<KeyIn, KeyOut, ValIn, ValOut>> {
     return this._createOrOpenInternal(txnOrDb, path, layer)
   }
 
-  private async _createOrOpenInternal(txnOrDb: TxnAny | DbAny, _path: PathIn, layer: NativeValue = BUF_EMPTY, reqPrefix?: Buffer, allowCreate: boolean = true, allowOpen: boolean = true): Promise<Directory> {
+  private async _createOrOpenInternal<KeyIn, KeyOut, ValIn, ValOut>(txnOrDb: TxnAny | DbAny, _path: PathIn, layer: NativeValue = BUF_EMPTY, reqPrefix?: Buffer, allowCreate: boolean = true, allowOpen: boolean = true): Promise<Directory<KeyIn, KeyOut, ValIn, ValOut>> {
     const path = normalize_path(_path)
     // For layers, an empty string is treated the same as a missing layer property.
     const layerBuf = asBuf(layer)
-    
+    const {keyXf, valueXf} = txnOrDb.subspace
+
     if (reqPrefix != null && !this._allowManualPrefixes) {
       if (path.length === 0) throw new DirectoryError('Cannot specify a prefix unless manual prefixes are enabled.')
       else throw new DirectoryError('Cannot specify a prefix in a partition.')
@@ -578,6 +581,9 @@ export class DirectoryLayer {
         if (existing_node.isInPartition()) {
           const subpath = existing_node.getPartitionSubpath()
           // console.log('existing node is in partition at path', existing_node, existing_node.getPartitionSubpath())
+
+          // This is pretty ugly. We're only using the existing node's directory layer. Better to
+          // just create that child directory layer directly or something.
           return await existing_node.getContentsSync(this)!._directoryLayer._createOrOpenInternal(
             txn, subpath, layer, reqPrefix, allowCreate, allowOpen
           )
@@ -586,7 +592,7 @@ export class DirectoryLayer {
           // console.log('existing_node.layer', existing_node.layer, layerBuf)
           if (layerBuf.length && !existing_node.layer!.equals(layerBuf)) throw new DirectoryError('The directory was created with an incompatible layer.')
 
-          return existing_node.getContentsSync(this)!
+          return existing_node.getContentsSync(this, keyXf, valueXf)!
         }
 
       } else {
@@ -625,7 +631,7 @@ export class DirectoryLayer {
         txn.at(parentNode).set([SUBDIRS_KEY, path[path.length - 1]], actualPrefix)
         txn.at(node).set(LAYER_KEY, layerBuf)
 
-        return this._contentsOfNode(node, path, layerBuf)
+        return this._contentsOfNode(node, path, layerBuf, keyXf, valueXf)
       }
     })
   }
@@ -637,7 +643,7 @@ export class DirectoryLayer {
    * specified and a different layer was specified when the directory was
    * created.
    */
-  open(txnOrDb: TxnAny | DbAny, path: PathIn, layer: 'partition' | NativeValue = BUF_EMPTY) {
+  open<KeyIn, KeyOut, ValIn, ValOut>(txnOrDb: DbOrTxn<KeyIn, KeyOut, ValIn, ValOut>, path: PathIn, layer: 'partition' | NativeValue = BUF_EMPTY): Promise<Directory<KeyIn, KeyOut, ValIn, ValOut>> {
     return this._createOrOpenInternal(txnOrDb, path, layer, undefined, false, true)
   }
 
@@ -653,7 +659,7 @@ export class DirectoryLayer {
    * If layer is specified, it is recorded with the directory and will be
    * checked by future calls to open.
    */
-  create(txnOrDb: TxnAny | DbAny, path: PathIn, layer: 'partition' | NativeValue = BUF_EMPTY, prefix?: Buffer) {
+  create<KeyIn, KeyOut, ValIn, ValOut>(txnOrDb: DbOrTxn<KeyIn, KeyOut, ValIn, ValOut>, path: PathIn, layer: 'partition' | NativeValue = BUF_EMPTY, prefix?: Buffer): Promise<Directory<KeyIn, KeyOut, ValIn, ValOut>> {
     return this._createOrOpenInternal(txnOrDb, path, layer, prefix, true, false)
   }
   
@@ -665,8 +671,11 @@ export class DirectoryLayer {
    *
    * An error is raised if the old directory does not exist, a directory already
    * exists at `new_path`, or the parent directory of `new_path` does not exist.
+   *
+   * This funtion returns the new directory. The old directory should no longer
+   * be used.
    */
-  move(txnOrDb: TxnAny | DbAny, _oldPath: PathIn, _newPath: PathIn): Promise<Directory> {
+  move<KeyIn, KeyOut, ValIn, ValOut>(txnOrDb: DbOrTxn<KeyIn, KeyOut, ValIn, ValOut>, _oldPath: PathIn, _newPath: PathIn): Promise<Directory<KeyIn, KeyOut, ValIn, ValOut>> {
     const oldPath = normalize_path(_oldPath)
     const newPath = normalize_path(_newPath)
 
@@ -706,7 +715,10 @@ export class DirectoryLayer {
       txn.at(parentNode.subspace!).set([SUBDIRS_KEY, newPath[newPath.length - 1]], oldPrefix)
       await this._removeFromParent(txn, oldPath)
 
-      return this._contentsOfNode(oldNode.subspace!, newPath, oldNode.layer!)
+      // We return a Directory here. Its kind of arbitrary - but I'll use the KV transformers from
+      // the transaction for the new directory. Not perfect, but should be fine
+      const {keyXf, valueXf} = txnOrDb.subspace
+      return this._contentsOfNode(oldNode.subspace!, newPath, oldNode.layer!, keyXf, valueXf)
     })
   }
 
@@ -771,7 +783,8 @@ export class DirectoryLayer {
     if (!node.exists()) throw new DirectoryError('The directory does not exist.')
   
     if (node.isInPartition(true)) {
-      yield* node.getContentsSync(this)!.list(txn, node.getPartitionSubpath())
+      yield* node.getContentsSync(this)!
+        .list(txn, node.getPartitionSubpath())
     } else {
       for await (const [name] of this._subdirNamesAndNodes(txn, node.subspace!)) {
         yield name
@@ -839,8 +852,12 @@ export class DirectoryLayer {
     return this._nodeSubspace._bakedKeyXf.unpack(node.prefix)[0] as Buffer
   }
 
+  private contentSubspaceForNodeWithXF<KeyIn, KeyOut, ValIn, ValOut>(node: NodeSubspace, keyXf: Transformer<KeyIn, KeyOut>, valueXf: Transformer<ValIn, ValOut>) {
+    return new Subspace(this.getPrefixForNode(node), keyXf, valueXf)
+  }
+
   private contentSubspaceForNode(node: NodeSubspace) {
-    return new Subspace(this.getPrefixForNode(node), defaultTransformer, defaultTransformer)
+    return this.contentSubspaceForNodeWithXF(node, defaultTransformer, defaultTransformer)
   }
 
   private async find(txn: TxnAny, path: Path) {
@@ -865,11 +882,11 @@ export class DirectoryLayer {
     return node
   }
 
-  _contentsOfNode(nodeSubspace: NodeSubspace, path: Path, layer: NativeValue = BUF_EMPTY): Directory {
+  _contentsOfNode<KeyIn, KeyOut, ValIn, ValOut>(nodeSubspace: NodeSubspace, path: Path, layer: NativeValue = BUF_EMPTY, keyXf: Transformer<KeyIn, KeyOut>, valueXf: Transformer<ValIn, ValOut>): Directory<KeyIn, KeyOut, ValIn, ValOut> {
     // This is some black magic. We have a reference to the node's subspace, but
     // what we really want is the prefix. So we want to do the inverse to
     // this._nodeSubspace.at(...).
-    const contentSubspace = this.contentSubspaceForNode(nodeSubspace)
+    const contentSubspace = this.contentSubspaceForNodeWithXF(nodeSubspace, keyXf, valueXf)
 
     const layerBuf = asBuf(layer)
     if (layerBuf.equals(PARTITION_BUF)) {

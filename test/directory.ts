@@ -177,5 +177,12 @@ withEachDb(db => describe('directory layer', () => {
       })
       await Promise.all(work)
     })
+
+    it('inherits the types from the root', async function() {
+      const db2 = db.withValueEncoding(fdb.encoders.int32BE)
+      const dir = await dl.create(db2, 'a') // This directory's subspace inherits the
+      const space = db.at(dir)
+      space.set('item', 123) // 123 is valid with the int32BE encoder.
+    })
   })
 }))
