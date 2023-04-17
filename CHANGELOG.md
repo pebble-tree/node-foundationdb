@@ -1,5 +1,7 @@
 # HEAD
 
+- Fixed an issue where the directory layer would "reset" the transformers when a directory was created or opened. Thanks @NuckChorris for [reporting this problem](https://github.com/josephg/node-foundationdb/issues/70).
+
 # 1.1.4
 
 - Fixed a bug where `napi_string` values would have a nulled last value if 1024 length. ([PR](https://github.com/josephg/node-foundationdb/pull/69) - thanks to @Max-Clark!)
