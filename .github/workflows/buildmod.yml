@@ -62,47 +62,13 @@ jobs:
 
     - run: yarn test
 
-    - name: Upload artifacts x86_64
-      uses: actions/upload-artifact@v2
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v3
       with:
-        name: darwin-x64
-        path: prebuilds/darwin-x64
+        name: darwin
+        path: prebuilds/darwin-*
         retention-days: 5
-    - name: Upload artifacts arm64
-      uses: actions/upload-artifact@v2
-      with:
-        name: darwin-arm64
-        path: prebuilds/darwin-arm64
-        retention-days: 5
-
-  # prebuild-macos-arm:
-  #   # It would be better to just build a universal binary for macos + linux but the foundationdb library
-  #   # itself isn't a universal binary. Sooo I don't think that would work.
-  #   runs-on: macos-latest
-
-  #   steps:
-  #   - uses: actions/checkout@v2
-  #   - name: Setup nodejs
-  #     uses: actions/setup-node@v2
-  #     with:
-  #       node-version: 14
-
-  #   - run: wget "https://github.com/apple/foundationdb/releases/download/7.2.5/FoundationDB-7.2.5_arm64.pkg"
-  #   - run: sudo installer -pkg FoundationDB-7.2.5_arm64.pkg -target /
-
-  #   - run: yarn
-  #     # When you just run yarn, it'll compile for x86 into the build/ directory. This is hacky but ...
-  #   - run: rm -rf build
-  #   - run: yarn prebuild --arch arm64
-
-  #   - run: yarn test
-
-  #   - name: Upload artifacts
-  #     uses: actions/upload-artifact@v2
-  #     with:
-  #       name: darwin-arm64
-  #       path: prebuilds/darwin-arm64
-  #       retention-days: 5
+        if-no-files-found: error
 
   # Disabled until the windows install image is fixed.
   # prebuild-windows:
