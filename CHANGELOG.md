@@ -4,6 +4,8 @@
 - Updated to support FoundationDB API version 720. This adds 2 new APIs:
   - `txn.getEstimatedRangeSizeBytes`
   - `txn.getRangeSplitPoints`
+  - Note this means node-foundationdb requires foundationdb-clients 7.2 or newer
+  to build.
 
 # 1.1.4
 
