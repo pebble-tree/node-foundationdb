@@ -20,11 +20,11 @@ jobs:
       with:
         node-version: 18
 
-    - run: wget "https://github.com/apple/foundationdb/releases/download/7.1.27/foundationdb-clients_7.1.27-1_amd64.deb"
-    - run: sudo dpkg -i foundationdb-clients_7.1.27-1_amd64.deb
+    - run: wget "https://github.com/apple/foundationdb/releases/download/7.2.5/foundationdb-clients_7.2.5-1_amd64.deb"
+    - run: sudo dpkg -i foundationdb-clients_7.2.5-1_amd64.deb
     - run: sudo mkdir -p /var/lib/foundationdb/data
-    - run: wget "https://github.com/apple/foundationdb/releases/download/7.1.27/foundationdb-server_7.1.27-1_amd64.deb"
-    - run: sudo dpkg -i foundationdb-server_7.1.27-1_amd64.deb
+    - run: wget "https://github.com/apple/foundationdb/releases/download/7.2.5/foundationdb-server_7.2.5-1_amd64.deb"
+    - run: sudo dpkg -i foundationdb-server_7.2.5-1_amd64.deb
 
     - run: yarn
     - run: yarn prebuild
@@ -47,8 +47,8 @@ jobs:
       with:
         node-version: 14
 
-    - run: wget "https://github.com/apple/foundationdb/releases/download/7.1.27/FoundationDB-7.1.27_x86_64.pkg"
-    - run: sudo installer -pkg FoundationDB-7.1.27_x86_64.pkg -target /
+    - run: wget "https://github.com/apple/foundationdb/releases/download/7.2.5/FoundationDB-7.2.5_arm64.pkg"
+    - run: sudo installer -pkg FoundationDB-7.2.5_x86_64.pkg -target /
 
     - run: yarn
     - run: yarn prebuild
@@ -79,10 +79,9 @@ jobs:
       with:
         node-version: 18
 
-    # Bleh - the 7.xx builds are currently missing one of the header files. Using 6.x.x until it gets fixed. More detail here:
+    # Bleh - the 7.xx builds are currently missing one of the header files. More detail here:
     # https://forums.foundationdb.org/t/fdb-c-types-h-missing-in-windows-install-image/3817
-    # - run: (new-object net.webclient).DownloadFile('https://github.com/apple/foundationdb/releases/download/7.1.27/foundationdb-7.1.27-x64.msi', 'c:\foundationdb.msi')
-    - run: (new-object net.webclient).DownloadFile('https://github.com/apple/foundationdb/releases/download/6.3.24/foundationdb-6.3.24-x64.msi', 'c:\foundationdb.msi')
+    - run: (new-object net.webclient).DownloadFile('https://github.com/apple/foundationdb/releases/download/7.2.5/foundationdb-7.2.5-x64.msi', 'c:\foundationdb.msi')
     - run: dir c:\foundationdb.msi
     - run: msiexec /i c:\foundationdb.msi /quiet /passive /norestart /log install.log | Out-Null
 
@@ -120,8 +119,8 @@ jobs:
     - run: ls -R prebuilds
 
     # Ideally I shouldn't need this...
-    - run: wget "https://github.com/apple/foundationdb/releases/download/7.1.27/foundationdb-clients_7.1.27-1_amd64.deb"
-    - run: sudo dpkg -i foundationdb-clients_7.1.27-1_amd64.deb
+    - run: wget "https://github.com/apple/foundationdb/releases/download/7.2.5/foundationdb-clients_7.2.5-1_amd64.deb"
+    - run: sudo dpkg -i foundationdb-clients_7.2.5-1_amd64.deb
 
     # And I could just run the linux script last anyway.
     - run: yarn
