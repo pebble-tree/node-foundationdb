@@ -37,7 +37,7 @@ jobs:
         path: prebuilds/linux-x64
         retention-days: 5
 
-  prebuild-macos:
+  prebuild-macos-x86:
     runs-on: macos-latest
 
     steps:
@@ -65,6 +65,33 @@ jobs:
       with:
         name: darwin-x64
         path: prebuilds/darwin-x64
+        retention-days: 5
+
+  prebuild-macos-arm:
+    # It would be better to just build a universal binary for macos + linux but the foundationdb library
+    # itself isn't a universal binary. Sooo I don't think that would work.
+    runs-on: macos-latest
+
+    steps:
+    - uses: actions/checkout@v2
+    - name: Setup nodejs
+      uses: actions/setup-node@v2
+      with:
+        node-version: 14
+
+    - run: wget "https://github.com/apple/foundationdb/releases/download/7.2.5/FoundationDB-7.2.5_arm64.pkg"
+    - run: sudo installer -pkg FoundationDB-7.2.5_arm64.pkg -target /
+
+    - run: yarn
+    - run: yarn prebuild --arch arm64
+
+    - run: yarn test
+
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v2
+      with:
+        name: darwin-arm64
+        path: prebuilds/darwin-arm64
         retention-days: 5
 
   prebuild-windows:
@@ -103,7 +130,7 @@ jobs:
 
   deploy-npm:
     # needs: [prebuild-windows, prebuild-macos, prebuild-linux]
-    needs: [prebuild-macos, prebuild-linux]
+    needs: [prebuild-macos-x86, prebuild-macos-arm, prebuild-linux]
     runs-on: ubuntu-latest
 
     steps:
