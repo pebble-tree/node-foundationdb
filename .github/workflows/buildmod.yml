@@ -31,10 +31,10 @@ jobs:
     - run: yarn test
 
     - name: Upload artifacts
-      uses: actions/upload-artifact@v2
+      uses: actions/upload-artifact@v3
       with:
         name: linux-x64
-        path: prebuilds/linux-x64
+        path: prebuilds/linux-*
         retention-days: 5
 
   prebuild-macos:
@@ -117,8 +117,14 @@ jobs:
         node-version: 18
         registry-url: 'https://registry.npmjs.org'
 
-    - uses: actions/download-artifact@v2
+    - uses: actions/download-artifact@v3
       with:
+        name: darwin
+        path: prebuilds
+
+    - uses: actions/download-artifact@v3
+      with:
+        name: linux-x86
         path: prebuilds
 
     - run: ls -R prebuilds
