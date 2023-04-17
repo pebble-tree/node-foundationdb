@@ -124,7 +124,7 @@ jobs:
 
     - uses: actions/download-artifact@v3
       with:
-        name: linux-x86
+        name: linux-x64
         path: prebuilds
 
     - run: ls -R prebuilds
