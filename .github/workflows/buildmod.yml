@@ -122,10 +122,6 @@ jobs:
         name: darwin
         path: prebuilds
 
-    # Urgh :(
-    - run: mv prebuilds/darwin/* prebuilds/
-    - run: rm -rf prebuilds/darwin
-
     - uses: actions/download-artifact@v3
       with:
         name: linux-x64
