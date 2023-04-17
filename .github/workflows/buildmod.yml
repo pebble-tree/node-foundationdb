@@ -37,7 +37,7 @@ jobs:
         path: prebuilds/linux-x64
         retention-days: 5
 
-  prebuild-macos-x86:
+  prebuild-macos:
     runs-on: macos-latest
 
     steps:
@@ -51,8 +51,9 @@ jobs:
     - run: sudo installer -pkg FoundationDB-7.2.5_x86_64.pkg -target /
 
     - run: yarn
-    - run: yarn prebuild --arch x64+arm64
-    # - run: yarn prebuild --arch arm64
+    # Could do a universal binary, but fdb_c isn't universal. This should be fine.
+    - run: yarn prebuild --arch x64
+    - run: yarn prebuild --arch arm64
 
     # Build for apple M1 and make sure the prebuilt module actually has arm64 code
     # Blocked by https://github.com/actions/virtual-environments/issues/2486
@@ -61,11 +62,17 @@ jobs:
 
     - run: yarn test
 
-    - name: Upload artifacts
+    - name: Upload artifacts x86_64
       uses: actions/upload-artifact@v2
       with:
         name: darwin-x64
         path: prebuilds/darwin-x64
+        retention-days: 5
+    - name: Upload artifacts arm64
+      uses: actions/upload-artifact@v2
+      with:
+        name: darwin-arm64
+        path: prebuilds/darwin-arm64
         retention-days: 5
 
   # prebuild-macos-arm:
@@ -134,7 +141,7 @@ jobs:
 
   deploy-npm:
     # needs: [prebuild-windows, prebuild-macos, prebuild-linux]
-    needs: [prebuild-macos-x86, prebuild-linux]
+    needs: [prebuild-macos, prebuild-linux]
     runs-on: ubuntu-latest
 
     steps:

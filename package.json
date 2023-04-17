@@ -23,7 +23,7 @@
     "install": "node-gyp-build",
     "test": "mocha -r ts-node/register test/*.ts",
     "prepare": "rm -rf dist && tsc -p .",
-    "prepublishOnly": "ls -ld prebuilds/win32-x64/node.napi.node prebuilds/linux-x64/node.napi.node prebuilds/darwin-x64/node.napi.node",
+    "prepublishOnly": "ls -ld prebuilds/darwin-arm64/node.napi.node prebuilds/darwin-x64/node.napi.node prebuilds/linux-x64/node.napi.node",
     "prebuild": "prebuildify --napi --strip"
   },
   "dependencies": {
