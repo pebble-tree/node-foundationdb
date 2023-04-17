@@ -47,7 +47,7 @@ jobs:
       with:
         node-version: 14
 
-    - run: wget "https://github.com/apple/foundationdb/releases/download/7.2.5/FoundationDB-7.2.5_arm64.pkg"
+    - run: wget "https://github.com/apple/foundationdb/releases/download/7.2.5/FoundationDB-7.2.5_x86_64.pkg"
     - run: sudo installer -pkg FoundationDB-7.2.5_x86_64.pkg -target /
 
     - run: yarn
