@@ -11,6 +11,8 @@ export type NetworkOptions = {
   trace_format?: string  // Format of trace files
   trace_clock_source?: string  // Trace clock source
   trace_file_identifier?: string  // The identifier that will be part of all trace file names
+  trace_share_among_client_threads?: true
+  trace_partial_file_suffix?: string  // Append this suffix to partially written log files. When a log file is complete, it is renamed to remove the suffix. No separator is added between the file and the suffix. If you want to add a file extension, you should include the separator - e.g. '.tmp' instead of 'tmp' to add the 'tmp' extension.
   knob?: string  // knob_name=knob_value
   TLS_plugin?: string // DEPRECATED
   TLS_cert_bytes?: Buffer  // certificates
@@ -31,13 +33,17 @@ export type NetworkOptions = {
   external_client_directory?: string  // path to directory containing client libraries
   disable_local_client?: true
   client_threads_per_version?: number  // Number of client threads to be spawned.  Each cluster will be serviced by a single client thread.
+  future_version_client_library?: string  // path to client library
   disable_client_statistics_logging?: true
   enable_slow_task_profiling?: true // DEPRECATED
   enable_run_loop_profiling?: true
+  disable_client_bypass?: true
   client_buggify_enable?: true
   client_buggify_disable?: true
   client_buggify_section_activated_probability?: number  // probability expressed as a percentage between 0 and 100
   client_buggify_section_fired_probability?: number  // probability expressed as a percentage between 0 and 100
+  distributed_client_tracer?: string  // Distributed tracer type. Choose from none, log_file, or network_lossy
+  client_tmp_dir?: string  // Client directory for temporary files. 
   supported_client_versions?: string  // [release version],[source version],[protocol version];...
   external_client?: true
   external_client_transport_id?: number  // Transport ID for the child connection
@@ -95,6 +101,19 @@ export enum NetworkOptionCode {
    * log file names.
    */
   TraceFileIdentifier = 36,
+
+  /**
+   * Use the same base trace file name for all client threads as it did
+   * before version 7.2. The current default behavior is to use distinct
+   * trace file names for client threads by including their version and
+   * thread index.
+   */
+  TraceShareAmongClientThreads = 37,
+
+  /**
+   * Set file suffix for partially written log files.
+   */
+  TracePartialFileSuffix = 39,
 
   /**
    * Set internal tuning or debugging knobs
@@ -207,6 +226,12 @@ export enum NetworkOptionCode {
   ClientThreadsPerVersion = 65,
 
   /**
+   * Adds an external client library to be used with a future version
+   * protocol. This option can be used testing purposes only!
+   */
+  FutureVersionClientLibrary = 66,
+
+  /**
    * Disables logging of client statistics, such as sampled transaction
    * activity.
    */
@@ -221,6 +246,13 @@ export enum NetworkOptionCode {
    * for use in production.
    */
   EnableRunLoopProfiling = 71,
+
+  /**
+   * Prevents the multi-version client API from being disabled, even if no
+   * external clients are configured. This option is required to use GRV
+   * caching.
+   */
+  DisableClientBypass = 72,
 
   /**
    * Enable client buggify - will make requests randomly fail (intended for
@@ -244,6 +276,18 @@ export enum NetworkOptionCode {
    * section will only fire if it was activated
    */
   ClientBuggifySectionFiredProbability = 83,
+
+  /**
+   * Set a tracer to run on the client. Should be set to the same value as
+   * the tracer set on the server.
+   */
+  DistributedClientTracer = 90,
+
+  /**
+   * Sets the directory for storing temporary files created by FDB client,
+   * such as temporary copies of client libraries. Defaults to /tmp
+   */
+  ClientTmpDir = 91,
 
   /**
    * This option is set automatically to communicate the list of supported
@@ -279,6 +323,10 @@ export type DatabaseOptions = {
   transaction_size_limit?: number  // value in bytes
   transaction_causal_read_risky?: true
   transaction_include_port_in_address?: true
+  transaction_automatic_idempotency?: true
+  transaction_bypass_unreadable?: true
+  use_config_database?: true
+  test_causal_read_risky?: true
 }
 
 export enum DatabaseOptionCode {
@@ -373,11 +421,38 @@ export enum DatabaseOptionCode {
   TransactionCausalReadRisky = 504,
 
   /**
-   * Addresses returned by get_addresses_for_key include the port when
-   * enabled. As of api version 630, this option is enabled by default and
-   * setting this has no effect.
+   * Deprecated. Addresses returned by get_addresses_for_key include the
+   * port when enabled. As of api version 630, this option is enabled by
+   * default and setting this has no effect.
    */
   TransactionIncludePortInAddress = 505,
+
+  /**
+   * Set a random idempotency id for all transactions. See the transaction
+   * option description for more information. This feature is in
+   * development and not ready for general use.
+   */
+  TransactionAutomaticIdempotency = 506,
+
+  /**
+   * Allows ``get`` operations to read from sections of keyspace that have
+   * become unreadable because of versionstamp operations. This sets the
+   * ``bypass_unreadable`` option of each transaction created by this
+   * database. See the transaction option description for more information.
+   */
+  TransactionBypassUnreadable = 700,
+
+  /**
+   * Use configuration database.
+   */
+  UseConfigDatabase = 800,
+
+  /**
+   * An integer between 0 and 100 (default is 0) expressing the probability
+   * that a client will verify it can't read stale data whenever it detects
+   * a recovery.
+   */
+  TestCausalReadRisky = 900,
 
 }
 
@@ -399,6 +474,7 @@ export type TransactionOptions = {
   initialize_new_database?: true
   access_system_keys?: true
   read_system_keys?: true
+  raw_access?: true
   debug_dump?: true
   debug_retry_logging?: string  // Optional transaction name
   transaction_logging_enable?: string // DEPRECATED
@@ -410,6 +486,8 @@ export type TransactionOptions = {
   retry_limit?: number  // number of times to retry
   max_retry_delay?: number  // value in milliseconds of maximum delay
   size_limit?: number  // value in bytes
+  idempotency_id?: string  // Unique ID
+  automatic_idempotency?: true
   snapshot_ryw_enable?: true
   snapshot_ryw_disable?: true
   lock_aware?: true
@@ -419,8 +497,15 @@ export type TransactionOptions = {
   use_provisional_proxies?: true
   report_conflicting_keys?: true
   special_key_space_relaxed?: true
+  special_key_space_enable_writes?: true
   tag?: string  // String identifier used to associated this transaction with a throttling group. Must not exceed 16 characters.
   auto_throttle_tag?: string  // String identifier used to associated this transaction with a throttling group. Must not exceed 16 characters.
+  span_parent?: Buffer  // A byte string of length 16 used to associate the span of this transaction with a parent
+  expensive_clear_cost_estimation_enable?: true
+  bypass_unreadable?: true
+  use_grv_cache?: true
+  skip_grv_cache?: true
+  authorization_token?: string  // A JSON Web Token authorized to access data belonging to one or more tenants, indicated by 'tenants' claim of the token's payload.
 }
 
 export enum TransactionOptionCode {
@@ -459,8 +544,8 @@ export enum TransactionOptionCode {
 
   /**
    * Committing this transaction will bypass the normal load balancing
-   * across proxies and go directly to the specifically nominated 'first
-   * proxy'.
+   * across commit proxies and go directly to the specifically nominated
+   * 'first commit proxy'.
    */
   CommitOnFirstProxy = 40,
 
@@ -473,7 +558,8 @@ export enum TransactionOptionCode {
    * small performance benefit for the client, but also disables a number
    * of client-side optimizations which are beneficial for transactions
    * which tend to read and write the same keys within a single
-   * transaction.
+   * transaction. It is an error to set this option after performing any
+   * reads or writes on the transaction.
    */
   ReadYourWritesDisable = 51,
 
@@ -512,15 +598,21 @@ export enum TransactionOptionCode {
 
   /**
    * Allows this transaction to read and modify system keys (those that
-   * start with the byte 0xFF)
+   * start with the byte 0xFF). Implies raw_access.
    */
   AccessSystemKeys = 301,
 
   /**
    * Allows this transaction to read system keys (those that start with the
-   * byte 0xFF)
+   * byte 0xFF). Implies raw_access.
    */
   ReadSystemKeys = 302,
+
+  /**
+   * Allows this transaction to access the raw key-space when tenant mode
+   * is on.
+   */
+  RawAccess = 303,
 
   DebugDump = 400,
 
@@ -631,6 +723,26 @@ export enum TransactionOptionCode {
   SizeLimit = 503,
 
   /**
+   * Associate this transaction with this ID for the purpose of checking
+   * whether or not this transaction has already committed. Must be at
+   * least 16 bytes and less than 256 bytes. This feature is in development
+   * and not ready for general use.
+   */
+  IdempotencyId = 504,
+
+  /**
+   * Automatically assign a random 16 byte idempotency id for this
+   * transaction. Prevents commits from failing with
+   * ``commit_unknown_result``. WARNING: If you are also using the
+   * multiversion client or transaction timeouts, if either
+   * cluster_version_changed or transaction_timed_out was thrown during a
+   * commit, then that commit may have already succeeded or may succeed in
+   * the future. This feature is in development and not ready for general
+   * use.
+   */
+  AutomaticIdempotency = 505,
+
+  /**
    * Snapshot read operations will see the results of writes done in the
    * same transaction. This is the default behavior.
    */
@@ -694,6 +806,13 @@ export enum TransactionOptionCode {
   SpecialKeySpaceRelaxed = 713,
 
   /**
+   * By default, users are not allowed to write to special keys. Enable
+   * this option will implicitly enable all options required to achieve the
+   * configuration change.
+   */
+  SpecialKeySpaceEnableWrites = 714,
+
+  /**
    * Adds a tag to the transaction that can be used to apply manual
    * targeted throttling. At most 5 tags can be set on a transaction.
    */
@@ -705,6 +824,47 @@ export enum TransactionOptionCode {
    * transaction.
    */
   AutoThrottleTag = 801,
+
+  /**
+   * Adds a parent to the Span of this transaction. Used for transaction
+   * tracing. A span can be identified with any 16 bytes
+   */
+  SpanParent = 900,
+
+  /**
+   * Asks storage servers for how many bytes a clear key range contains.
+   * Otherwise uses the location cache to roughly estimate this.
+   */
+  ExpensiveClearCostEstimationEnable = 1000,
+
+  /**
+   * Allows ``get`` operations to read from sections of keyspace that have
+   * become unreadable because of versionstamp operations. These reads will
+   * view versionstamp operations as if they were set operations that did
+   * not fill in the versionstamp.
+   */
+  BypassUnreadable = 1100,
+
+  /**
+   * Allows this transaction to use cached GRV from the database context.
+   * Defaults to off. Upon first usage, starts a background updater to
+   * periodically update the cache to avoid stale read versions. The
+   * disable_client_bypass option must also be set.
+   */
+  UseGrvCache = 1101,
+
+  /**
+   * Specifically instruct this transaction to NOT use cached GRV.
+   * Primarily used for the read version cache's background updater to
+   * avoid attempting to read a cached entry in specific situations.
+   */
+  SkipGrvCache = 1102,
+
+  /**
+   * Attach given authorization token to the transaction such that
+   * subsequent tenant-aware requests are authorized
+   */
+  AuthorizationToken = 2000,
 
 }
 
@@ -1020,6 +1180,19 @@ export const networkOptionData: OptionData = {
     paramDescription: "The identifier that will be part of all trace file names",
   },
 
+  trace_share_among_client_threads: {
+    code: 37,
+    description: "Use the same base trace file name for all client threads as it did before version 7.2. The current default behavior is to use distinct trace file names for client threads by including their version and thread index.",
+    type: 'none',
+  },
+
+  trace_partial_file_suffix: {
+    code: 39,
+    description: "Set file suffix for partially written log files.",
+    type: 'string',
+    paramDescription: "Append this suffix to partially written log files. When a log file is complete, it is renamed to remove the suffix. No separator is added between the file and the suffix. If you want to add a file extension, you should include the separator - e.g. '.tmp' instead of 'tmp' to add the 'tmp' extension.",
+  },
+
   knob: {
     code: 40,
     description: "Set internal tuning or debugging knobs",
@@ -1156,6 +1329,13 @@ export const networkOptionData: OptionData = {
     paramDescription: "Number of client threads to be spawned.  Each cluster will be serviced by a single client thread.",
   },
 
+  future_version_client_library: {
+    code: 66,
+    description: "Adds an external client library to be used with a future version protocol. This option can be used testing purposes only!",
+    type: 'string',
+    paramDescription: "path to client library",
+  },
+
   disable_client_statistics_logging: {
     code: 70,
     description: "Disables logging of client statistics, such as sampled transaction activity.",
@@ -1172,6 +1352,12 @@ export const networkOptionData: OptionData = {
   enable_run_loop_profiling: {
     code: 71,
     description: "Enables debugging feature to perform run loop profiling. Requires trace logging to be enabled. WARNING: this feature is not recommended for use in production.",
+    type: 'none',
+  },
+
+  disable_client_bypass: {
+    code: 72,
+    description: "Prevents the multi-version client API from being disabled, even if no external clients are configured. This option is required to use GRV caching.",
     type: 'none',
   },
 
@@ -1199,6 +1385,20 @@ export const networkOptionData: OptionData = {
     description: "Set the probability of an active CLIENT_BUGGIFY section being fired. A section will only fire if it was activated",
     type: 'int',
     paramDescription: "probability expressed as a percentage between 0 and 100",
+  },
+
+  distributed_client_tracer: {
+    code: 90,
+    description: "Set a tracer to run on the client. Should be set to the same value as the tracer set on the server.",
+    type: 'string',
+    paramDescription: "Distributed tracer type. Choose from none, log_file, or network_lossy",
+  },
+
+  client_tmp_dir: {
+    code: 91,
+    description: "Sets the directory for storing temporary files created by FDB client, such as temporary copies of client libraries. Defaults to /tmp",
+    type: 'string',
+    paramDescription: "Client directory for temporary files. ",
   },
 
   supported_client_versions: {
@@ -1307,7 +1507,31 @@ export const databaseOptionData: OptionData = {
 
   transaction_include_port_in_address: {
     code: 505,
-    description: "Addresses returned by get_addresses_for_key include the port when enabled. As of api version 630, this option is enabled by default and setting this has no effect.",
+    description: "Deprecated. Addresses returned by get_addresses_for_key include the port when enabled. As of api version 630, this option is enabled by default and setting this has no effect.",
+    type: 'none',
+  },
+
+  transaction_automatic_idempotency: {
+    code: 506,
+    description: "Set a random idempotency id for all transactions. See the transaction option description for more information. This feature is in development and not ready for general use.",
+    type: 'none',
+  },
+
+  transaction_bypass_unreadable: {
+    code: 700,
+    description: "Allows ``get`` operations to read from sections of keyspace that have become unreadable because of versionstamp operations. This sets the ``bypass_unreadable`` option of each transaction created by this database. See the transaction option description for more information.",
+    type: 'none',
+  },
+
+  use_config_database: {
+    code: 800,
+    description: "Use configuration database.",
+    type: 'none',
+  },
+
+  test_causal_read_risky: {
+    code: 900,
+    description: "An integer between 0 and 100 (default is 0) expressing the probability that a client will verify it can't read stale data whenever it detects a recovery.",
     type: 'none',
   },
 
@@ -1346,7 +1570,7 @@ export const transactionOptionData: OptionData = {
 
   commit_on_first_proxy: {
     code: 40,
-    description: "Committing this transaction will bypass the normal load balancing across proxies and go directly to the specifically nominated 'first proxy'.",
+    description: "Committing this transaction will bypass the normal load balancing across commit proxies and go directly to the specifically nominated 'first commit proxy'.",
     type: 'none',
   },
 
@@ -1358,7 +1582,7 @@ export const transactionOptionData: OptionData = {
 
   read_your_writes_disable: {
     code: 51,
-    description: "Reads performed by a transaction will not see any prior mutations that occured in that transaction, instead seeing the value which was in the database at the transaction's read version. This option may provide a small performance benefit for the client, but also disables a number of client-side optimizations which are beneficial for transactions which tend to read and write the same keys within a single transaction.",
+    description: "Reads performed by a transaction will not see any prior mutations that occured in that transaction, instead seeing the value which was in the database at the transaction's read version. This option may provide a small performance benefit for the client, but also disables a number of client-side optimizations which are beneficial for transactions which tend to read and write the same keys within a single transaction. It is an error to set this option after performing any reads or writes on the transaction.",
     type: 'none',
   },
 
@@ -1408,13 +1632,19 @@ export const transactionOptionData: OptionData = {
 
   access_system_keys: {
     code: 301,
-    description: "Allows this transaction to read and modify system keys (those that start with the byte 0xFF)",
+    description: "Allows this transaction to read and modify system keys (those that start with the byte 0xFF). Implies raw_access.",
     type: 'none',
   },
 
   read_system_keys: {
     code: 302,
-    description: "Allows this transaction to read system keys (those that start with the byte 0xFF)",
+    description: "Allows this transaction to read system keys (those that start with the byte 0xFF). Implies raw_access.",
+    type: 'none',
+  },
+
+  raw_access: {
+    code: 303,
+    description: "Allows this transaction to access the raw key-space when tenant mode is on.",
     type: 'none',
   },
 
@@ -1493,6 +1723,19 @@ export const transactionOptionData: OptionData = {
     paramDescription: "value in bytes",
   },
 
+  idempotency_id: {
+    code: 504,
+    description: "Associate this transaction with this ID for the purpose of checking whether or not this transaction has already committed. Must be at least 16 bytes and less than 256 bytes. This feature is in development and not ready for general use.",
+    type: 'string',
+    paramDescription: "Unique ID",
+  },
+
+  automatic_idempotency: {
+    code: 505,
+    description: "Automatically assign a random 16 byte idempotency id for this transaction. Prevents commits from failing with ``commit_unknown_result``. WARNING: If you are also using the multiversion client or transaction timeouts, if either cluster_version_changed or transaction_timed_out was thrown during a commit, then that commit may have already succeeded or may succeed in the future. This feature is in development and not ready for general use.",
+    type: 'none',
+  },
+
   snapshot_ryw_enable: {
     code: 600,
     description: "Snapshot read operations will see the results of writes done in the same transaction. This is the default behavior.",
@@ -1547,6 +1790,12 @@ export const transactionOptionData: OptionData = {
     type: 'none',
   },
 
+  special_key_space_enable_writes: {
+    code: 714,
+    description: "By default, users are not allowed to write to special keys. Enable this option will implicitly enable all options required to achieve the configuration change.",
+    type: 'none',
+  },
+
   tag: {
     code: 800,
     description: "Adds a tag to the transaction that can be used to apply manual targeted throttling. At most 5 tags can be set on a transaction.",
@@ -1559,6 +1808,44 @@ export const transactionOptionData: OptionData = {
     description: "Adds a tag to the transaction that can be used to apply manual or automatic targeted throttling. At most 5 tags can be set on a transaction.",
     type: 'string',
     paramDescription: "String identifier used to associated this transaction with a throttling group. Must not exceed 16 characters.",
+  },
+
+  span_parent: {
+    code: 900,
+    description: "Adds a parent to the Span of this transaction. Used for transaction tracing. A span can be identified with any 16 bytes",
+    type: 'bytes',
+    paramDescription: "A byte string of length 16 used to associate the span of this transaction with a parent",
+  },
+
+  expensive_clear_cost_estimation_enable: {
+    code: 1000,
+    description: "Asks storage servers for how many bytes a clear key range contains. Otherwise uses the location cache to roughly estimate this.",
+    type: 'none',
+  },
+
+  bypass_unreadable: {
+    code: 1100,
+    description: "Allows ``get`` operations to read from sections of keyspace that have become unreadable because of versionstamp operations. These reads will view versionstamp operations as if they were set operations that did not fill in the versionstamp.",
+    type: 'none',
+  },
+
+  use_grv_cache: {
+    code: 1101,
+    description: "Allows this transaction to use cached GRV from the database context. Defaults to off. Upon first usage, starts a background updater to periodically update the cache to avoid stale read versions. The disable_client_bypass option must also be set.",
+    type: 'none',
+  },
+
+  skip_grv_cache: {
+    code: 1102,
+    description: "Specifically instruct this transaction to NOT use cached GRV. Primarily used for the read version cache's background updater to avoid attempting to read a cached entry in specific situations.",
+    type: 'none',
+  },
+
+  authorization_token: {
+    code: 2000,
+    description: "Attach given authorization token to the transaction such that subsequent tenant-aware requests are authorized",
+    type: 'string',
+    paramDescription: "A JSON Web Token authorized to access data belonging to one or more tenants, indicated by 'tenants' claim of the token's payload.",
   },
 
 }

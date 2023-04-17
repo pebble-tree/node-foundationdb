@@ -1,4 +1,4 @@
-#!/usr/bin/env node -r ts-node/register
+#!/usr/bin/env -S node -r ts-node/register
 
 // This is not used as part of the project!
 // 
