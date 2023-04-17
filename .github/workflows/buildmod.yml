@@ -83,6 +83,8 @@ jobs:
     - run: sudo installer -pkg FoundationDB-7.2.5_arm64.pkg -target /
 
     - run: yarn
+      # When you just run yarn, it'll compile for x86 into the build/ directory. This is hacky but ...
+    - run: rm -rf build
     - run: yarn prebuild --arch arm64
 
     - run: yarn test
