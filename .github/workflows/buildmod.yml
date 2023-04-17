@@ -51,7 +51,8 @@ jobs:
     - run: sudo installer -pkg FoundationDB-7.2.5_x86_64.pkg -target /
 
     - run: yarn
-    - run: yarn prebuild
+    - run: yarn prebuild --arch x64+arm64
+    # - run: yarn prebuild --arch arm64
 
     # Build for apple M1 and make sure the prebuilt module actually has arm64 code
     # Blocked by https://github.com/actions/virtual-environments/issues/2486
@@ -67,72 +68,73 @@ jobs:
         path: prebuilds/darwin-x64
         retention-days: 5
 
-  prebuild-macos-arm:
-    # It would be better to just build a universal binary for macos + linux but the foundationdb library
-    # itself isn't a universal binary. Sooo I don't think that would work.
-    runs-on: macos-latest
+  # prebuild-macos-arm:
+  #   # It would be better to just build a universal binary for macos + linux but the foundationdb library
+  #   # itself isn't a universal binary. Sooo I don't think that would work.
+  #   runs-on: macos-latest
 
-    steps:
-    - uses: actions/checkout@v2
-    - name: Setup nodejs
-      uses: actions/setup-node@v2
-      with:
-        node-version: 14
+  #   steps:
+  #   - uses: actions/checkout@v2
+  #   - name: Setup nodejs
+  #     uses: actions/setup-node@v2
+  #     with:
+  #       node-version: 14
 
-    - run: wget "https://github.com/apple/foundationdb/releases/download/7.2.5/FoundationDB-7.2.5_arm64.pkg"
-    - run: sudo installer -pkg FoundationDB-7.2.5_arm64.pkg -target /
+  #   - run: wget "https://github.com/apple/foundationdb/releases/download/7.2.5/FoundationDB-7.2.5_arm64.pkg"
+  #   - run: sudo installer -pkg FoundationDB-7.2.5_arm64.pkg -target /
 
-    - run: yarn
-      # When you just run yarn, it'll compile for x86 into the build/ directory. This is hacky but ...
-    - run: rm -rf build
-    - run: yarn prebuild --arch arm64
+  #   - run: yarn
+  #     # When you just run yarn, it'll compile for x86 into the build/ directory. This is hacky but ...
+  #   - run: rm -rf build
+  #   - run: yarn prebuild --arch arm64
 
-    - run: yarn test
+  #   - run: yarn test
 
-    - name: Upload artifacts
-      uses: actions/upload-artifact@v2
-      with:
-        name: darwin-arm64
-        path: prebuilds/darwin-arm64
-        retention-days: 5
+  #   - name: Upload artifacts
+  #     uses: actions/upload-artifact@v2
+  #     with:
+  #       name: darwin-arm64
+  #       path: prebuilds/darwin-arm64
+  #       retention-days: 5
 
-  prebuild-windows:
-    runs-on: windows-latest
-    env:
-      FOUNDATIONDB_INSTALL_PATH: "C:\\Program Files\\FoundationDB"
+  # Disabled until the windows install image is fixed.
+  # prebuild-windows:
+  #   runs-on: windows-latest
+  #   env:
+  #     FOUNDATIONDB_INSTALL_PATH: "C:\\Program Files\\FoundationDB"
 
-    steps:
-    - uses: actions/checkout@v2
-    - name: Setup nodejs
-      uses: actions/setup-node@v2
-      with:
-        node-version: 18
+  #   steps:
+  #   - uses: actions/checkout@v2
+  #   - name: Setup nodejs
+  #     uses: actions/setup-node@v2
+  #     with:
+  #       node-version: 18
 
-    # Bleh - the 7.xx builds are currently missing one of the header files. More detail here:
-    # https://forums.foundationdb.org/t/fdb-c-types-h-missing-in-windows-install-image/3817
-    - run: (new-object net.webclient).DownloadFile('https://github.com/apple/foundationdb/releases/download/7.2.5/foundationdb-7.2.5-x64.msi', 'c:\foundationdb.msi')
-    - run: dir c:\foundationdb.msi
-    - run: msiexec /i c:\foundationdb.msi /quiet /passive /norestart /log install.log | Out-Null
+  #   # Bleh - the 7.xx builds are currently missing one of the header files. More detail here:
+  #   # https://forums.foundationdb.org/t/fdb-c-types-h-missing-in-windows-install-image/3817
+  #   - run: (new-object net.webclient).DownloadFile('https://github.com/apple/foundationdb/releases/download/7.2.5/foundationdb-7.2.5-x64.msi', 'c:\foundationdb.msi')
+  #   - run: dir c:\foundationdb.msi
+  #   - run: msiexec /i c:\foundationdb.msi /quiet /passive /norestart /log install.log | Out-Null
 
-    - run: echo "C:\\Program Files\\FoundationDB\bin" >> $GITHUB_PATH
+  #   - run: echo "C:\\Program Files\\FoundationDB\bin" >> $GITHUB_PATH
 
-    - run: yarn
-    - run: yarn prebuild
+  #   - run: yarn
+  #   - run: yarn prebuild
     
-    # For some reason this test fails - it can't find the prebuild even though its *right there*!!
-    # - run: yarn test
-    # - run: Get-ChildItem -Recurse prebuild
+  #   # For some reason this test fails - it can't find the prebuild even though its *right there*!!
+  #   # - run: yarn test
+  #   # - run: Get-ChildItem -Recurse prebuild
 
-    - name: Upload artifacts
-      uses: actions/upload-artifact@v2
-      with:
-        name: win32-x64
-        path: prebuilds/win32-x64
-        retention-days: 5
+  #   - name: Upload artifacts
+  #     uses: actions/upload-artifact@v2
+  #     with:
+  #       name: win32-x64
+  #       path: prebuilds/win32-x64
+  #       retention-days: 5
 
   deploy-npm:
     # needs: [prebuild-windows, prebuild-macos, prebuild-linux]
-    needs: [prebuild-macos-x86, prebuild-macos-arm, prebuild-linux]
+    needs: [prebuild-macos-x86, prebuild-linux]
     runs-on: ubuntu-latest
 
     steps:
