@@ -12,6 +12,7 @@ Node bindings for [FoundationDB](https://foundationdb.org)!
 - [Tuple encoder](#tuple-encoder)
 - [Directories](#directories)
 
+> **NOTE ON WINDOWS SUPPORT*: Windows support for node-foundationdb is currently disabled due to a [missing file in the windows foundationdb MSI](https://forums.foundationdb.org/t/fdb-c-types-h-missing-in-windows-install-image/3817). Please bother the foundationdb team if this is important to you.
 
 ## Usage
 
@@ -44,7 +45,7 @@ Use it!
 
 ```javascript
 const fdb = require('foundationdb')
-fdb.setAPIVersion(620) // Must be called before database is opened
+fdb.setAPIVersion(700) // Must be called before database is opened
 
 ;(async () => {
   const dbRoot = fdb.open() // or open('/path/to/fdb.cluster')
@@ -998,7 +999,6 @@ await db.at(messagesDir).doTn(async txn => {
 ```
 
 > TODO: Flesh out the directory layer documentation here. The API is almost identical to the equivalent API in python / ruby.
-
 
 ## Notes on API versions
 

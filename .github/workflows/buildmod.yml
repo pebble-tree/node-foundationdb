@@ -102,7 +102,8 @@ jobs:
         retention-days: 5
 
   deploy-npm:
-    needs: [prebuild-windows, prebuild-macos, prebuild-linux]
+    # needs: [prebuild-windows, prebuild-macos, prebuild-linux]
+    needs: [prebuild-macos, prebuild-linux]
     runs-on: ubuntu-latest
 
     steps:
