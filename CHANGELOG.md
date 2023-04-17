@@ -1,6 +1,9 @@
 # HEAD
 
 - Fixed an issue where the directory layer would "reset" the transformers when a directory was created or opened. Thanks @NuckChorris for [reporting this problem](https://github.com/josephg/node-foundationdb/issues/70).
+- Updated to support FoundationDB API version 720. This adds 2 new APIs:
+  - `txn.getEstimatedRangeSizeBytes`
+  - `txn.getRangeSplitPoints`
 
 # 1.1.4
 

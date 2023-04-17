@@ -154,6 +154,14 @@ export default class Database<KeyIn = NativeValue, KeyOut = Buffer, ValIn = Nati
     return this.getRangeAll(prefix, undefined, opts)
   }
 
+  getEstimatedRangeSizeBytes(start: KeyIn, end: KeyIn): Promise<number> {
+    return this.doTransaction(tn => tn.getEstimatedRangeSizeBytes(start, end))
+  }
+
+  getRangeSplitPoints(start: KeyIn, end: KeyIn, chunkSize: number): Promise<KeyOut[]> {
+    return this.doTransaction(tn => tn.getRangeSplitPoints(start, end, chunkSize))
+  }
+
   // These functions all need to return their values because they're returning a child promise.
   atomicOpNative(op: MutationType, key: NativeValue, oper: NativeValue) {
     return this.doOneshot(tn => tn.atomicOpNative(op, key, oper))

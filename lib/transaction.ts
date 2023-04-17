@@ -358,6 +358,23 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
     .then(r => ({more: r.more, results: this._encodeRangeResult(r.results)}))
   }
 
+  getEstimatedRangeSizeBytes(start: KeyIn, end: KeyIn): Promise<number> {
+    return this._tn.getEstimatedRangeSizeBytes(
+      this._keyEncoding.pack(start),
+      this._keyEncoding.pack(end)
+    )
+  }
+
+  getRangeSplitPoints(start: KeyIn, end: KeyIn, chunkSize: number): Promise<KeyOut[]> {
+    return this._tn.getRangeSplitPoints(
+      this._keyEncoding.pack(start),
+      this._keyEncoding.pack(end),
+      chunkSize
+    ).then(results => (
+      results.map(r => this._keyEncoding.unpack(r))
+    ))
+  }
+
   /**
    * This method is functionally the same as *getRange*, but values are returned
    * in the batches they're delivered in from the database. This method is

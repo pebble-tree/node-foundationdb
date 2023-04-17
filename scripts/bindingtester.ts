@@ -1,12 +1,24 @@
-#!/usr/bin/env node -r ts-node/register --enable-source-maps
+#!/usr/bin/env -S node --enable-source-maps
+// #!/usr/bin/env -S node -r ts-node/register --enable-source-maps
 
 // This file implements the foundationdb binding API tester fuzzer backend
 // described here:
-// 
+//
 // https://github.com/apple/foundationdb/blob/master/bindings/bindingtester/spec/bindingApiTester.md
 
 // This script should not be invoked directly. Instead checkout foundationdb
 // and invoke the binding tester from there, pointing it at this script.
+
+// To run this script:
+//
+// 1. Checkout and build foundationdb (with a version matching the installed version).
+// 2. cp (build directory)/bindings/python/fdb/fdboptions.py bindings/python/fdb/
+// 3. Add this line to bindings/bindingtester/known_testers.py:
+//
+// 'node': Tester('node', '/home/seph/src/node-foundationdb/dist/scripts/bindingtester.js', 53, 500, 720, types=ALL_TYPES),
+//
+// 4. Use the run_tester_loop.sh script to run the bindings tester. You will need to comment out the other bindings
+//    and add 'node'.
 
 import * as fdb from '../lib'
 import {
@@ -305,6 +317,21 @@ const makeMachine = (db: Database, initialName: Buffer) => {
         .filter(([k]) => bufBeginsWith(k as Buffer, prefix))
 
       pushValue(tuple.pack(Array.prototype.concat.apply([], results)))
+    },
+    async GET_ESTIMATED_RANGE_SIZE(oper) {
+      const beginKey = await popBuffer()
+      const endKey = await popBuffer()
+      await oper.getEstimatedRangeSizeBytes(beginKey, endKey) // Result ignored.
+      pushLiteral('GOT_ESTIMATED_RANGE_SIZE')
+    },
+    async GET_RANGE_SPLIT_POINTS(oper) {
+      const beginKey = await popBuffer()
+      const endKey = await popBuffer()
+      const chunkSize = await popInt()
+
+      const results = await oper.getRangeSplitPoints(beginKey, endKey, Number(chunkSize))
+      // For some reason, the results are ignored.
+      pushLiteral('GOT_RANGE_SPLIT_POINTS')
     },
     async GET_READ_VERSION(oper) {
       try {
@@ -724,6 +751,9 @@ const makeMachine = (db: Database, initialName: Buffer) => {
       // verbose = (instrId > 12700 && instrId < 12710) || (instrId > 12770 && instrId < 12788)
 
       try {
+        if (operations[opcode] == null) {
+          throw Error(`Unsupported opcode ${opcode}`)
+        }
         await operations[opcode](operand, ...oper)
       } catch (e: any) {
         if (verbose) console.log('Exception:', e.message)

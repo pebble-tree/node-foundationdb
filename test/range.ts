@@ -15,7 +15,8 @@ withEachDb(db => describe('key value functionality', () => {
   const prefill = async () => {
     const _db = db.at(null, numXF, numXF)
     await _db.doTransaction(async tn => {
-      for (let i = 0; i < 100; i++) tn.set(i, i)
+      // Originally I just filled 100 values, but getEstimatedRangeSize needs more.
+      for (let i = 0; i < 1000; i++) tn.set(i, i)
     })
 
     return _db
@@ -31,14 +32,14 @@ withEachDb(db => describe('key value functionality', () => {
 
         i++
       }
-      assert.strictEqual(i, 100)
+      assert.strictEqual(i, 1000)
     })
   })
-  
+
   it('can correctly reverse the range query', async () => {
     const _db = await prefill()
     await _db.doTransaction(async tn => {
-      let i = 100
+      let i = 1000
       for await (const [key, val] of tn.getRange(0, 1000, {reverse: true})) {
         i--
         assert.strictEqual(key, i)
@@ -61,7 +62,7 @@ withEachDb(db => describe('key value functionality', () => {
           i++
         }
       }
-      assert.strictEqual(i, 100)
+      assert.strictEqual(i, 1000)
     })
   })
 
@@ -100,6 +101,20 @@ withEachDb(db => describe('key value functionality', () => {
   })
 
   it('getRange without a specified end uses start as a prefix')
+
+  it('calls getEstimatedRangeSize correctly', async () => {
+    const _db = await prefill()
+    const size = await _db.getEstimatedRangeSizeBytes(0, 1000)
+    assert(typeof size === 'number')
+    // assert(size > 0) // This might not be reliable because getEstimatedRangeSize could change its implementation.
+  })
+
+  it('getRangeSplitPoints splits the range', async () => {
+    const _db = await prefill()
+    const keys = await _db.getRangeSplitPoints(0, 1000, 3)
+    assert(keys.length >= 2)
+    keys.forEach(x => assert(typeof x === 'number'))
+  })
 
   describe('selectors', () => {
     const data = [['a', 'A'], ['b', 'B'], ['c', 'C']]

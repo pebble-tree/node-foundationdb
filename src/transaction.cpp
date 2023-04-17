@@ -239,6 +239,24 @@ static MaybeValue getKeyValueList(napi_env env, FDBFuture* future, fdb_error_t* 
   return wrap_ok(returnObj);
 }
 
+static MaybeValue getKeyList(napi_env env, FDBFuture* future, fdb_error_t* errOut) {
+  const FDBKey *keyArr;
+  int len;
+
+  *errOut = fdb_future_get_key_array(future, &keyArr, &len);
+  if (UNLIKELY(*errOut)) return wrap_null();
+
+  napi_value jsArray;
+  TRY(napi_create_array_with_length(env, len, &jsArray));
+  for(int i = 0; i < len; i++) {
+    napi_value keyBuf;
+    TRY(napi_create_buffer_copy(env, keyArr[i].key_length, keyArr[i].key, NULL, &keyBuf));
+    TRY(napi_set_element(env, jsArray, i, keyBuf));
+  }
+
+  return wrap_ok(jsArray);
+}
+
 static MaybeValue getStringArray(napi_env env, FDBFuture* future, fdb_error_t* errOut) {
   const char **strings;
   int stringCount;
@@ -519,6 +537,45 @@ static napi_value clearRange(napi_env env, napi_callback_info info) {
   return NULL;
 }
 
+// getEstimatedRangeSizeBytes(start, end) -> Future<number>.
+static napi_value getEstimatedRangeSizeBytes(napi_env env, napi_callback_info info) {
+  FDBTransaction *tr = (FDBTransaction *)getWrapped(env, info);
+  if (UNLIKELY(tr == NULL)) return NULL;
+  GET_ARGS(env, info, args, 3);
+
+  StringParams start;
+  TRY_V(toStringParams(env, args[0], &start));
+  StringParams end;
+  TRY_V(toStringParams(env, args[1], &end));
+
+  FDBFuture *f = fdb_transaction_get_estimated_range_size_bytes(tr, start.str, start.len, end.str, end.len);
+
+  destroyStringParams(&start);
+  destroyStringParams(&end);
+  return futureToJS(env, f, args[2], getInt64ToNumber).value;
+}
+
+// getRangeSplitPoints(start, end, count).
+static napi_value getRangeSplitPoints(napi_env env, napi_callback_info info) {
+  FDBTransaction *tr = (FDBTransaction *)getWrapped(env, info);
+  if (UNLIKELY(tr == NULL)) return NULL;
+  GET_ARGS(env, info, args, 4);
+
+  StringParams start;
+  TRY_V(toStringParams(env, args[0], &start));
+  StringParams end;
+  TRY_V(toStringParams(env, args[1], &end));
+  int64_t chunkSize;
+  TRY_V(napi_get_value_int64(env, args[2], &chunkSize));
+
+  FDBFuture *f = fdb_transaction_get_range_split_points(tr, start.str, start.len, end.str, end.len, chunkSize);
+
+  destroyStringParams(&start);
+  destroyStringParams(&end);
+
+  return futureToJS(env, f, args[3], getKeyList).value;
+}
+
 // watch("somekey", ignoreStandardErrors) -> {cancel(), promise}. This does
 // not return a promise. Due to race conditions the callback may be called
 // even after cancel has been called. The callback callback is *always* called
@@ -658,6 +715,9 @@ napi_status initTransaction(napi_env env) {
 
     FN_DEF(getRange),
     FN_DEF(clearRange),
+
+    FN_DEF(getEstimatedRangeSizeBytes),
+    FN_DEF(getRangeSplitPoints),
 
     FN_DEF(watch),
 

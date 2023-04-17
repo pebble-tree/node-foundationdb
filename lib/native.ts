@@ -61,6 +61,9 @@ export interface NativeTransaction {
 
   clearRange(start: NativeValue, end: NativeValue): void
 
+  getEstimatedRangeSizeBytes(start: NativeValue, end: NativeValue): Promise<number>
+  getRangeSplitPoints(start: NativeValue, end: NativeValue, chunkSize: number): Promise<Buffer[]>
+
   watch(key: NativeValue, ignoreStandardErrs: boolean): Watch
 
   addReadConflictRange(start: NativeValue, end: NativeValue): void
