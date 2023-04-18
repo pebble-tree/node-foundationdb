@@ -52,6 +52,8 @@ jobs:
     - run: sudo installer -pkg FoundationDB-7.2.5_x86_64.pkg -target /
 
     - run: yarn
+    - run: yarn test
+
     # Could do a universal binary, but fdb_c isn't universal. This should be fine.
     - run: yarn prebuild --arch x64
 
@@ -66,8 +68,6 @@ jobs:
     # Blocked by https://github.com/actions/virtual-environments/issues/2486
     # - run: yarn prebuild --arch arm64
     # - run: lipo -archs prebuilds/darwin-arm64/node.napi.node | grep -q arm64
-
-    - run: yarn test
 
     - name: Upload artifacts
       uses: actions/upload-artifact@v3
