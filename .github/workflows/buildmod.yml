@@ -20,10 +20,10 @@ jobs:
       with:
         node-version: 18
 
-    - run: wget "https://github.com/apple/foundationdb/releases/download/7.2.5/foundationdb-clients_7.2.5-1_amd64.deb"
+    - run: wget -nv "https://github.com/apple/foundationdb/releases/download/7.2.5/foundationdb-clients_7.2.5-1_amd64.deb"
     - run: sudo dpkg -i foundationdb-clients_7.2.5-1_amd64.deb
     - run: sudo mkdir -p /var/lib/foundationdb/data
-    - run: wget "https://github.com/apple/foundationdb/releases/download/7.2.5/foundationdb-server_7.2.5-1_amd64.deb"
+    - run: wget -nv "https://github.com/apple/foundationdb/releases/download/7.2.5/foundationdb-server_7.2.5-1_amd64.deb"
     - run: sudo dpkg -i foundationdb-server_7.2.5-1_amd64.deb
 
     - run: yarn
@@ -48,7 +48,7 @@ jobs:
         node-version: 14
 
     # x86 first.
-    - run: wget "https://github.com/apple/foundationdb/releases/download/7.2.5/FoundationDB-7.2.5_x86_64.pkg"
+    - run: wget -nv "https://github.com/apple/foundationdb/releases/download/7.2.5/FoundationDB-7.2.5_x86_64.pkg"
     - run: sudo installer -pkg FoundationDB-7.2.5_x86_64.pkg -target /
 
     - run: yarn
@@ -57,9 +57,8 @@ jobs:
     # Could do a universal binary, but fdb_c isn't universal. This should be fine.
     - run: yarn prebuild --arch x64
 
-    # Now uninstall that and install the arm version of the package
-    - run: /usr/local/foundationdb/uninstall-FoundationDB.sh
-    - run: wget "https://github.com/apple/foundationdb/releases/download/7.2.5/FoundationDB-7.2.5_arm64.pkg"
+    # Now install the arm version of the package and build for ARM. (Cross-compiling doesn't work otherwise - not sure why)
+    - run: wget -nv "https://github.com/apple/foundationdb/releases/download/7.2.5/FoundationDB-7.2.5_arm64.pkg"
     - run: sudo installer -pkg FoundationDB-7.2.5_arm64.pkg -target /
 
     - run: yarn prebuild --arch arm64
