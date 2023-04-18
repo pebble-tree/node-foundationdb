@@ -47,12 +47,19 @@ jobs:
       with:
         node-version: 14
 
+    # x86 first.
     - run: wget "https://github.com/apple/foundationdb/releases/download/7.2.5/FoundationDB-7.2.5_x86_64.pkg"
     - run: sudo installer -pkg FoundationDB-7.2.5_x86_64.pkg -target /
 
     - run: yarn
     # Could do a universal binary, but fdb_c isn't universal. This should be fine.
     - run: yarn prebuild --arch x64
+
+    # Now uninstall that and install the arm version of the package
+    - run: /usr/local/foundationdb/uninstall-FoundationDB.sh
+    - run: wget "https://github.com/apple/foundationdb/releases/download/7.2.5/FoundationDB-7.2.5_arm64.pkg"
+    - run: sudo installer -pkg FoundationDB-7.2.5_arm64.pkg -target /
+
     - run: yarn prebuild --arch arm64
 
     # Build for apple M1 and make sure the prebuilt module actually has arm64 code
