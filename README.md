@@ -2,6 +2,12 @@
 
 Node bindings for [FoundationDB](https://www.foundationdb.org/)!
 
+Fork of https://www.npmjs.com/package/foundationdb, by Seph Gentle
+
+Forked to allow lifecycle events to be hooked into across a transaction. 
+
+For our purposes, this allows us to keep indexes up to date in a single place in the application. 
+
 - [Getting started](#usage)
 - [Connecting to your database cluster](#connecting-to-your-cluster)
 - [Database Transactions](#database-transactions)
