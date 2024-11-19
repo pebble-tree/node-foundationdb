@@ -1,8 +1,8 @@
-import {platform} from 'os'
+import { platform } from 'os'
 import path = require('path')
 
 import FDBError from './error'
-import {MutationType, StreamingMode} from './opts.g'
+import { MutationType, StreamingMode } from './opts.g'
 
 export type NativeValue = string | Buffer
 
@@ -49,7 +49,8 @@ export interface NativeTransaction {
     start: NativeValue, beginOrEq: boolean, beginOffset: number,
     end: NativeValue, endOrEq: boolean, endOffset: number,
     limit: number, target_bytes: number,
-    mode: StreamingMode, iter: number, isSnapshot: boolean, reverse: boolean
+    mode: StreamingMode, iter: number, isSnapshot: boolean, reverse: boolean,
+    mappedPrefix: NativeValue
   ): Promise<KVList>
 
   getRange(

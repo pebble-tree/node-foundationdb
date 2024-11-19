@@ -239,6 +239,65 @@ static MaybeValue getKeyValueList(napi_env env, FDBFuture* future, fdb_error_t* 
   return wrap_ok(returnObj);
 }
 
+
+static MaybeValue getMappedKeyValueList(napi_env env, FDBFuture* future, fdb_error_t* errOut) {
+  const FDBMappedKeyValue *kv;
+  int len;
+  fdb_bool_t more;
+
+  *errOut = fdb_future_get_mappedkeyvalue_array(future, &kv, &len, &more);
+  if (UNLIKELY(*errOut)) return wrap_null();
+
+  /*
+   * Constructing a JavaScript object with:
+   * { results: [[key, value], [key, value], ...], more }
+   */
+  napi_value returnObj;
+  TRY(napi_create_object(env, &returnObj));
+  napi_value jsValueArray;
+  TRY(napi_create_array_with_length(env, (size_t)len, &jsValueArray));
+
+  for(int i = 0; i < len; i++) {
+    napi_value triple;
+    TRY(napi_create_array_with_length(env, 3, &triple));
+    
+    // TODO: Again, should be able to avoid this copy with clever use of references.
+    napi_value keyBuf;
+    TRY(napi_create_buffer_copy(env, kv[i].key.key_length, kv[i].key.key, NULL, &keyBuf));
+    napi_value valBuf;
+    TRY(napi_create_buffer_copy(env, kv[i].value.key_length, kv[i].value.key, NULL, &valBuf));
+  
+    TRY(napi_set_element(env, triple, 0, keyBuf));
+    TRY(napi_set_element(env, triple, 1, valBuf));
+    //add in the mapped results
+    FDBGetRangeReqAndResult range = kv[i].getRange;
+    napi_value mapped;
+    TRY(napi_create_array_with_length(env, range.m_size, &mapped));
+    TRY(napi_set_element(env, triple, 2, mapped));
+    auto range_pos = range.begin;
+    for(int j=0; j<range.m_size; j++){
+          napi_value pair;
+          TRY(napi_create_array_with_length(env, 2, &pair));
+          napi_value keyBuf;
+          TRY(napi_create_buffer_copy(env, range.data[j].key_length, range.data[j].key, NULL, &keyBuf));
+          napi_value valBuf;
+          TRY(napi_create_buffer_copy(env, range.data[j].value_length, range.data[j].value, NULL, &valBuf));
+        
+          TRY(napi_set_element(env, pair, 0, keyBuf));
+          TRY(napi_set_element(env, pair, 1, valBuf));
+          TRY(napi_set_element(env, mapped, j, pair));
+    }
+    TRY(napi_set_element(env, jsValueArray, i, triple));
+  }
+
+  TRY(napi_set_named_property(env, returnObj, "results", jsValueArray));
+  napi_value jsMore;
+  TRY(napi_get_boolean(env, !!more, &jsMore));
+  TRY(napi_set_named_property(env, returnObj, "more", jsMore));
+
+  return wrap_ok(returnObj);
+}
+
 static MaybeValue getKeyList(napi_env env, FDBFuture* future, fdb_error_t* errOut) {
   const FDBKey *keyArr;
   int len;
@@ -468,13 +527,14 @@ static napi_value atomicOp(napi_env env, napi_callback_info info) {
 //   limit or 0, target_bytes or 0,
 //   streamingMode, iteration,
 //   snapshot, reverse,
+//   mappedPrefix
 //   [cb]
 // )
 static napi_value getRange(napi_env env, napi_callback_info info) {
   FDBTransaction *tr = (FDBTransaction *)getWrapped(env, info);
   if (UNLIKELY(tr == NULL)) return NULL;
 
-  GET_ARGS(env, info, args, 13);
+  GET_ARGS(env, info, args, 14);
 
   StringParams start;
   TRY_V(toStringParams(env, args[0], &start));
@@ -506,18 +566,30 @@ static napi_value getRange(napi_env env, napi_callback_info info) {
   TRY_V(napi_get_value_bool(env, args[10], &snapshot));
   bool reverse;
   TRY_V(napi_get_value_bool(env, args[11], &reverse));
+  StringParams mapped;
+  TRY_V(toStringParams(env, args[12], &mapped));
 
-  FDBFuture *f = fdb_transaction_get_range(tr,
+  FDBFuture *f = mapped.len==0
+  ?fdb_transaction_get_range(tr,
     start.str, start.len, (fdb_bool_t)startOrEqual, startOffset,
     end.str, end.len, (fdb_bool_t)endOrEqual, endOffset,
+    limit, target_bytes,
+    mode, iteration,
+    snapshot, reverse)
+  :fdb_transaction_get_mapped_range(tr,
+    start.str, start.len, (fdb_bool_t)startOrEqual, startOffset,
+    end.str, end.len, (fdb_bool_t)endOrEqual, endOffset,
+    mapped.str, mapped.len,
     limit, target_bytes,
     mode, iteration,
     snapshot, reverse);
 
   destroyStringParams(&start);
   destroyStringParams(&end);
-
-  return futureToJS(env, f, args[12], getKeyValueList).value;
+  destroyStringParams(&mapped);
+  if(mapped.len==0)
+    return futureToJS(env, f, args[13], getKeyValueList).value;
+  return futureToJS(env, f, args[13], getMappedKeyValueList).value;
 }
 
 // clearRange(start, end). Clears range [start, end).

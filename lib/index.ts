@@ -159,3 +159,4 @@ export const createClusterSync = deprecate((clusterFile?: string) => {
 // keep the process running?
 
 export { Operations, TransactionEventHandler, EmptyEventHandler } from "./customised/operations"
+export { MappedRange } from "./mappedRange"

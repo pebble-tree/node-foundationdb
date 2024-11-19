@@ -33,6 +33,7 @@ import {
 } from './versionstamp'
 import Subspace, { GetSubspace } from './subspace'
 import { EmptyEventHandler, Operations, TransactionEventHandler } from './customised/operations'
+import { MappedRange } from './mappedRange'
 
 const byteZero = Buffer.alloc(1)
 byteZero.writeUInt8(0, 0)
@@ -376,25 +377,29 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
   }
 
   // This just destructively edits the result in-place.
-  private _encodeRangeResult(r: [Buffer, Buffer][]): [KeyOut, ValOut][] {
+  private _encodeRangeResult<CKO = KeyOut, CVO = ValOut>(r: [Buffer, Buffer][], mapper?: MappedRange<CKO, CVO>): [CKO, CVO][] {
     // This is slightly faster but I have to throw away the TS checks in the process. :/
     for (let i = 0; i < r.length; i++) {
-      ; (r as any)[i][0] = this._keyEncoding.unpack(r[i][0])
-        ; (r as any)[i][1] = this._valueEncoding.unpack(r[i][1])
+      ; (r as any)[i][0] = mapper ? mapper.target.getSubspace().unpackKey(r[i][0])
+        : this._keyEncoding.unpack(r[i][0])
+        ; (r as any)[i][1] = mapper
+          ? mapper.target.getSubspace().unpackValue(r[i][1])
+          : this._valueEncoding.unpack(r[i][1])
+
     }
-    return r as any as [KeyOut, ValOut][]
+    return r as any as [CKO, CVO][]
   }
 
   private getRangeNative(start: KeySelector<NativeValue>,
     end: KeySelector<NativeValue> | null,  // If not specified, start is used as a prefix.
     limit: number, targetBytes: number, streamingMode: StreamingMode,
-    iter: number, reverse: boolean): Promise<KVList<Buffer, Buffer>> {
+    iter: number, reverse: boolean, mappedPrefix?: NativeValue): Promise<KVList<Buffer, Buffer>> {
     const _end = end != null ? end : keySelector.firstGreaterOrEqual(strInc(start.key))
     return this._tn.getRange(
       start.key, start.orEqual, start.offset,
       _end.key, _end.orEqual, _end.offset,
       limit, targetBytes, streamingMode,
-      iter, this.isSnapshot, reverse)
+      iter, this.isSnapshot, reverse, mappedPrefix || Buffer.from([]))
   }
 
   async getRangeRaw(start: KeySelector<KeyIn>, end: KeySelector<KeyIn> | null,
@@ -450,10 +455,12 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
    * 
    * @see Transaction.getRange
    */
-  async *getRangeBatch(
+  async *getRangeBatch<CKO = KeyOut, CVO = ValOut>(
     _start: KeyIn | KeySelector<KeyIn>, // Consider also supporting string / buffers for these.
     _end?: KeyIn | KeySelector<KeyIn>, // If not specified, start is used as a prefix.
-    opts: RangeOptions = {}) {
+    opts: RangeOptions = {},
+    mapper?: MappedRange<CKO, CVO>
+  ) {
     if (this.eventHandlers.onBeforeReadOperation) {
       await this.eventHandlers.onBeforeReadOperation({
         op: "getRange",
@@ -484,9 +491,12 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
     const streamingMode = opts.streamingMode == null ? StreamingMode.Iterator : opts.streamingMode
 
     let iter = 0
+    const mappedPrefix = mapper
+      ? mapper.toTuple()
+      : undefined
     while (1) {
       const { results, more } = await this.getRangeNative(start, end,
-        limit, 0, streamingMode, ++iter, opts.reverse || false)
+        limit, 0, streamingMode, ++iter, opts.reverse || false, mappedPrefix)
 
       if (results.length) {
         if (!opts.reverse) start = keySelector.firstGreaterThan(results[results.length - 1][0])
@@ -494,7 +504,7 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
       }
 
       // This destructively consumes results.
-      yield this._encodeRangeResult(results)
+      yield this._encodeRangeResult(results, mapper)
       if (!more) break
 
       if (limit) {
@@ -574,10 +584,12 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
    *
    * @returns array of [key, value] pairs
    */
-  async getRangeAll(
+  async getRangeAll<CKO = KeyOut, CVO = ValOut>(
     start: KeyIn | KeySelector<KeyIn>,
     end?: KeyIn | KeySelector<KeyIn>, // if undefined, start is used as a prefix.
-    opts: RangeOptions = {}) {
+    opts: RangeOptions = {},
+    mappedTo?: MappedRange<CKO, CVO>
+  ) {
     if (this.eventHandlers.onBeforeReadOperation) {
       await this.eventHandlers.onBeforeReadOperation({
         op: "getRange",
@@ -589,8 +601,8 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
     const childOpts: RangeOptions = { ...opts }
     if (childOpts.streamingMode == null) childOpts.streamingMode = StreamingMode.WantAll
 
-    const result: [KeyOut, ValOut][] = []
-    for await (const batch of this.getRangeBatch(start, end, childOpts)) {
+    const result: [CKO, CVO][] = []
+    for await (const batch of this.getRangeBatch(start, end, childOpts, mappedTo)) {
       result.push.apply(result, batch)
     }
     return result
