@@ -11,8 +11,8 @@ import {
   strNext,
   asBuf
 } from './util'
-import keySelector, {KeySelector} from './keySelector'
-import {eachOption} from './opts'
+import keySelector, { KeySelector } from './keySelector'
+import { eachOption } from './opts'
 import {
   TransactionOptions,
   TransactionOptionCode,
@@ -32,6 +32,7 @@ import {
   packVersionstampPrefixSuffix
 } from './versionstamp'
 import Subspace, { GetSubspace } from './subspace'
+import { EmptyEventHandler, Operations, TransactionEventHandler } from './customised/operations'
 
 const byteZero = Buffer.alloc(1)
 byteZero.writeUInt8(0, 0)
@@ -53,7 +54,7 @@ export type KVList<Key, Value> = {
   more: boolean,
 }
 
-export {Watch}
+export { Watch }
 
 export type WatchOptions = {
   throwAllErrors?: undefined | boolean
@@ -62,9 +63,9 @@ export type WatchOptions = {
 // Polyfill for node < 10.0 to make asyncIterators work (getRange / getRangeBatch).
 if ((<any>Symbol).asyncIterator == null) (<any>Symbol).asyncIterator = Symbol.for("Symbol.asyncIterator")
 
-const doNothing = () => {}
+const doNothing = () => { }
 
-type BakeItem<T> = {item: T, transformer: Transformer<T, any>, code: Buffer | null}
+type BakeItem<T> = { item: T, transformer: Transformer<T, any>, code: Buffer | null }
 
 // This scope object is shared by the family of transaction objects made with .scope().
 interface TxnCtx {
@@ -119,17 +120,23 @@ interface TxnCtx {
  */
 export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = NativeValue, ValOut = Buffer> {
   /** @internal */ _tn: NativeTransaction
-  
+
   isSnapshot: boolean
   subspace: Subspace<KeyIn, KeyOut, ValIn, ValOut>
-
+  static onTransactionRestart?: (txn: Transaction<unknown, unknown, unknown, unknown>) => TransactionEventHandler
+  eventHandlers: TransactionEventHandler = {
+    onAfterWriteOperation: undefined,
+    onBeforeReadOperation: undefined,
+    onPostCommit: undefined,
+    onPreCommit: undefined
+  }
   // Copied out from scope for convenience, since these are so heavily used. Not
   // sure if this is a good idea.
   private _keyEncoding: Transformer<KeyIn, KeyOut>
   private _valueEncoding: Transformer<ValIn, ValOut>
-  
+
   private _ctx: TxnCtx
-  
+
   /**
    * NOTE: Do not call this directly. Instead transactions should be created
    * via db.doTn(...)
@@ -137,9 +144,9 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
    * @internal
    */
   constructor(tn: NativeTransaction, snapshot: boolean,
-      subspace: Subspace<KeyIn, KeyOut, ValIn, ValOut>,
-      // keyEncoding: Transformer<KeyIn, KeyOut>, valueEncoding: Transformer<ValIn, ValOut>,
-      opts?: TransactionOptions, ctx?: TxnCtx) {
+    subspace: Subspace<KeyIn, KeyOut, ValIn, ValOut>,
+    // keyEncoding: Transformer<KeyIn, KeyOut>, valueEncoding: Transformer<ValIn, ValOut>,
+    opts?: TransactionOptions, ctx?: TxnCtx) {
     this._tn = tn
 
     this.isSnapshot = snapshot
@@ -165,17 +172,18 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
     // https://apple.github.io/foundationdb/api-c.html#c.fdb_transaction_on_error
     do {
       try {
+        this.eventHandlers = Transaction.onTransactionRestart?.(this) || this.eventHandlers
         const result = await body(this)
 
         const stampPromise = (this._ctx.toBake && this._ctx.toBake.length)
           ? this.getVersionstamp() : null
-
+        await this.eventHandlers.onPreCommit?.(this)
         await this.rawCommit()
-
+        await this.eventHandlers.onPostCommit?.(this)
         if (stampPromise) {
           const stamp = await stampPromise.promise
 
-          this._ctx.toBake!.forEach(({item, transformer, code}) => (
+          this._ctx.toBake!.forEach(({ item, transformer, code }) => (
             transformer.bakeVersionstamp!(item, stamp, code))
           )
         }
@@ -219,7 +227,9 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
    * Create a shallow copy of the transaction in the specified subspace (or database, transaction, or directory).
   */
   at<CKI, CKO, CVI, CVO>(hasSubspace: GetSubspace<CKI, CKO, CVI, CVO>): Transaction<CKI, CKO, CVI, CVO> {
-    return new Transaction(this._tn, this.isSnapshot, hasSubspace.getSubspace(), undefined, this._ctx)
+    const ret = new Transaction(this._tn, this.isSnapshot, hasSubspace.getSubspace(), undefined, this._ctx)
+    ret.eventHandlers = this.eventHandlers;
+    return ret;
   }
 
   /** @deprecated - use transaction.at(db) instead. */
@@ -239,9 +249,11 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
   /** @deprecated - Use promises API instead. */
   rawCommit(cb: Callback<void>): void
   rawCommit(cb?: Callback<void>) {
-    return cb
-      ? this._tn.commit(cb)
-      : this._tn.commit()
+    const preReq = (async () => {
+      await this.eventHandlers.onPreCommit?.(this)
+    })();
+    if (cb) return preReq.then(() => this._tn.commit(cb)).catch(cb);
+    return preReq.then(() => this._tn.commit());
   }
 
   rawReset() { this._tn.reset() }
@@ -267,20 +279,33 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
   get(key: KeyIn, cb: Callback<ValOut | undefined>): void
   get(key: KeyIn, cb?: Callback<ValOut | undefined>) {
     const keyBuf = this._keyEncoding.pack(key)
-    return cb
-      ? this._tn.get(keyBuf, this.isSnapshot, (err, val) => {
+    const preReq = (async () => {
+      const operation: Operations.Get<KeyIn> = {
+        key,
+        op: "get",
+        txn: this
+      }
+      await this.eventHandlers.onBeforeReadOperation?.(operation)
+    })();
+    if (cb) {
+      preReq.then(() => this._tn.get(keyBuf, this.isSnapshot, (err, val) => {
         cb(err, val == null ? undefined : this._valueEncoding.unpack(val))
-      })
-      : this._tn.get(keyBuf, this.isSnapshot)
+      })).catch(cb);
+      return
+    }
+
+    return preReq.then(() => {
+      return this._tn.get(keyBuf, this.isSnapshot)
         .then(val => val == null ? undefined : this._valueEncoding.unpack(val))
+    })
+
   }
 
   /** Checks if the key exists in the database. This is just a shorthand for
    * tn.get() !== undefined.
    */
   exists(key: KeyIn): Promise<boolean> {
-    const keyBuf = this._keyEncoding.pack(key)
-    return this._tn.get(keyBuf, this.isSnapshot).then(val => val != undefined)
+    return this.get(key).then(val => val != undefined)
   }
 
   /**
@@ -300,7 +325,14 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
    * - If your key selector looks forward in the dataset, this method may find
    *   and return keys in the system portion (starting with '\xff').
    */
-  getKey(_sel: KeySelector<KeyIn> | KeyIn): Promise<KeyOut | undefined> {
+  async getKey(_sel: KeySelector<KeyIn> | KeyIn): Promise<KeyOut | undefined> {
+    if (this.eventHandlers.onBeforeReadOperation) {
+      await this.eventHandlers.onBeforeReadOperation({
+        op: "getKey",
+        key: _sel,
+        txn: this
+      })
+    }
     const sel = keySelector.from(_sel)
     return this._tn.getKey(this._keyEncoding.pack(sel.key), sel.orEqual, sel.offset, this.isSnapshot)
       .then(key => (
@@ -312,13 +344,30 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
 
   /** Set the specified key/value pair in the database */
   set(key: KeyIn, val: ValIn) {
-    this._tn.set(this._keyEncoding.pack(key), this._valueEncoding.pack(val))
+    this._tn.set(this._keyEncoding.pack(key), this._valueEncoding.pack(val));
+    if (this.eventHandlers.onAfterWriteOperation) {
+      const operation: Operations.Set<KeyIn, ValIn> = {
+        key: key,
+        value: val,
+        op: "set",
+        txn: this
+      }
+      this.eventHandlers.onAfterWriteOperation(operation)
+    }
   }
 
   /** Remove the value for the specified key */
   clear(key: KeyIn) {
     const pack = this._keyEncoding.pack(key)
     this._tn.clear(pack)
+    if (this.eventHandlers.onAfterWriteOperation) {
+      const operation: Operations.Clear<KeyIn> = {
+        key: key,
+        op: "clear",
+        txn: this
+      }
+      this.eventHandlers.onAfterWriteOperation(operation)
+    }
   }
 
   /** Alias for `tn.clear()` to match semantics of javascripts Map/Set/etc classes */
@@ -330,16 +379,16 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
   private _encodeRangeResult(r: [Buffer, Buffer][]): [KeyOut, ValOut][] {
     // This is slightly faster but I have to throw away the TS checks in the process. :/
     for (let i = 0; i < r.length; i++) {
-      ;(r as any)[i][0] = this._keyEncoding.unpack(r[i][0])
-      ;(r as any)[i][1] = this._valueEncoding.unpack(r[i][1])
+      ; (r as any)[i][0] = this._keyEncoding.unpack(r[i][0])
+        ; (r as any)[i][1] = this._valueEncoding.unpack(r[i][1])
     }
     return r as any as [KeyOut, ValOut][]
   }
 
-  getRangeNative(start: KeySelector<NativeValue>,
-      end: KeySelector<NativeValue> | null,  // If not specified, start is used as a prefix.
-      limit: number, targetBytes: number, streamingMode: StreamingMode,
-      iter: number, reverse: boolean): Promise<KVList<Buffer, Buffer>> {
+  private getRangeNative(start: KeySelector<NativeValue>,
+    end: KeySelector<NativeValue> | null,  // If not specified, start is used as a prefix.
+    limit: number, targetBytes: number, streamingMode: StreamingMode,
+    iter: number, reverse: boolean): Promise<KVList<Buffer, Buffer>> {
     const _end = end != null ? end : keySelector.firstGreaterOrEqual(strInc(start.key))
     return this._tn.getRange(
       start.key, start.orEqual, start.offset,
@@ -348,14 +397,22 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
       iter, this.isSnapshot, reverse)
   }
 
-  getRangeRaw(start: KeySelector<KeyIn>, end: KeySelector<KeyIn> | null,
-      limit: number, targetBytes: number, streamingMode: StreamingMode,
-      iter: number, reverse: boolean): Promise<KVList<KeyOut, ValOut>> {
+  async getRangeRaw(start: KeySelector<KeyIn>, end: KeySelector<KeyIn> | null,
+    limit: number, targetBytes: number, streamingMode: StreamingMode,
+    iter: number, reverse: boolean): Promise<KVList<KeyOut, ValOut>> {
+    if (this.eventHandlers.onBeforeReadOperation) {
+      await this.eventHandlers.onBeforeReadOperation({
+        op: "getRange",
+        start: start,
+        end: end === null ? undefined : end,
+        txn: this
+      })
+    }
     return this.getRangeNative(
       keySelector.toNative(start, this._keyEncoding),
       end != null ? keySelector.toNative(end, this._keyEncoding) : null,
       limit, targetBytes, streamingMode, iter, reverse)
-    .then(r => ({more: r.more, results: this._encodeRangeResult(r.results)}))
+      .then(r => ({ more: r.more, results: this._encodeRangeResult(r.results) }))
   }
 
   getEstimatedRangeSizeBytes(start: KeyIn, end: KeyIn): Promise<number> {
@@ -394,10 +451,17 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
    * @see Transaction.getRange
    */
   async *getRangeBatch(
-      _start: KeyIn | KeySelector<KeyIn>, // Consider also supporting string / buffers for these.
-      _end?: KeyIn | KeySelector<KeyIn>, // If not specified, start is used as a prefix.
-      opts: RangeOptions = {}) {
-
+    _start: KeyIn | KeySelector<KeyIn>, // Consider also supporting string / buffers for these.
+    _end?: KeyIn | KeySelector<KeyIn>, // If not specified, start is used as a prefix.
+    opts: RangeOptions = {}) {
+    if (this.eventHandlers.onBeforeReadOperation) {
+      await this.eventHandlers.onBeforeReadOperation({
+        op: "getRange",
+        start: _start,
+        end: _end,
+        txn: this
+      })
+    }
     // This is a bit of a dog's breakfast. We're trying to handle a lot of different cases here:
     // - The start and end parameters can be specified as keys or as selectors
     // - The end parameter can be missing / null, and if it is we want to "do the right thing" here
@@ -406,7 +470,7 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
 
     let start: KeySelector<string | Buffer>, end: KeySelector<string | Buffer>
     const startSelEnc = keySelector.from(_start)
-    
+
     if (_end == null) {
       const range = this.subspace.packRange(startSelEnc.key)
       start = keySelector(range.begin, startSelEnc.orEqual, startSelEnc.offset)
@@ -421,12 +485,12 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
 
     let iter = 0
     while (1) {
-      const {results, more} = await this.getRangeNative(start, end,
+      const { results, more } = await this.getRangeNative(start, end,
         limit, 0, streamingMode, ++iter, opts.reverse || false)
 
       if (results.length) {
-        if (!opts.reverse) start = keySelector.firstGreaterThan(results[results.length-1][0])
-        else end = keySelector.firstGreaterOrEqual(results[results.length-1][0])
+        if (!opts.reverse) start = keySelector.firstGreaterThan(results[results.length - 1][0])
+        else end = keySelector.firstGreaterOrEqual(results[results.length - 1][0])
       }
 
       // This destructively consumes results.
@@ -483,9 +547,17 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
    *   opts.
    */
   async *getRange(
-      start: KeyIn | KeySelector<KeyIn>, // Consider also supporting string / buffers for these.
-      end?: KeyIn | KeySelector<KeyIn>,
-      opts?: RangeOptions) {
+    start: KeyIn | KeySelector<KeyIn>, // Consider also supporting string / buffers for these.
+    end?: KeyIn | KeySelector<KeyIn>,
+    opts?: RangeOptions) {
+    if (this.eventHandlers.onBeforeReadOperation) {
+      await this.eventHandlers.onBeforeReadOperation({
+        op: "getRange",
+        start: start,
+        end: end,
+        txn: this
+      })
+    }
     for await (const batch of this.getRangeBatch(start, end, opts)) {
       for (const pair of batch) yield pair
     }
@@ -503,10 +575,18 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
    * @returns array of [key, value] pairs
    */
   async getRangeAll(
-      start: KeyIn | KeySelector<KeyIn>,
-      end?: KeyIn | KeySelector<KeyIn>, // if undefined, start is used as a prefix.
-      opts: RangeOptions = {}) {
-    const childOpts: RangeOptions = {...opts}
+    start: KeyIn | KeySelector<KeyIn>,
+    end?: KeyIn | KeySelector<KeyIn>, // if undefined, start is used as a prefix.
+    opts: RangeOptions = {}) {
+    if (this.eventHandlers.onBeforeReadOperation) {
+      await this.eventHandlers.onBeforeReadOperation({
+        op: "getRange",
+        start: start,
+        end: end,
+        txn: this
+      })
+    }
+    const childOpts: RangeOptions = { ...opts }
     if (childOpts.streamingMode == null) childOpts.streamingMode = StreamingMode.WantAll
 
     const result: [KeyOut, ValOut][] = []
@@ -519,7 +599,7 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
   getRangeAllStartsWith(prefix: KeyIn | KeySelector<KeyIn>, opts?: RangeOptions) {
     return this.getRangeAll(prefix, undefined, opts)
   }
-  
+
   /**
    * Removes all key value pairs from the database in between start and end.
    *
@@ -540,6 +620,14 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
     }
     // const _end = end == null ? strInc(_start) : this._keyEncoding.pack(end)
     this._tn.clearRange(start, end)
+    if (this.eventHandlers.onAfterWriteOperation) {
+      const operation: Operations.ClearRange<KeyIn> = {
+        range: [_start, _end],
+        op: "clearRange",
+        txn: this
+      }
+      this.eventHandlers.onAfterWriteOperation(operation)
+    }
   }
 
   /** An alias for unary clearRange */
@@ -586,7 +674,7 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
 
   // Note: This promise can't be directly returned via the return value of a
   // transaction.
-  getVersionstamp(): {promise: Promise<Buffer>}
+  getVersionstamp(): { promise: Promise<Buffer> }
   /** @deprecated - Use promises API instead. */
   getVersionstamp(cb: Callback<Buffer>): void
   getVersionstamp(cb?: Callback<Buffer>) {
@@ -603,7 +691,7 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
       //   response by adding an empty catch function
       const promise = this._tn.getVersionstamp()
       promise.catch(doNothing)
-      return {promise}
+      return { promise }
     }
   }
 
@@ -667,7 +755,7 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
       const id = this.getNextTransactionID()
       if (id > 0xffff) throw new Error('Cannot use more than 65536 unique versionstamps in a single transaction. Either split your writes into multiple transactions or add explicit codes to your unbound versionstamps')
       into.data.writeInt16BE(id, into.codePos)
-      return into.data.slice(into.codePos, into.codePos+2)
+      return into.data.slice(into.codePos, into.codePos + 2)
     }
     return null
   }
@@ -687,7 +775,7 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
     if (transformer.bakeVersionstamp) {
       const scope = this._ctx
       if (scope.toBake == null) scope.toBake = []
-      scope.toBake.push({item, transformer, code})
+      scope.toBake.push({ item, transformer, code })
     }
   }
 
@@ -750,7 +838,7 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
    * This is designed to work with setVersionstampPrefixedValue. If you're
    * using setVersionstampedValue with tuples, just call get().
    */
-  async getVersionstampPrefixedValue(key: KeyIn): Promise<{stamp: Buffer, value?: ValOut} | null> {
+  async getVersionstampPrefixedValue(key: KeyIn): Promise<{ stamp: Buffer, value?: ValOut } | null> {
     const val = await this._tn.get(this._keyEncoding.pack(key), this.isSnapshot)
 
     if (val == null) {
@@ -778,6 +866,11 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
     return this._tn.getApproximateSize()
   }
 
+  withEventHandlers(handlers: TransactionEventHandler = EmptyEventHandler) {
+    const ret = new Transaction(this._tn, this.isSnapshot, this.getSubspace(), undefined, this._ctx)
+    ret.eventHandlers = handlers;
+    return ret;
+  }
   // This packs the value by prefixing the version stamp to the
   // valueEncoding's packed version of the value.
   // This is intended for use with getPackedVersionstampedValue.

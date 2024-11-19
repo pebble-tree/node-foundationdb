@@ -1,22 +1,23 @@
 import * as fdb from './native'
 import Transaction, { RangeOptions, Watch } from './transaction'
-import {Transformer, defaultTransformer} from './transformer'
-import {NativeValue} from './native'
-import {KeySelector} from './keySelector'
+import { Transformer, defaultTransformer } from './transformer'
+import { NativeValue } from './native'
+import { KeySelector } from './keySelector'
 import Subspace, { root, GetSubspace, isGetSubspace } from './subspace'
-import {eachOption} from './opts'
-import {DatabaseOptions,
+import { eachOption } from './opts'
+import {
+  DatabaseOptions,
   TransactionOptions,
   databaseOptionData,
   MutationType,
 } from './opts.g'
+import { Operations } from './customised/operations'
 
 export type WatchWithValue<Value> = Watch & { value: Value | undefined }
 
 export default class Database<KeyIn = NativeValue, KeyOut = Buffer, ValIn = NativeValue, ValOut = Buffer> {
   _db: fdb.NativeDatabase
   subspace: Subspace<KeyIn, KeyOut, ValIn, ValOut>
-
   constructor(db: fdb.NativeDatabase, subspace: Subspace<KeyIn, KeyOut, ValIn, ValOut>) {
     this._db = db
     this.subspace = subspace//new Subspace<KeyIn, KeyOut, ValIn, ValOut>(prefix, keyXf, valueXf)
@@ -31,7 +32,7 @@ export default class Database<KeyIn = NativeValue, KeyOut = Buffer, ValIn = Nati
   }
 
   // **** Scoping functions
-  
+
   getRoot(): Database {
     return new Database(this._db, root)
   }
@@ -61,7 +62,7 @@ export default class Database<KeyIn = NativeValue, KeyOut = Buffer, ValIn = Nati
   withKeyEncoding<ChildKeyIn, ChildKeyOut>(keyXf: Transformer<any, any> = defaultTransformer): Database<ChildKeyIn, ChildKeyOut, ValIn, ValOut> {
     return new Database(this._db, this.subspace.at(null, keyXf))
   }
-  
+
   withValueEncoding<ChildValIn, ChildValOut>(valXf: Transformer<ChildValIn, ChildValOut>): Database<KeyIn, KeyOut, ChildValIn, ChildValOut> {
     return new Database(this._db, this.subspace.at(null, undefined /* inherit */, valXf))
   }
@@ -96,7 +97,7 @@ export default class Database<KeyIn = NativeValue, KeyOut = Buffer, ValIn = Nati
   getKey(selector: KeyIn | KeySelector<KeyIn>): Promise<KeyOut | undefined> {
     return this.doTransaction(tn => tn.snapshot().getKey(selector))
   }
-  getVersionstampPrefixedValue(key: KeyIn): Promise<{stamp: Buffer, value?: ValOut} | null> {
+  getVersionstampPrefixedValue(key: KeyIn): Promise<{ stamp: Buffer, value?: ValOut } | null> {
     return this.doTransaction(tn => tn.snapshot().getVersionstampPrefixedValue(key))
   }
 
@@ -144,9 +145,9 @@ export default class Database<KeyIn = NativeValue, KeyOut = Buffer, ValIn = Nati
   }
 
   getRangeAll(
-      start: KeyIn | KeySelector<KeyIn>,
-      end?: KeyIn | KeySelector<KeyIn>,
-      opts?: RangeOptions) {
+    start: KeyIn | KeySelector<KeyIn>,
+    end?: KeyIn | KeySelector<KeyIn>,
+    opts?: RangeOptions) {
     return this.doTransaction(async tn => tn.snapshot().getRangeAll(start, end, opts))
   }
 

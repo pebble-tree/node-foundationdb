@@ -6,18 +6,17 @@
 
 import nativeMod, * as fdb from './native'
 import Database from './database'
-import {eachOption} from './opts'
-import {NetworkOptions, networkOptionData, DatabaseOptions} from './opts.g'
-import {Transformer} from './transformer'
-import {root} from './subspace'
-import {DirectoryLayer} from './directory'
-
+import { eachOption } from './opts'
+import { NetworkOptions, networkOptionData, DatabaseOptions } from './opts.g'
+import { Transformer } from './transformer'
+import { root } from './subspace'
+import { DirectoryLayer } from './directory'
 import * as apiVersion from './apiVersion'
 
-import {deprecate} from 'util'
+import { deprecate } from 'util'
 
 // Must be called before fdb is initialized. Eg setAPIVersion(510).
-export {set as setAPIVersion} from './apiVersion'
+export { set as setAPIVersion } from './apiVersion'
 
 // 'napi'
 export const modType = fdb.type
@@ -42,15 +41,15 @@ const init = () => {
 // but can be used to de-init FDB.
 export const stopNetworkSync = nativeMod.stopNetwork
 
-export {default as FDBError} from './error'
-export {default as keySelector, KeySelector} from './keySelector'
+export { default as FDBError } from './error'
+export { default as keySelector, KeySelector } from './keySelector'
 
 // These are exported to give consumers access to the type. Databases must
 // always be constructed using open or via a cluster object.
-export {default as Database} from './database'
-export {default as Transaction, Watch} from './transaction'
-export {default as Subspace, root} from './subspace'
-export {Directory, DirectoryLayer, DirectoryError} from './directory'
+export { default as Database } from './database'
+export { default as Transaction, Watch } from './transaction'
+export { default as Subspace, root } from './subspace'
+export { Directory, DirectoryLayer, DirectoryError } from './directory'
 
 export {
   NetworkOptions,
@@ -65,13 +64,13 @@ export {
   ErrorPredicate,
 } from './opts.g'
 
-import {strInc} from './util'
-export const util = {strInc}
+import { strInc } from './util'
+export const util = { strInc }
 
 import * as tuple from 'fdb-tuple'
-import {TupleItem} from 'fdb-tuple'
+import { TupleItem } from 'fdb-tuple'
 
-export {TupleItem, tuple}
+export { TupleItem, tuple }
 
 // This must come after tuple is defined, above.
 export const directory = new DirectoryLayer() // Convenient root directory
@@ -141,7 +140,7 @@ const stubCluster = (clusterFile?: string) => ({
   openDatabaseSync(dbName: 'DB' = 'DB', opts?: DatabaseOptions) {
     return open(clusterFile, opts)
   },
-  close() {}
+  close() { }
 })
 
 /** @deprecated FDB clusters have been removed from the API. Call open() directly to connect. */
@@ -158,3 +157,5 @@ export const createClusterSync = deprecate((clusterFile?: string) => {
 // TODO: Should I expose a method here for stopping the network for clean shutdown?
 // I feel like I should.. but I'm not sure when its useful. Will the network thread
 // keep the process running?
+
+export { Operations, TransactionEventHandler, EmptyEventHandler } from "./customised/operations"
