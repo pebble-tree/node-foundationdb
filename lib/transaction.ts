@@ -178,7 +178,6 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
 
         const stampPromise = (this._ctx.toBake && this._ctx.toBake.length)
           ? this.getVersionstamp() : null
-        await this.eventHandlers.onPreCommit?.(this)
         await this.rawCommit()
         await this.eventHandlers.onPostCommit?.(this)
         if (stampPromise) {
