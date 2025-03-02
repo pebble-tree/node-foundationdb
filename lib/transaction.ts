@@ -907,7 +907,7 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
       existing = [];
       Transaction.logMap.set(this._tn, existing);
     }
-    existing.push([Date.now(), ...args]);
+    existing.push([context.level, new Date(), ...args]);
   }
 
   withEventHandlers(handlers: TransactionEventHandler = EmptyEventHandler) {
