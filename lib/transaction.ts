@@ -123,7 +123,7 @@ interface TxnCtx {
 export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = NativeValue, ValOut = Buffer> {
   /** @internal */ _tn: NativeTransaction
   private static logMap = new WeakMap<NativeTransaction, [number, ...any][]>;
-  private static idMap = new WeakMap<NativeTransaction, string>;
+  private static idMap = new WeakMap<NativeTransaction, number>;
   isSnapshot: boolean
   subspace: Subspace<KeyIn, KeyOut, ValIn, ValOut>
   static onTransactionRestart?: (txn: Transaction<unknown, unknown, unknown, unknown>) => TransactionEventHandler
@@ -146,7 +146,8 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
   private _valueEncoding: Transformer<ValIn, ValOut>
 
   private _ctx: TxnCtx
-  readonly id: string
+  static lastTxnId = 0;
+  readonly id: number
   /**
    * NOTE: Do not call this directly. Instead transactions should be created
    * via db.doTn(...)
@@ -160,7 +161,7 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
     this._tn = tn
     let id = Transaction.idMap.get(this._tn);
     if (!id) {
-      id = randomUUID()
+      id = ++Transaction.lastTxnId;
       Transaction.idMap.set(this._tn, id);
     }
     this.id = id;
@@ -918,7 +919,7 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
       existing = [];
       Transaction.logMap.set(this._tn, existing);
     }
-    existing.push([context.level, new Date(), `txn(${this.id})`, ...args]);
+    existing.push([context.level, new Date(), `(txn${this.id})`, ...args]);
   }
 
   withEventHandlers(handlers: TransactionEventHandler = EmptyEventHandler) {
