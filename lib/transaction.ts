@@ -179,7 +179,7 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
   }
 
   protected flushLogs(logs: [number, ...any[]][]) {
-    if (this.eventHandlers.flushLogs) return this.eventHandlers.flushLogs(logs);
+    if (this.eventHandlers.flushLogs) return this.eventHandlers.flushLogs(this, logs);
   }
 
   // Internal method to actually run a transaction retry loop. Do not call
@@ -222,7 +222,7 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
           } catch (e) {
             if (this.eventHandlers.onNonRecoverableError) {
               const logs = Transaction.logMap.get(this._tn) || [];
-              this.eventHandlers.onNonRecoverableError({ error: e, logs })
+              this.eventHandlers.onNonRecoverableError({ txn: this, error: e, logs })
             }
             // If this throws, punt error to caller.
             throw e;
