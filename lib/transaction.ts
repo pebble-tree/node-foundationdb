@@ -121,7 +121,7 @@ interface TxnCtx {
  * apply a value transformer this will change.
  */
 export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = NativeValue, ValOut = Buffer> {
-  /** @internal */ _tn: NativeTransaction
+  readonly _tn: NativeTransaction
   private static logMap = new WeakMap<NativeTransaction, [number, ...any][]>;
   private static idMap = new WeakMap<NativeTransaction, number>;
   isSnapshot: boolean
