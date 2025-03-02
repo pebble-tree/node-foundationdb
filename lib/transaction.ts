@@ -122,7 +122,6 @@ interface TxnCtx {
  */
 export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = NativeValue, ValOut = Buffer> {
   readonly _tn: NativeTransaction
-  private static logMap = new WeakMap<NativeTransaction, [number, ...any][]>;
   private static idMap = new WeakMap<NativeTransaction, number>;
   isSnapshot: boolean
   subspace: Subspace<KeyIn, KeyOut, ValIn, ValOut>
@@ -132,13 +131,6 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
     onBeforeReadOperation: undefined,
     onPostCommit: undefined,
     onPreCommit: undefined,
-    onNonRecoverableError: (args) => {
-      this.flushLogs([
-        [Number.MAX_SAFE_INTEGER, args.error],
-        ...args.logs.map(([n, ...rest]): [number, ...any[]] => [Number.MAX_SAFE_INTEGER, ...rest])
-      ]);
-    },
-    flushLogs: undefined
   }
   // Copied out from scope for convenience, since these are so heavily used. Not
   // sure if this is a good idea.
@@ -179,9 +171,6 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
     }
   }
 
-  protected flushLogs(logs: [number, ...any[]][]) {
-    if (this.eventHandlers.flushLogs) return this.eventHandlers.flushLogs(this, logs);
-  }
   static wrapTransactionBody?: <T>(
     txn: Transaction<unknown, unknown, unknown, unknown>,
     callback: () => Promise<T>
@@ -199,7 +188,6 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
 
     do {
       try {
-        Transaction.logMap.set(this._tn, []);
         this._runCount++;
         this.eventHandlers = Transaction.onTransactionRestart?.(this) || this.eventHandlers
         const result = await body(this)
@@ -207,9 +195,6 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
           ? this.getVersionstamp() : null
         await this.rawCommit()
         await this.eventHandlers.onPostCommit?.(this);
-        const logs = Transaction.logMap.get(this._tn);
-        if (logs)
-          this.flushLogs(logs)
         if (stampPromise) {
           const stamp = await stampPromise.promise
 
@@ -221,16 +206,8 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
       } catch (err) {
         // See if we can retry the transaction
         if (err instanceof FDBError) {
-          try {
-            await this.rawOnError(err.code)
-          } catch (e) {
-            if (this.eventHandlers.onNonRecoverableError) {
-              const logs = Transaction.logMap.get(this._tn) || [];
-              this.eventHandlers.onNonRecoverableError({ txn: this, error: e, logs })
-            }
-            // If this throws, punt error to caller.
-            throw e;
-          }
+          // If this throws, punt error to caller.
+          await this.rawOnError(err.code)
           // If that passed, loop.
         } else throw err
       }
@@ -914,15 +891,6 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
 
   getApproximateSize() {
     return this._tn.getApproximateSize()
-  }
-
-  log(context: { level: number }, ...args: any[]) {
-    let existing = Transaction.logMap.get(this._tn);
-    if (!existing) {
-      existing = [];
-      Transaction.logMap.set(this._tn, existing);
-    }
-    existing.push([context.level, new Date(), `(txn${this.id})`, ...args]);
   }
 
   withEventHandlers(handlers: TransactionEventHandler = EmptyEventHandler) {

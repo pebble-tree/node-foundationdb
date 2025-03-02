@@ -44,8 +44,6 @@ export interface TransactionEventHandler {
     onBeforeReadOperation: ((operation: Operations.ReadOperation<any>) => Promise<void>) | undefined
     onPreCommit: ((txn: Transaction<unknown, unknown, unknown, unknown>) => Promise<void>) | undefined
     onPostCommit: ((txn: Transaction<unknown, unknown, unknown, unknown>) => Promise<void>) | undefined
-    flushLogs: ((txn: Transaction<unknown, unknown, unknown, unknown>, logs: [number, ...any][]) => void) | undefined
-    onNonRecoverableError: ((args: { txn: Transaction<unknown, unknown, unknown, unknown>, error: any, logs: [number, ...any][] }) => void) | undefined
 }
 
 export const EmptyEventHandler: TransactionEventHandler = {
@@ -53,6 +51,4 @@ export const EmptyEventHandler: TransactionEventHandler = {
     onBeforeReadOperation: undefined,
     onPostCommit: undefined,
     onPreCommit: undefined,
-    flushLogs: undefined,
-    onNonRecoverableError: undefined,
 }
