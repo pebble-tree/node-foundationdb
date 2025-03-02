@@ -202,9 +202,7 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
         Transaction.logMap.set(this._tn, []);
         this._runCount++;
         this.eventHandlers = Transaction.onTransactionRestart?.(this) || this.eventHandlers
-        const result = Transaction.wrapTransactionBody
-        await body(this)
-
+        const result = await body(this)
         const stampPromise = (this._ctx.toBake && this._ctx.toBake.length)
           ? this.getVersionstamp() : null
         await this.rawCommit()
