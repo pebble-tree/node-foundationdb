@@ -182,9 +182,9 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
   protected flushLogs(logs: [number, ...any[]][]) {
     if (this.eventHandlers.flushLogs) return this.eventHandlers.flushLogs(this, logs);
   }
-  static wrapTransactionBody?: <T, KeyIn, KeyOut, ValIn, ValOut>(
-    tn: Transaction<KeyIn, KeyOut, ValIn, ValOut>,
-    callback: (txn: Transaction<KeyIn, KeyOut, ValIn, ValOut>) => Promise<T>
+  static wrapTransactionBody?: <T>(
+    txn: Transaction<unknown, unknown, unknown, unknown>,
+    callback: () => Promise<T>
   ) => Promise<T>
   // Internal method to actually run a transaction retry loop. Do not call
   // this directly - instead use Database.doTn().
@@ -203,8 +203,7 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
         this._runCount++;
         this.eventHandlers = Transaction.onTransactionRestart?.(this) || this.eventHandlers
         const result = Transaction.wrapTransactionBody
-          ? await Transaction.wrapTransactionBody<T, KeyIn, KeyOut, ValIn, ValOut>(this, body)
-          : await body(this)
+        await body(this)
 
         const stampPromise = (this._ctx.toBake && this._ctx.toBake.length)
           ? this.getVersionstamp() : null
