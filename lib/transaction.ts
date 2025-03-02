@@ -126,7 +126,7 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
   private static idMap = new WeakMap<NativeTransaction, string>;
   isSnapshot: boolean
   subspace: Subspace<KeyIn, KeyOut, ValIn, ValOut>
-  static onTransactionRestart?: (txn: Transaction<unknown, unknown, unknown, unknown>) => TransactionEventHandler
+  static onTransactionRestart?: (txn: Transaction<unknown, unknown, unknown, unknown>, count: number) => TransactionEventHandler
   eventHandlers: TransactionEventHandler = {
     onAfterWriteOperation: undefined,
     onBeforeReadOperation: undefined,
@@ -189,10 +189,11 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
   async _exec<T>(body: (tn: Transaction<KeyIn, KeyOut, ValIn, ValOut>) => Promise<T>, opts?: TransactionOptions): Promise<T> {
     // Logic described here:
     // https://apple.github.io/foundationdb/api-c.html#c.fdb_transaction_on_error
+    let count = 1;
     do {
       try {
         Transaction.logMap.set(this._tn, []);
-        this.eventHandlers = Transaction.onTransactionRestart?.(this) || this.eventHandlers
+        this.eventHandlers = Transaction.onTransactionRestart?.(this, count++) || this.eventHandlers
         const result = await body(this)
 
         const stampPromise = (this._ctx.toBake && this._ctx.toBake.length)
