@@ -182,7 +182,10 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
   protected flushLogs(logs: [number, ...any[]][]) {
     if (this.eventHandlers.flushLogs) return this.eventHandlers.flushLogs(this, logs);
   }
-
+  static wrapTransactionBody?: <T, KeyIn, KeyOut, ValIn, ValOut>(
+    tn: Transaction<KeyIn, KeyOut, ValIn, ValOut>,
+    callback: (txn: Transaction<KeyIn, KeyOut, ValIn, ValOut>) => Promise<T>
+  ) => Promise<T>
   // Internal method to actually run a transaction retry loop. Do not call
   // this directly - instead use Database.doTn().
   private _runCount: number = 0
@@ -193,12 +196,15 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
   async _exec<T>(body: (tn: Transaction<KeyIn, KeyOut, ValIn, ValOut>) => Promise<T>, opts?: TransactionOptions): Promise<T> {
     // Logic described here:
     // https://apple.github.io/foundationdb/api-c.html#c.fdb_transaction_on_error
+
     do {
       try {
         Transaction.logMap.set(this._tn, []);
         this._runCount++;
         this.eventHandlers = Transaction.onTransactionRestart?.(this) || this.eventHandlers
-        const result = await body(this)
+        const result = Transaction.wrapTransactionBody
+          ? await Transaction.wrapTransactionBody<T, KeyIn, KeyOut, ValIn, ValOut>(this, body)
+          : await body(this)
 
         const stampPromise = (this._ctx.toBake && this._ctx.toBake.length)
           ? this.getVersionstamp() : null
