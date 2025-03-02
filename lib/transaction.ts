@@ -121,7 +121,7 @@ interface TxnCtx {
  */
 export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = NativeValue, ValOut = Buffer> {
   /** @internal */ _tn: NativeTransaction
-
+  private static logMap = new WeakMap<NativeTransaction, [number, ...any][]>;
   isSnapshot: boolean
   subspace: Subspace<KeyIn, KeyOut, ValIn, ValOut>
   static onTransactionRestart?: (txn: Transaction<unknown, unknown, unknown, unknown>) => TransactionEventHandler
@@ -129,7 +129,14 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
     onAfterWriteOperation: undefined,
     onBeforeReadOperation: undefined,
     onPostCommit: undefined,
-    onPreCommit: undefined
+    onPreCommit: undefined,
+    onNonRecoverableError: (args) => {
+      this.flushLogs([
+        [Number.MAX_SAFE_INTEGER, args.error],
+        ...args.logs.map(([n, ...rest]): [number, ...any[]] => [Number.MAX_SAFE_INTEGER, ...rest])
+      ]);
+    },
+    flushLogs: undefined
   }
   // Copied out from scope for convenience, since these are so heavily used. Not
   // sure if this is a good idea.
@@ -164,6 +171,10 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
     }
   }
 
+  protected flushLogs(logs: [number, ...any[]][]) {
+    if (this.eventHandlers.flushLogs) return this.eventHandlers.flushLogs(logs);
+  }
+
   // Internal method to actually run a transaction retry loop. Do not call
   // this directly - instead use Database.doTn().
 
@@ -173,13 +184,17 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
     // https://apple.github.io/foundationdb/api-c.html#c.fdb_transaction_on_error
     do {
       try {
+        Transaction.logMap.set(this._tn, []);
         this.eventHandlers = Transaction.onTransactionRestart?.(this) || this.eventHandlers
         const result = await body(this)
 
         const stampPromise = (this._ctx.toBake && this._ctx.toBake.length)
           ? this.getVersionstamp() : null
         await this.rawCommit()
-        await this.eventHandlers.onPostCommit?.(this)
+        await this.eventHandlers.onPostCommit?.(this);
+        const logs = Transaction.logMap.get(this._tn);
+        if (logs)
+          this.flushLogs(logs)
         if (stampPromise) {
           const stamp = await stampPromise.promise
 
@@ -191,7 +206,16 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
       } catch (err) {
         // See if we can retry the transaction
         if (err instanceof FDBError) {
-          await this.rawOnError(err.code) // If this throws, punt error to caller.
+          try {
+            await this.rawOnError(err.code)
+          } catch (e) {
+            if (this.eventHandlers.onNonRecoverableError) {
+              const logs = Transaction.logMap.get(this._tn) || [];
+              this.eventHandlers.onNonRecoverableError({ error: e, logs })
+            }
+            // If this throws, punt error to caller.
+            throw e;
+          }
           // If that passed, loop.
         } else throw err
       }
@@ -875,6 +899,15 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
 
   getApproximateSize() {
     return this._tn.getApproximateSize()
+  }
+
+  log(context: { level: number }, ...args: any[]) {
+    let existing = Transaction.logMap.get(this._tn);
+    if (!existing) {
+      existing = [];
+      Transaction.logMap.set(this._tn, existing);
+    }
+    existing.push([Date.now(), ...args]);
   }
 
   withEventHandlers(handlers: TransactionEventHandler = EmptyEventHandler) {
