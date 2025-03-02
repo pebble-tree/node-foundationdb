@@ -126,7 +126,7 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
   private static idMap = new WeakMap<NativeTransaction, string>;
   isSnapshot: boolean
   subspace: Subspace<KeyIn, KeyOut, ValIn, ValOut>
-  static onTransactionRestart?: (txn: Transaction<unknown, unknown, unknown, unknown>, count: number) => TransactionEventHandler
+  static onTransactionRestart?: (txn: Transaction<unknown, unknown, unknown, unknown>) => TransactionEventHandler
   eventHandlers: TransactionEventHandler = {
     onAfterWriteOperation: undefined,
     onBeforeReadOperation: undefined,
@@ -184,16 +184,19 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
 
   // Internal method to actually run a transaction retry loop. Do not call
   // this directly - instead use Database.doTn().
-
+  private _runCount: number = 0
+  get runCount() {
+    return this._runCount;
+  }
   /** @internal */
   async _exec<T>(body: (tn: Transaction<KeyIn, KeyOut, ValIn, ValOut>) => Promise<T>, opts?: TransactionOptions): Promise<T> {
     // Logic described here:
     // https://apple.github.io/foundationdb/api-c.html#c.fdb_transaction_on_error
-    let count = 1;
     do {
       try {
         Transaction.logMap.set(this._tn, []);
-        this.eventHandlers = Transaction.onTransactionRestart?.(this, count++) || this.eventHandlers
+        this._runCount++;
+        this.eventHandlers = Transaction.onTransactionRestart?.(this) || this.eventHandlers
         const result = await body(this)
 
         const stampPromise = (this._ctx.toBake && this._ctx.toBake.length)
