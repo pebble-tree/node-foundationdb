@@ -190,10 +190,16 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
       try {
         this._runCount++;
         this.eventHandlers = Transaction.onTransactionRestart?.(this) || this.eventHandlers
-        const result = await body(this)
-        const stampPromise = (this._ctx.toBake && this._ctx.toBake.length)
-          ? this.getVersionstamp() : null
-        await this.rawCommit()
+        const b = async () => {
+          const result = await body(this)
+          const stampPromise = (this._ctx.toBake && this._ctx.toBake.length)
+            ? this.getVersionstamp() : null
+          await this.rawCommit()
+          return { result, stampPromise }
+        }
+        const { result, stampPromise } = Transaction.wrapTransactionBody
+          ? await Transaction.wrapTransactionBody(this, b)
+          : await b();
         await this.eventHandlers.onPostCommit?.(this);
         if (stampPromise) {
           const stamp = await stampPromise.promise

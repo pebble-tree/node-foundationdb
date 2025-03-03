@@ -69,11 +69,7 @@ export default class Database<KeyIn = NativeValue, KeyOut = Buffer, ValIn = Nati
 
   // This is the API you want to use for non-trivial transactions.
   async doTn<T>(body: (tn: Transaction<KeyIn, KeyOut, ValIn, ValOut>) => Promise<T>, opts?: TransactionOptions): Promise<T> {
-    const txn = this.rawCreateTransaction(opts);
-    if (Transaction.wrapTransactionBody)
-      return Transaction.wrapTransactionBody(txn, () => this.rawCreateTransaction(opts)._exec(body))
-    else
-      return txn._exec(body)
+    return this.rawCreateTransaction(opts)._exec(body)
   }
   // Alias for db.doTn.
   async doTransaction<T>(body: (tn: Transaction<KeyIn, KeyOut, ValIn, ValOut>) => Promise<T>, opts?: TransactionOptions): Promise<T> {
