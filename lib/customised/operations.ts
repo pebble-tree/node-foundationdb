@@ -6,12 +6,15 @@ export namespace Operations {
     export interface Set<K, V> {
         op: "set"
         key: K,
+        bufKey: string | Buffer,
         value: V,
+        bufValue: string | Buffer,
         txn: Transaction<K, unknown, V, unknown>
     }
     export interface Clear<K> {
         op: "clear"
         key: K,
+        bufKey: string | Buffer,
         txn: Transaction<K, unknown, unknown, unknown>
     }
     export interface ClearRange<K> {

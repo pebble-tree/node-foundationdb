@@ -366,13 +366,17 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
 
   /** Set the specified key/value pair in the database */
   set(key: KeyIn, val: ValIn) {
-    this._tn.set(this._keyEncoding.pack(key), this._valueEncoding.pack(val));
+    const bufKey = this._keyEncoding.pack(key);
+    const bufValue = this._valueEncoding.pack(val);
+    this._tn.set(bufKey, bufValue);
     if (this.eventHandlers.onAfterWriteOperation) {
       const operation: Operations.Set<KeyIn, ValIn> = {
         key: key,
         value: val,
         op: "set",
-        txn: this
+        txn: this,
+        bufKey,
+        bufValue
       }
       this.eventHandlers.onAfterWriteOperation(operation)
     }
@@ -386,7 +390,8 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
       const operation: Operations.Clear<KeyIn> = {
         key: key,
         op: "clear",
-        txn: this
+        txn: this,
+        bufKey: pack
       }
       this.eventHandlers.onAfterWriteOperation(operation)
     }
