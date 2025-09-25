@@ -1,5 +1,5 @@
 import * as fdb from './native'
-import Transaction, { RangeOptions, Watch } from './transaction'
+import Transaction, { ClearKey, RangeOptions, Watch } from './transaction'
 import { Transformer, defaultTransformer } from './transformer'
 import { NativeValue } from './native'
 import { KeySelector } from './keySelector'
@@ -12,6 +12,8 @@ import {
   MutationType,
 } from './opts.g'
 import { Operations } from './customised/operations'
+
+
 
 export type WatchWithValue<Value> = Watch & { value: Value | undefined }
 
@@ -105,15 +107,15 @@ export default class Database<KeyIn = NativeValue, KeyOut = Buffer, ValIn = Nati
     return this.doOneshot(tn => tn.set(key, value))
   }
 
-  clear(key: KeyIn) {
+  clear(key: ClearKey<KeyIn, ValIn>) {
     return this.doOneshot(tn => tn.clear(key))
   }
 
-  clearRange(start: KeyIn, end?: KeyIn) {
+  clearRange(start: ClearKey<KeyIn, ValIn>, end?: ClearKey<KeyIn, ValIn>) {
     return this.doOneshot(tn => tn.clearRange(start, end))
   }
 
-  clearRangeStartsWith(prefix: KeyIn) {
+  clearRangeStartsWith(prefix: ClearKey<KeyIn, ValIn>) {
     return this.doOneshot(tn => tn.clearRangeStartsWith(prefix))
   }
 
@@ -137,7 +139,7 @@ export default class Database<KeyIn = NativeValue, KeyOut = Buffer, ValIn = Nati
     })
   }
 
-  clearAndWatch(key: KeyIn): Promise<Watch> {
+  clearAndWatch(key: ClearKey<KeyIn, ValIn>): Promise<Watch> {
     return this.doTransaction(async tn => {
       tn.clear(key)
       return tn.watch(key)

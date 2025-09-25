@@ -36,6 +36,8 @@ import { EmptyEventHandler, Operations, TransactionEventHandler } from './custom
 import { MappedRange } from './mappedRange'
 import { randomUUID } from 'crypto'
 
+export type ClearKey<KeyIn, ValIn> = ValIn extends never ? never : KeyIn
+
 const byteZero = Buffer.alloc(1)
 byteZero.writeUInt8(0, 0)
 
@@ -383,7 +385,7 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
   }
 
   /** Remove the value for the specified key */
-  clear(key: KeyIn) {
+  clear(key: ClearKey<KeyIn, ValIn>) {
     const pack = this._keyEncoding.pack(key)
     this._tn.clear(pack)
     if (this.eventHandlers.onAfterWriteOperation) {
@@ -398,7 +400,7 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
   }
 
   /** Alias for `tn.clear()` to match semantics of javascripts Map/Set/etc classes */
-  delete(key: KeyIn) {
+  delete(key: ClearKey<KeyIn, ValIn>) {
     return this.clear(key)
   }
 
@@ -644,7 +646,7 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
    * End parameter is optional. If not specified, this removes all keys with
    * *start* as a prefix.
    */
-  clearRange(_start: KeyIn, _end?: KeyIn) {
+  clearRange(_start: ClearKey<KeyIn, ValIn>, _end?: ClearKey<KeyIn, ValIn>) {
     let start: NativeValue, end: NativeValue
     // const _start = this._keyEncoding.pack(start)
 
@@ -669,7 +671,7 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
   }
 
   /** An alias for unary clearRange */
-  clearRangeStartsWith(prefix: KeyIn) {
+  clearRangeStartsWith(prefix: ClearKey<KeyIn, ValIn>) {
     this.clearRange(prefix)
   }
 
