@@ -226,6 +226,31 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
     } while (true)
   }
 
+  async exclusiveAccessToValue<T>(key: KeyIn, callback: (tn: Transaction<KeyIn, KeyOut, ValIn, ValOut>, value: ValOut | undefined) => Promise<T>): Promise<T> {
+    //use the full key to identify exclusive access
+    const keyStr = this.subspace.packKey(key).toString("hex");
+    const eap = this._tn.exclusiveAccessPending = this._tn.exclusiveAccessPending || new Map();
+    for (; ;) {
+      const pending = eap.get(keyStr);
+      if (pending) {
+        await pending;
+      } else {
+        const promResult = (async () => {
+          try {
+            const val = await this.get(key);
+            return callback(this, val);
+          } finally {
+            eap.delete(keyStr);
+          }
+        })();
+        //we don't care about errors from what went before us
+        //it's up to the caller to handle errors from their own callback 
+        //we don't throw here as the caller may expect the error
+        eap.set(keyStr, promResult.catch(e => { }));
+        return promResult;
+      }
+    }
+  }
   /**
    * Set options on the transaction object. These options can have a variety of
    * effects - see TransactionOptionCode for details. For options which are
