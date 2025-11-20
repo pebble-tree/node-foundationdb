@@ -79,7 +79,6 @@ export interface NativeTransaction {
   getVersionstamp(cb: Callback<Buffer>): void
 
   getAddressesForKey(key: NativeValue): string[],
-  exclusiveAccessPending?: Map<string, Promise<any>>
 }
 
 export interface NativeDatabase {

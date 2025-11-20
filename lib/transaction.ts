@@ -35,6 +35,7 @@ import Subspace, { GetSubspace } from './subspace'
 import { EmptyEventHandler, Operations, TransactionEventHandler } from './customised/operations'
 import { MappedRange } from './mappedRange'
 import { randomUUID } from 'crypto'
+import assert, { deepStrictEqual } from 'assert'
 
 export type ClearKey<KeyIn, ValIn> = ValIn extends never ? never : KeyIn
 
@@ -226,31 +227,36 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
     } while (true)
   }
 
-  async exclusiveAccessToValue<T>(key: KeyIn, callback: (tn: Transaction<KeyIn, KeyOut, ValIn, ValOut>, value: ValOut | undefined) => Promise<T>): Promise<T> {
-    //use the full key to identify exclusive access
-    const keyStr = this.subspace.packKey(key).toString("hex");
-    const eap = this._tn.exclusiveAccessPending = this._tn.exclusiveAccessPending || new Map();
-    for (; ;) {
-      const pending = eap.get(keyStr);
-      if (pending) {
-        await pending;
-      } else {
-        const promResult = (async () => {
-          try {
-            const val = await this.get(key);
-            return callback(this, val);
-          } finally {
-            eap.delete(keyStr);
+  readonly createdAt = Date.now();
+  async getAndUpdate<T>(key: ClearKey<KeyIn, ValIn>, updateFn: (val: ValOut | undefined, set: <const V extends ValIn = ValIn>(val: V | undefined) => void) => T | Promise<T>, opts?: {
+    maxRetries?: number
+  }): Promise<T> {
+    let { maxRetries = 25 } = opts || {};
+    const error = new Error("Transaction getAndUpdate: concurrent modification loop detected")
+    while (maxRetries-- > 0) {
+      try {
+        const oldValue = await this.get(key);
+        let valueSetTo: { value: ValIn | undefined } | undefined;
+        const ret = await updateFn(structuredClone(oldValue), (val: ValIn | undefined) => {
+          valueSetTo = { value: val };
+        });
+        if (valueSetTo) {
+          //compare to the current in txn value for equality
+          const currValue = await this.get(key);
+          assert.deepStrictEqual(currValue, oldValue, error);
+          if (valueSetTo.value === undefined) {
+            this.clear(key);
           }
-        })();
-        //we don't care about errors from what went before us
-        //it's up to the caller to handle errors from their own callback 
-        //we don't throw here as the caller may expect the error
-        eap.set(keyStr, promResult.catch(e => { }));
-        return promResult;
+        }
+        return ret;
+      } catch (e) {
+        if (e !== error)
+          throw e;
       }
     }
+    throw error;
   }
+
   /**
    * Set options on the transaction object. These options can have a variety of
    * effects - see TransactionOptionCode for details. For options which are
