@@ -228,7 +228,7 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
   }
 
   readonly createdAt = Date.now();
-  async getAndUpdate<T>(key: ClearKey<KeyIn, ValIn>, updateFn: (val: ValOut | undefined, set: <const V extends ValIn = ValIn>(val: V | undefined) => void) => T | Promise<T>, opts?: {
+  async getAndUpdate<T>(key: ClearKey<KeyIn, ValIn>, updateFn: (val: ValOut | undefined, set: <V extends ValIn = ValIn>(val: V | undefined) => void) => T | Promise<T>, opts?: {
     maxRetries?: number
   }): Promise<T> {
     let { maxRetries = 25 } = opts || {};
