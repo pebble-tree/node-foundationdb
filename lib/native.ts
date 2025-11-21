@@ -79,6 +79,7 @@ export interface NativeTransaction {
   getVersionstamp(cb: Callback<Buffer>): void
 
   getAddressesForKey(key: NativeValue): string[],
+  valueCache?: Map<string, { value: Promise<unknown> | unknown }>
 }
 
 export interface NativeDatabase {

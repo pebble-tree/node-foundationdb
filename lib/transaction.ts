@@ -256,7 +256,38 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
     }
     throw error;
   }
-
+  async getAndUpdateSingletonSync<T>(key: ClearKey<KeyIn, ValIn>, updateFn: (val: ValOut | undefined, set: <V extends ValIn = ValIn>(val: V | undefined) => void) => T): Promise<T> {
+    this._tn.valueCache = this._tn.valueCache || new Map();
+    const vc = this._tn.valueCache;
+    const hexKey = this.subspace.packKey(key).toString('hex');
+    const vcEntry = vc.get(hexKey);
+    if (vcEntry) {
+      if (vcEntry.value instanceof Promise)
+        await vcEntry.value;
+    } else {
+      const val = this.get(key);
+      vc.set(hexKey, { value: val });
+      val.then(v => {
+        vc.set(hexKey, { value: v });
+      })
+      await val;
+    }
+    const getVCEntryAsNonPromise = () => {
+      const vcEntry = vc.get(hexKey);
+      if (!vcEntry || vcEntry.value instanceof Promise) {
+        throw new Error("Internal error: value cache entry missing or still pending");
+      }
+      return vcEntry.value as ValOut | undefined;
+    }
+    const ret = updateFn(structuredClone(getVCEntryAsNonPromise()), (val: ValIn | undefined) => {
+      vc.set(hexKey, { value: structuredClone(val) });
+      if (val === undefined)
+        this.clear(key);
+      else
+        this.set(key, val);
+    });
+    return ret;
+  }
   /**
    * Set options on the transaction object. These options can have a variety of
    * effects - see TransactionOptionCode for details. For options which are
