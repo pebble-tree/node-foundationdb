@@ -238,7 +238,7 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
         const oldValue = await this.get(key);
         let valueSetTo: { value: ValIn | undefined } | undefined;
         const ret = await updateFn(structuredClone(oldValue), (val: ValIn | undefined) => {
-          valueSetTo = { value: val };
+          valueSetTo = { value: structuredClone(val) };
         });
         if (valueSetTo) {
           //compare to the current in txn value for equality
