@@ -36,6 +36,8 @@ import { EmptyEventHandler, Operations, TransactionEventHandler } from './custom
 import { MappedRange } from './mappedRange'
 import { randomUUID } from 'crypto'
 import assert, { deepStrictEqual } from 'assert'
+import { SyncTransaction, ValueNeededError } from './syncTransaction'
+import { encoders } from '.'
 
 export type ClearKey<KeyIn, ValIn> = ValIn extends never ? never : KeyIn
 
@@ -123,11 +125,20 @@ interface TxnCtx {
  * `txn.get(...) => Promise<ValOut | undefined>`. Defaults to Buffer, but if you
  * apply a value transformer this will change.
  */
+
+export class UnresolvedValueError extends Error {
+  constructor(readonly promise: Promise<Buffer | undefined>) {
+    super("Transaction value not yet resolved")
+  }
+}
+
 export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = NativeValue, ValOut = Buffer> {
   readonly _tn: NativeTransaction
   private static idMap = new WeakMap<NativeTransaction, number>;
   isSnapshot: boolean
   subspace: Subspace<KeyIn, KeyOut, ValIn, ValOut>
+  private bufSubspace: Subspace<Buffer, Buffer, Buffer, Buffer>;
+
   static onTransactionRestart?: (txn: Transaction<unknown, unknown, unknown, unknown>) => TransactionEventHandler
   eventHandlers: TransactionEventHandler = {
     onAfterWriteOperation: undefined,
@@ -162,6 +173,8 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
     this.id = id;
     this.isSnapshot = snapshot
     this.subspace = subspace
+    this.bufSubspace = this.subspace.withKeyEncoding(encoders.buf).withValueEncoding(encoders.buf);
+
     this._keyEncoding = subspace._bakedKeyXf
     this._valueEncoding = subspace.valueXf
 
@@ -228,6 +241,72 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
   }
 
   readonly createdAt = Date.now();
+  getCurrentValueInTxn(hexKey: string, bufKey: Buffer): Buffer | undefined {
+    const entry = this._tn.valueCache?.get(hexKey);
+    if (entry) {
+      if (entry.value === undefined)
+        return undefined;
+      if (entry.value instanceof Promise) {
+        throw new UnresolvedValueError(entry.value);
+      }
+      return structuredClone(entry.value);
+    } else {
+      this._tn.valueCache = this._tn.valueCache || new Map();
+      const promise = this.at(
+        this.subspace.withKeyEncoding(encoders.buf).withValueEncoding(encoders.buf)
+      )
+        .get(bufKey)
+      this._tn.valueCache.set(hexKey, {
+        value: promise
+      });
+      throw new UnresolvedValueError(promise);
+    }
+  }
+  async getValueDispatch<VI extends ValIn>(key: ClearKey<KeyIn, VI>): Promise<
+    <T>(
+      callback: (
+        val: ValOut | undefined,
+        set: (value: VI | undefined) => void
+      ) => T
+    ) => T
+  > {
+    this._tn.valueCache = this._tn.valueCache || new Map();
+    const vc = this._tn.valueCache;
+    const hexKey = this.subspace.packKey(key).toString('hex');
+    const vcEntry = vc.get(hexKey);
+    if (vcEntry) {
+      if (vcEntry.value instanceof Promise)
+        await vcEntry.value;
+    } else {
+      const val = this.get(key);
+      vc.set(hexKey, { value: val });
+      val.then(v => {
+        if (vc.get(hexKey)?.value === val) // might have been set/cleared again since
+          vc.set(hexKey, { value: v });
+      })
+      await val;
+    }
+    const getVCEntryAsNonPromise = () => {
+      const vcEntry = vc.get(hexKey);
+      if (!vcEntry || vcEntry.value instanceof Promise) {
+        throw new Error("Internal error: value cache entry missing or still pending");
+      }
+      return vcEntry.value as ValOut | undefined;
+    }
+    return (
+      callback: (val: ValOut | undefined, set: (value: VI | undefined) => void) => T,
+    ) => {
+      const result = callback(structuredClone(getVCEntryAsNonPromise()), mutation => {
+        if (mutation === undefined) {
+          this.clear(key);
+        } else {
+          this.set(key, mutation);
+        }
+      });
+      return result;
+    }
+  }
+
   async getAndUpdate<T>(key: ClearKey<KeyIn, ValIn>, updateFn: (val: ValOut | undefined, set: <V extends ValIn = ValIn>(val: V | undefined) => void) => T | Promise<T>, opts?: {
     maxRetries?: number
   }): Promise<T> {
@@ -268,7 +347,8 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
       const val = this.get(key);
       vc.set(hexKey, { value: val });
       val.then(v => {
-        vc.set(hexKey, { value: v });
+        if (vc.get(hexKey)?.value === val) // might have been set/cleared again since
+          vc.set(hexKey, { value: v });
       })
       await val;
     }
@@ -433,6 +513,12 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
     const bufKey = this._keyEncoding.pack(key);
     const bufValue = this._valueEncoding.pack(val);
     this._tn.set(bufKey, bufValue);
+    if (this._tn.valueCache) {
+      const strKey = bufKey.toString('hex');
+      const existing = this._tn.valueCache.get(strKey);
+      if (existing)
+        existing.value = structuredClone(val);
+    };
     if (this.eventHandlers.onAfterWriteOperation) {
       const operation: Operations.Set<KeyIn, ValIn> = {
         key: key,
@@ -450,6 +536,12 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
   clear(key: ClearKey<KeyIn, ValIn>) {
     const pack = this._keyEncoding.pack(key)
     this._tn.clear(pack)
+    if (this._tn.valueCache) {
+      const strKey = pack.toString('hex');
+      const existing = this._tn.valueCache.get(strKey);
+      if (existing)
+        existing.value = undefined;
+    };
     if (this.eventHandlers.onAfterWriteOperation) {
       const operation: Operations.Clear<KeyIn> = {
         key: key,
@@ -962,6 +1054,7 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
         // encoding or something. File an issue if this causes you grief.
         value: this._valueEncoding.unpack(val.slice(10))
       }
+
   }
 
   getApproximateSize() {
