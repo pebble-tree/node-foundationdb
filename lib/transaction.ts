@@ -127,7 +127,7 @@ interface TxnCtx {
  */
 
 export class UnresolvedValueError extends Error {
-  constructor(readonly promise: Promise<Buffer | undefined>) {
+  constructor(readonly promise: Promise<any>) {
     super("Transaction value not yet resolved")
   }
 }

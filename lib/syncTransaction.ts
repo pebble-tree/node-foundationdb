@@ -53,7 +53,7 @@ export class SyncTransaction<KeyIn, KeyOut, ValIn, ValOut> {
             return undefined
         return this._txn.subspace.unpackValue(valueBuf)
     }
-    set<T>(key: KeyIn, dispatch: (value: ValOut | undefined, set: (val: ValIn | undefined) => void) => T): T {
+    set<T>(key: T extends Promise<any> ? never : KeyIn, dispatch: (value: ValOut | undefined, set: (val: ValIn | undefined) => void) => T): T {
         const currentValue = this.get(key);
         const bufKey = asBuf(this._txn.subspace.packKey(key));
         return dispatch(currentValue, newValue => {
@@ -78,6 +78,26 @@ export class SyncTransaction<KeyIn, KeyOut, ValIn, ValOut> {
         const newTxn = this._txn.at(subspace);
         const ret = new SyncTransaction(newTxn, this.operations);
         return ret;
+    }
+    map<U>(keys: (U extends Promise<any> ? never : KeyIn)[], fn: (val: ValOut | undefined, set: (val: ValIn | undefined) => void) => U): U[] {
+        const allKeys = keys.map(key => {
+            try {
+                const mapped = this.set(key, (val, set) => {
+                    return fn(val, set);
+                })
+                return { mapped, missing: false } as const;
+            } catch (e) {
+                if (e instanceof UnresolvedValueError)
+                    return { missing: true, promise: e.promise } as const;
+                throw e
+            }
+        })
+            .filter(e => !!e);
+        const unresolved = allKeys.map(e => e.missing ? e.promise : undefined)
+            .filter(e => !!e);
+        if (unresolved.length > 0)
+            throw new UnresolvedValueError(Promise.all(unresolved));
+        return allKeys.filter(e => !e.missing).map(e => e.mapped) as U[];
     }
     static async doTn<KeyIn, KeyOut, ValIn, ValOut, T>(
         txn: Transaction<KeyIn, KeyOut, ValIn, ValOut>,
