@@ -3,6 +3,7 @@ import path = require('path')
 
 import FDBError from './error'
 import { MutationType, StreamingMode } from './opts.g'
+import { Operations } from './customised/operations'
 
 export type NativeValue = string | Buffer
 
@@ -21,6 +22,7 @@ export type Watch = {
 }
 
 export type Version = Buffer
+
 
 export interface NativeTransaction {
   setOption(code: number, param: string | number | Buffer | null): void
@@ -79,7 +81,8 @@ export interface NativeTransaction {
   getVersionstamp(cb: Callback<Buffer>): void
 
   getAddressesForKey(key: NativeValue): string[],
-  valueCache?: Map<string, { value: Promise<Buffer | undefined> | Buffer | undefined }>
+  valueCache?: Map<string, { value: Promise<Buffer | undefined> | Buffer | undefined }>,
+  allOperations?: Array<Operations.WriteOperation<any, any>>,
 }
 
 export interface NativeDatabase {

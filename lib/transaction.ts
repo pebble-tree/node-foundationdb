@@ -38,6 +38,7 @@ import { randomUUID } from 'crypto'
 import assert, { deepStrictEqual } from 'assert'
 import { SyncTransaction, ValueNeededError } from './syncTransaction'
 import { encoders } from '.'
+import { CacheType, CacheValueResolved, GeneralPurposeCache, UnresolvedValueError } from './cache'
 
 export type ClearKey<KeyIn, ValIn> = ValIn extends never ? never : KeyIn
 
@@ -126,11 +127,6 @@ interface TxnCtx {
  * apply a value transformer this will change.
  */
 
-export class UnresolvedValueError extends Error {
-  constructor(readonly promise: Promise<any>) {
-    super("Transaction value not yet resolved")
-  }
-}
 
 export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = NativeValue, ValOut = Buffer> {
   readonly _tn: NativeTransaction
@@ -230,6 +226,8 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
         if (err instanceof FDBError) {
           // If this throws, punt error to caller.
           await this.rawOnError(err.code)
+          //reset operations for retry
+          this._tn.allOperations = [];
           // If that passed, loop.
         } else throw err
       }
@@ -241,27 +239,7 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
   }
 
   readonly createdAt = Date.now();
-  getCurrentValueInTxn(hexKey: string, bufKey: Buffer): Buffer | undefined {
-    const entry = this._tn.valueCache?.get(hexKey);
-    if (entry) {
-      if (entry.value === undefined)
-        return undefined;
-      if (entry.value instanceof Promise) {
-        throw new UnresolvedValueError(entry.value);
-      }
-      return structuredClone(entry.value);
-    } else {
-      this._tn.valueCache = this._tn.valueCache || new Map();
-      const promise = this.at(
-        this.subspace.withKeyEncoding(encoders.buf).withValueEncoding(encoders.buf)
-      )
-        .get(bufKey)
-      this._tn.valueCache.set(hexKey, {
-        value: promise
-      });
-      throw new UnresolvedValueError(promise);
-    }
-  }
+
 
   /**
    * Set options on the transaction object. These options can have a variety of
@@ -414,15 +392,17 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
       if (existing)
         existing.value = asBuf(bufValue);
     };
+    const operation: Operations.Set<KeyIn, ValIn> = {
+      key: key,
+      value: val,
+      op: "set",
+      txn: this,
+      bufKey,
+      bufValue
+    }
+    this._tn.allOperations = this._tn.allOperations || [];
+    this._tn.allOperations.push(operation);
     if (this.eventHandlers.onAfterWriteOperation) {
-      const operation: Operations.Set<KeyIn, ValIn> = {
-        key: key,
-        value: val,
-        op: "set",
-        txn: this,
-        bufKey,
-        bufValue
-      }
       this.eventHandlers.onAfterWriteOperation(operation)
     }
   }
@@ -437,13 +417,15 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
       if (existing)
         existing.value = undefined;
     };
+    const operation: Operations.Clear<KeyIn> = {
+      key: key,
+      op: "clear",
+      txn: this,
+      bufKey: pack
+    }
+    this._tn.allOperations = this._tn.allOperations || [];
+    this._tn.allOperations.push(operation);
     if (this.eventHandlers.onAfterWriteOperation) {
-      const operation: Operations.Clear<KeyIn> = {
-        key: key,
-        op: "clear",
-        txn: this,
-        bufKey: pack
-      }
       this.eventHandlers.onAfterWriteOperation(operation)
     }
   }
@@ -709,12 +691,14 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
     }
     // const _end = end == null ? strInc(_start) : this._keyEncoding.pack(end)
     this._tn.clearRange(start, end)
+    const operation: Operations.ClearRange<KeyIn> = {
+      range: [_start, _end],
+      op: "clearRange",
+      txn: this
+    }
+    this._tn.allOperations = this._tn.allOperations || [];
+    this._tn.allOperations.push(operation);
     if (this.eventHandlers.onAfterWriteOperation) {
-      const operation: Operations.ClearRange<KeyIn> = {
-        range: [_start, _end],
-        op: "clearRange",
-        txn: this
-      }
       this.eventHandlers.onAfterWriteOperation(operation)
     }
   }
