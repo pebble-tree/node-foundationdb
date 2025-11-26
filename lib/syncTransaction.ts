@@ -2,6 +2,7 @@ import { encoders, Transaction } from ".";
 import { GeneralPurposeCache, UnresolvedValueError } from "./cache";
 import { NativeTransaction } from "./native";
 import { GetSubspace } from "./subspace";
+import { TransactionKind } from "./transaction";
 import { asBuf } from "./util";
 
 export class ValueNeededError {
@@ -25,13 +26,28 @@ interface SetOp {
 }
 
 type SyncOperation = ClearOp | SetOp
-export type ValidForSync<T, U> = T extends Promise<any> ? never : U
+
+
+
+//b it hacky, but works
+export type Primitive = string | number | boolean | null | undefined | symbol | bigint | void;
+export type NonPromiseType = NotAFunction & (Primitive |
+    object & { then?: NotAFunction }
+    | object & { catch?: NotAFunction }
+    | object & { finally?: NotAFunction }
+);
+
+export type NotAFunction = Primitive | object & { call?: never } | object & { apply?: never } | object & { bind?: never };
+
+
+
 export class SyncTransaction<KeyIn, KeyOut extends KeyIn, ValIn, ValOut> {
     readonly _tn: NativeTransaction;
     private _txn: Transaction<KeyIn, KeyOut, ValIn, ValOut>;
     private bufTxn;
     private readonly operations: Array<SyncOperation>;
     private cache;
+    readonly kind = TransactionKind.Sync;
     constructor(txn: Transaction<KeyIn, KeyOut, ValIn, ValOut>, init?: {
         operations: Array<SyncOperation>,
         cache: GeneralPurposeCache
@@ -94,8 +110,21 @@ export class SyncTransaction<KeyIn, KeyOut extends KeyIn, ValIn, ValOut> {
             .filter(e => !!e);
     }
 
-
-    set<T>(key: ValidForSync<T, KeyIn>, dispatch: (value: ValOut | undefined, set: (val: ValIn | undefined) => void) => T): T {
+    static get<TXN extends Pick<SyncTransaction<any, any, any, any>, "at" | "kind"> | Pick<Transaction<any, any, any, any>, "at" | "kind">, KI, KO, VI, VO>(
+        txn: TXN,
+        subspace: GetSubspace<KI, KO, VI, VO>,
+        key: KI
+    ) {
+        return txn.at(subspace).get(key) as TXN["kind"] extends TransactionKind.Sync ?
+            KO extends KI ? VO : never
+            : Promise<VO>;
+    }
+    set<T extends NonPromiseType>(key: KeyIn, dispatch:
+        (
+            value: ValOut | undefined,
+            set: (val: ValIn | undefined) => void
+        ) => T
+    ): T {
         const currentValue = this.get(key);
         const bufKey = asBuf(this._txn.subspace.packKey(key));
         return dispatch(currentValue, newValue => {
@@ -116,20 +145,18 @@ export class SyncTransaction<KeyIn, KeyOut extends KeyIn, ValIn, ValOut> {
         });
     }
 
-    at<KI, KO extends KI, VI, VO>(subspace: GetSubspace<KI, KO, VI, VO>): SyncTransaction<KI, KO, VI, VO> {
-        const newTxn = this._txn.at(subspace);
+    at<KI, KO, VI, VO>(subspace: GetSubspace<KI, KO, VI, VO>): KO extends KI ? SyncTransaction<KI, KO, VI, VO> : never {
+        const newTxn = this._txn.at(subspace as GetSubspace<KI, KO & KI, VI, VO>);
         const ret = new SyncTransaction(newTxn, {
             operations: this.operations,
             cache: this.cache
         });
-        return ret;
+        return ret as KO extends KI ? SyncTransaction<KI, KO, VI, VO> : never;
     }
-    map<U>(keys: (ValidForSync<U, KeyIn>)[], fn: (val: ValOut | undefined, set: (val: ValIn | undefined) => void) => U): U[] {
+    map<U extends NonPromiseType>(keys: KeyIn[], fn: (val: ValOut | undefined, set: (val: ValIn | undefined) => void) => U): U[] {
         const allKeys = keys.map(key => {
             try {
-                const mapped = this.set(key, (val, set) => {
-                    return fn(val, set);
-                })
+                const mapped = this.set(key, fn)
                 return { mapped, missing: false } as const;
             } catch (e) {
                 if (e instanceof UnresolvedValueError)
@@ -144,13 +171,16 @@ export class SyncTransaction<KeyIn, KeyOut extends KeyIn, ValIn, ValOut> {
             throw new UnresolvedValueError(Promise.all(unresolved));
         return allKeys.filter(e => !e.missing).map(e => e.mapped) as U[];
     }
+    static test<F extends () => any>(fn: F extends () => Promise<any> ? never : F): void {
 
-    static async doTn<KeyIn, KeyOut extends KeyIn, ValIn, ValOut, T>(
-        txn: ValidForSync<T, Transaction<KeyIn, KeyOut, ValIn, ValOut>>,
+    }
+    static async doTn<KeyIn, KeyOut extends KeyIn, ValIn, ValOut, T extends NonPromiseType>(
+        txn: Transaction<KeyIn, KeyOut, ValIn, ValOut>,
         fn: (stxn: SyncTransaction<KeyIn, KeyOut, ValIn, ValOut>) => T,
         opts?: { maxAttempts?: number }
     ): Promise<T> {
         const stxn = new SyncTransaction(txn);
+        this.test(() => { })
         let maxAttempts = opts?.maxAttempts ?? 250;
         while (maxAttempts-- > 0) {
             try {

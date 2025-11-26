@@ -127,9 +127,13 @@ interface TxnCtx {
  * apply a value transformer this will change.
  */
 
-
+export enum TransactionKind {
+  Async,
+  Sync
+}
 export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = NativeValue, ValOut = Buffer> {
   readonly _tn: NativeTransaction
+  readonly kind = TransactionKind.Async;
   private static idMap = new WeakMap<NativeTransaction, number>;
   isSnapshot: boolean
   subspace: Subspace<KeyIn, KeyOut, ValIn, ValOut>
