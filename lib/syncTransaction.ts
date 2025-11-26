@@ -66,6 +66,9 @@ export class SyncTransaction<KeyIn, KeyOut extends KeyIn, ValIn, ValOut> {
     get asyncTxn() {
         return this._txn;
     }
+    get subspace() {
+        return this._txn.subspace;
+    }
     get(key: KeyIn): ValOut | undefined {
         const packedKey = asBuf(this._txn.subspace.packKey(key));
         const hexKey = packedKey.toString('hex');
