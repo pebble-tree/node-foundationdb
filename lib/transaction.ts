@@ -36,7 +36,7 @@ import { EmptyEventHandler, Operations, TransactionEventHandler } from './custom
 import { MappedRange } from './mappedRange'
 import { randomUUID } from 'crypto'
 import assert, { deepStrictEqual } from 'assert'
-import { SyncTransaction, ValueNeededError } from './syncTransaction'
+import { NonPromiseType, SyncTransaction, ValueNeededError } from './syncTransaction'
 import { encoders } from '.'
 import { CacheType, CacheValueResolved, GeneralPurposeCache, UnresolvedValueError } from './cache'
 
@@ -384,7 +384,19 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
           : this._keyEncoding.unpack(key)
       ))
   }
-
+  async setDispatch<T extends NonPromiseType, const V extends ValIn = ValIn>(
+    key: ClearKey<KeyIn, ValIn>,
+    dispatch: (val: ValOut | undefined, set: (val: V | undefined) => void) => T
+  ): Promise<T> {
+    const value = await this.get(key);
+    return dispatch(value, newValue => {
+      if (newValue === undefined) {
+        this.clear(key);
+      } else {
+        this.set(key, newValue);
+      }
+    })
+  }
   /** Set the specified key/value pair in the database */
   set(key: KeyIn, val: ValIn) {
     const bufKey = this._keyEncoding.pack(key);

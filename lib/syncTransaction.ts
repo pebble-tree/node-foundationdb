@@ -2,7 +2,7 @@ import { encoders, Transaction } from ".";
 import { GeneralPurposeCache, UnresolvedValueError } from "./cache";
 import { NativeTransaction } from "./native";
 import { GetSubspace } from "./subspace";
-import { TransactionKind } from "./transaction";
+import { ClearKey, TransactionKind } from "./transaction";
 import { asBuf } from "./util";
 
 export class ValueNeededError {
@@ -119,31 +119,40 @@ export class SyncTransaction<KeyIn, KeyOut extends KeyIn, ValIn, ValOut> {
         key: KI
     ) {
         return txn.at(subspace).get(key) as TXN["kind"] extends TransactionKind.Sync ?
-            KO extends KI ? VO : never
-            : Promise<VO>;
+            KO extends KI ? VO | undefined : never
+            : Promise<VO | undefined>;
     }
-    set<T extends NonPromiseType>(key: KeyIn, dispatch:
+    private set(key: KeyIn, value: ValIn): void {
+        const bufKey = asBuf(this._txn.subspace.packKey(key));
+        this.operations.push({
+            type: OpType.set,
+            bufKey: bufKey,
+            bufValue: asBuf(this._txn.subspace.packValue(value)),
+        })
+    }
+    private clear(key: KeyIn): void {
+        const bufKey = asBuf(this._txn.subspace.packKey(key));
+        //this is a clear
+        this.operations.push({
+            type: OpType.clear,
+            bufKey: bufKey,
+        })
+    }
+    setDispatch<T extends NonPromiseType, const V extends ValIn = ValIn>(key: KeyIn, dispatch:
         (
             value: ValOut | undefined,
-            set: (val: ValIn | undefined) => void
+            set: (val: V | undefined) => void
         ) => T
     ): T {
         const currentValue = this.get(key);
-        const bufKey = asBuf(this._txn.subspace.packKey(key));
         return dispatch(currentValue, newValue => {
             if (newValue === undefined) {
-                //this is a clear
-                this.operations.push({
-                    type: OpType.clear,
-                    bufKey: bufKey,
-                })
+                this.clear(key);
+
             } else {
                 //this is a set
-                this.operations.push({
-                    type: OpType.set,
-                    bufKey: bufKey,
-                    bufValue: asBuf(this._txn.subspace.packValue(newValue)),
-                })
+                this.set(key, newValue);
+
             }
         });
     }
@@ -159,7 +168,7 @@ export class SyncTransaction<KeyIn, KeyOut extends KeyIn, ValIn, ValOut> {
     map<U extends NonPromiseType>(keys: KeyIn[], fn: (val: ValOut | undefined, set: (val: ValIn | undefined) => void) => U): U[] {
         const allKeys = keys.map(key => {
             try {
-                const mapped = this.set(key, fn)
+                const mapped = this.setDispatch(key, fn)
                 return { mapped, missing: false } as const;
             } catch (e) {
                 if (e instanceof UnresolvedValueError)
