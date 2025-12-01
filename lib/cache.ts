@@ -1,4 +1,5 @@
 import { Operations, Transaction } from "."
+import { RangeOptions } from "./transaction"
 import { asBuf } from "./util"
 
 export enum CacheKeyType {
@@ -38,7 +39,10 @@ export type GetCacheValueEntry = {
 }
 
 
+
+
 export class GeneralPurposeCache {
+
     private getCache: Map<string, CacheValue<GetCacheValueEntry>> = new Map();
     private getRangeAllStartsWithCache: Map<string, CacheValue<Array<[Buffer, Buffer]>>> = new Map();
     constructor(private txn: Transaction<any, any, any, any>) {
@@ -144,7 +148,7 @@ export class GeneralPurposeCache {
             })
         )
     }
-    getRangeAllStartsWithCacheEntry(hexKey: string, bufKey: Buffer, notFound: () => Promise<Array<[Buffer, Buffer]>>): CacheValueResolved<Array<[Buffer, Buffer]>> {
+    getRangeAllStartsWithCacheEntry(hexKey: string, bufKey: Buffer, notFound: () => Promise<Array<[Buffer, Buffer]>>, options: RangeOptions | undefined): CacheValueResolved<Array<[Buffer, Buffer]>> {
         const ret = this.getRangeAllStartsWithCache.get(hexKey);
         if (ret) {
             switch (ret.type) {

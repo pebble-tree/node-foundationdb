@@ -1,8 +1,8 @@
 import { encoders, Transaction } from ".";
-import { GeneralPurposeCache, UnresolvedValueError } from "./cache";
+import { GeneralPurposeCache, UnresolvedValueError } from "./generalPurposeCache";
 import { NativeTransaction } from "./native";
 import { GetSubspace } from "./subspace";
-import { ClearKey, TransactionKind } from "./transaction";
+import { ClearKey, RangeOptions, TransactionKind } from "./transaction";
 import { asBuf } from "./util";
 
 export class ValueNeededError {
@@ -83,20 +83,22 @@ export class SyncTransaction<KeyIn, KeyOut extends KeyIn, ValIn, ValOut> {
                     return this._txn.subspace.unpackValue(lastSetOrClear.bufValue);
             }
         }
-        const packedValue = this.cache.getGetCacheEntry(hexKey, packedKey, async () => {
+        const packedValue = this.cache.get(`get-${hexKey}`, async () => {
             return this.bufTxn.get(packedKey);
-        }).contents.resolved.value
+        })
+
         if (packedValue === undefined)
             return undefined;
         return this._txn.subspace.unpackValue(packedValue);
     }
-    getRangeAllStartsWith(prefix: KeyIn): Array<[KeyOut, ValOut]> {
+    getRangeAllStartsWith(prefix: KeyIn, opts?: RangeOptions): Array<[KeyOut, ValOut]> {
         const packedKey = asBuf(this._txn.subspace.packKey(prefix));
         const hexKey = packedKey.toString('hex');
-        const packedValue = this.cache.getRangeAllStartsWithCacheEntry(hexKey, packedKey, async () => {
-            return this.bufTxn.getRangeAllStartsWith(packedKey);
+        const cacheKey = `getRangeAllStartsWith-${hexKey}-${JSON.stringify(opts ?? {})}`;
+        const packedValue = this.cache.get(cacheKey, async () => {
+            return this.bufTxn.getRangeAllStartsWith(packedKey, opts);
         });
-        const unpackedValue = packedValue.contents.resolved.map(([k, v]): [KeyOut, ValOut] => {
+        const unpackedValue = packedValue.map(([k, v]): [KeyOut, ValOut] => {
             return [
                 this._txn.subspace.unpackKey(k),
                 this._txn.subspace.unpackValue(v)
@@ -199,29 +201,24 @@ export class SyncTransaction<KeyIn, KeyOut extends KeyIn, ValIn, ValOut> {
                 stxn.operations.splice(0, stxn.operations.length);
                 const res = fn(stxn);
                 //are the values we based out decision on still valid
-                if (!stxn.cache.validateCache()) {
-                    throw new UnresolvedValueError(
-                        Promise.resolve() //dummy promise to retry, cache should have been cleared of the invalid entries
-                    );
-                }
-                for (const op of stxn.operations) {
-                    switch (op.type) {
-                        case OpType.clear:
-                            stxn.bufTxn.clear(op.bufKey);
-                            break;
-                        case OpType.set:
-                            stxn.bufTxn.set(op.bufKey, op.bufValue);
-                            break;
+                await stxn.cache.validateCache(() => {
+                    for (const op of stxn.operations) {
+                        switch (op.type) {
+                            case OpType.clear:
+                                stxn.bufTxn.clear(op.bufKey);
+                                break;
+                            case OpType.set:
+                                stxn.bufTxn.set(op.bufKey, op.bufValue);
+                                break;
+                        }
                     }
-                }
+                })
                 return res;
             } catch (e) {
                 if (e instanceof UnresolvedValueError) {
                     await e.promise;
                     //our operations are invalid now
                     stxn.operations.splice(0, stxn.operations.length);
-                    //may as well clear the cache of any invalid entries too as we awaited
-                    stxn.cache.validateCache();
                     continue;
                 }
                 throw e;

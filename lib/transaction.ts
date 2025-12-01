@@ -34,11 +34,8 @@ import {
 import Subspace, { GetSubspace } from './subspace'
 import { EmptyEventHandler, Operations, TransactionEventHandler } from './customised/operations'
 import { MappedRange } from './mappedRange'
-import { randomUUID } from 'crypto'
-import assert, { deepStrictEqual } from 'assert'
-import { NonPromiseType, SyncTransaction, ValueNeededError } from './syncTransaction'
+import { NonPromiseType } from './syncTransaction'
 import { encoders } from '.'
-import { CacheType, CacheValueResolved, GeneralPurposeCache, UnresolvedValueError } from './cache'
 
 export type ClearKey<KeyIn, ValIn> = ValIn extends never ? never : KeyIn
 
