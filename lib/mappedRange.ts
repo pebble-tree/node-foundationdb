@@ -3,7 +3,8 @@
 import { tuple, TupleItem } from ".";
 import { GetSubspace } from "./subspace";
 
-
+//wip: works with no spec, but fails when a spec is used
+//pretty much useless as fdb doesn't support ryow with mapped range reads!!
 export class MappedRange<KEY_OUT, VAL_OUT> {
     readonly target;
     private spec;
