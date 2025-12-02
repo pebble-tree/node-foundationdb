@@ -14,18 +14,23 @@ enum OpType {
     clear
 }
 
-interface ClearOp {
+interface ClearOp<KeyIn> {
     type: OpType.clear,
-    bufKey: Buffer
+    bufKey: Buffer,
+    key: KeyIn,
+    txn: Transaction<KeyIn, unknown, unknown, unknown>
 }
 
-interface SetOp {
+interface SetOp<KeyIn, ValIn> {
     type: OpType.set,
     bufKey: Buffer,
-    bufValue: Buffer
+    bufValue: Buffer,
+    key: KeyIn,
+    value: ValIn,
+    txn: Transaction<KeyIn, unknown, ValIn, unknown>
 }
 
-type SyncOperation = ClearOp | SetOp
+type SyncOperation<KeyIn, ValIn> = ClearOp<KeyIn> | SetOp<KeyIn, ValIn>;
 
 
 
@@ -45,11 +50,11 @@ export class SyncTransaction<KeyIn, KeyOut extends KeyIn, ValIn, ValOut> {
     readonly _tn: NativeTransaction;
     private _txn: Transaction<KeyIn, KeyOut, ValIn, ValOut>;
     private bufTxn;
-    private readonly operations: Array<SyncOperation>;
+    private readonly operations: Array<SyncOperation<unknown, unknown>>;
     private cache;
     readonly kind = TransactionKind.Sync;
     constructor(txn: Transaction<KeyIn, KeyOut, ValIn, ValOut>, init?: {
-        operations: Array<SyncOperation>,
+        operations: Array<SyncOperation<unknown, unknown>>,
         cache: GeneralPurposeCache
     }) {
         this._tn = txn._tn;
@@ -131,6 +136,9 @@ export class SyncTransaction<KeyIn, KeyOut extends KeyIn, ValIn, ValOut> {
             type: OpType.set,
             bufKey: bufKey,
             bufValue: asBuf(this._txn.subspace.packValue(value)),
+            key,
+            value,
+            txn: this._txn
         })
     }
     private clear(key: KeyIn): void {
@@ -139,6 +147,8 @@ export class SyncTransaction<KeyIn, KeyOut extends KeyIn, ValIn, ValOut> {
         this.operations.push({
             type: OpType.clear,
             bufKey: bufKey,
+            key,
+            txn: this._txn
         })
     }
     setDispatch<T extends NonPromiseType, const V extends ValIn = ValIn>(key: KeyIn, dispatch:
@@ -206,10 +216,10 @@ export class SyncTransaction<KeyIn, KeyOut extends KeyIn, ValIn, ValOut> {
                     for (const op of stxn.operations) {
                         switch (op.type) {
                             case OpType.clear:
-                                stxn.bufTxn.clear(op.bufKey);
+                                op.txn.clear(op.key);
                                 break;
                             case OpType.set:
-                                stxn.bufTxn.set(op.bufKey, op.bufValue);
+                                op.txn.set(op.key, op.value);
                                 break;
                         }
                     }
