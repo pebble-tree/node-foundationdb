@@ -1,6 +1,6 @@
 // a general purpose cache that allows us to save the results 
 
-import assert from "assert";
+import * as assert from "assert";
 import { Transaction } from ".";
 
 enum CachEntryType {
