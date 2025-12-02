@@ -83,7 +83,7 @@ export class GeneralPurposeCache {
                     }
                 })
             )
-            if (this.txn._tn.allOperations?.length === lastMutationIndex) {
+            if ((this.txn._tn.allOperations?.length || 0) === lastMutationIndex) {
                 onValid();
                 return;
             }
