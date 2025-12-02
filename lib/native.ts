@@ -83,6 +83,7 @@ export interface NativeTransaction {
   getAddressesForKey(key: NativeValue): string[],
   valueCache?: Map<string, { value: Promise<Buffer | undefined> | Buffer | undefined }>,
   allOperations?: Array<Operations.WriteOperation<any, any>>,
+  commitInProgress?: boolean
 }
 
 export interface NativeDatabase {

@@ -227,6 +227,7 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
         if (err instanceof FDBError) {
           // If this throws, punt error to caller.
           await this.rawOnError(err.code)
+          this._tn.commitInProgress = false;
           //reset operations for retry
           this._tn.allOperations = [];
           // If that passed, loop.
@@ -242,6 +243,12 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
   readonly createdAt = Date.now();
 
 
+  private throwIfCommitInProgress() {
+    if (this._tn.commitInProgress) {
+      throw new Error("Operation called while a commit was outstanding");
+    }
+  }
+
   /**
    * Set options on the transaction object. These options can have a variety of
    * effects - see TransactionOptionCode for details. For options which are
@@ -252,6 +259,7 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
    * of the transaction object (eg in other scopes or from `txn.snapshot()`).
    */
   setOption(opt: TransactionOptionCode, value?: number | string | Buffer) {
+    this.throwIfCommitInProgress();
     // TODO: Check type of passed option is valid.
     this._tn.setOption(opt, (value == null) ? null : value)
   }
@@ -292,8 +300,14 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
     const preReq = (async () => {
       await this.eventHandlers.onPreCommit?.(this)
     })();
-    if (cb) return preReq.then(() => this._tn.commit(cb)).catch(cb);
-    return preReq.then(() => this._tn.commit());
+    if (cb) return preReq.then(() => {
+      this._tn.commitInProgress = true;
+      return this._tn.commit(cb)
+    }).catch(cb);
+    return preReq.then(() => {
+      this._tn.commitInProgress = true;
+      return this._tn.commit()
+    });
   }
 
   rawReset() { this._tn.reset() }
@@ -303,6 +317,14 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
   /** @deprecated - Use promises API instead. */
   rawOnError(code: number, cb: Callback<void>): void
   rawOnError(code: number, cb?: Callback<void>) {
+    if (code === 2017) {
+      //special case, for 2017 which means commit already in progress/completed
+      //in which case onError never returns
+      const err = new FDBError("Operation issued while a commit was outstanding", 2017);
+      if (cb) cb(err)
+      return Promise.reject(err);
+    }
+
     return cb
       ? this._tn.onError(code, cb)
       : this._tn.onError(code)
@@ -318,6 +340,7 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
   /** @deprecated - Use promises API instead. */
   get(key: KeyIn, cb: Callback<ValOut | undefined>): void
   get(key: KeyIn, cb?: Callback<ValOut | undefined>) {
+    this.throwIfCommitInProgress();
     const keyBuf = this._keyEncoding.pack(key)
     const preReq = (async () => {
       const operation: Operations.Get<KeyIn> = {
@@ -366,6 +389,7 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
    *   and return keys in the system portion (starting with '\xff').
    */
   async getKey(_sel: KeySelector<KeyIn> | KeyIn): Promise<KeyOut | undefined> {
+    this.throwIfCommitInProgress();
     if (this.eventHandlers.onBeforeReadOperation) {
       await this.eventHandlers.onBeforeReadOperation({
         op: "getKey",
@@ -385,6 +409,7 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
     key: ClearKey<KeyIn, ValIn>,
     dispatch: (val: ValOut | undefined, set: (val: V | undefined) => void) => T
   ): Promise<T> {
+    this.throwIfCommitInProgress();
     const value = await this.get(key);
     return dispatch(value, newValue => {
       if (newValue === undefined) {
@@ -396,6 +421,7 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
   }
   /** Set the specified key/value pair in the database */
   set(key: KeyIn, val: ValIn) {
+    this.throwIfCommitInProgress();
     const bufKey = this._keyEncoding.pack(key);
     const bufValue = this._valueEncoding.pack(val);
     this._tn.set(bufKey, bufValue);
@@ -422,6 +448,7 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
 
   /** Remove the value for the specified key */
   clear(key: ClearKey<KeyIn, ValIn>) {
+    this.throwIfCommitInProgress();
     const pack = this._keyEncoding.pack(key)
     this._tn.clear(pack)
     if (this._tn.valueCache) {
@@ -466,6 +493,7 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
     end: KeySelector<NativeValue> | null,  // If not specified, start is used as a prefix.
     limit: number, targetBytes: number, streamingMode: StreamingMode,
     iter: number, reverse: boolean, mappedPrefix?: NativeValue): Promise<KVList<Buffer, Buffer>> {
+    this.throwIfCommitInProgress();
     const _end = end != null ? end : keySelector.firstGreaterOrEqual(strInc(start.key))
     return this._tn.getRange(
       start.key, start.orEqual, start.offset,
@@ -477,6 +505,7 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
   async getRangeRaw(start: KeySelector<KeyIn>, end: KeySelector<KeyIn> | null,
     limit: number, targetBytes: number, streamingMode: StreamingMode,
     iter: number, reverse: boolean): Promise<KVList<KeyOut, ValOut>> {
+    this.throwIfCommitInProgress();
     if (this.eventHandlers.onBeforeReadOperation) {
       await this.eventHandlers.onBeforeReadOperation({
         op: "getRange",
@@ -493,6 +522,7 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
   }
 
   getEstimatedRangeSizeBytes(start: KeyIn, end: KeyIn): Promise<number> {
+    this.throwIfCommitInProgress();
     return this._tn.getEstimatedRangeSizeBytes(
       this._keyEncoding.pack(start),
       this._keyEncoding.pack(end)
@@ -500,6 +530,7 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
   }
 
   getRangeSplitPoints(start: KeyIn, end: KeyIn, chunkSize: number): Promise<KeyOut[]> {
+    this.throwIfCommitInProgress();
     return this._tn.getRangeSplitPoints(
       this._keyEncoding.pack(start),
       this._keyEncoding.pack(end),
@@ -693,7 +724,7 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
   clearRange(_start: ClearKey<KeyIn, ValIn>, _end?: ClearKey<KeyIn, ValIn>) {
     let start: NativeValue, end: NativeValue
     // const _start = this._keyEncoding.pack(start)
-
+    this.throwIfCommitInProgress();
     if (_end == null) {
       const range = this.subspace.packRange(_start)
       start = range.begin
@@ -722,6 +753,7 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
   }
 
   watch(key: KeyIn, opts?: WatchOptions): Watch {
+    this.throwIfCommitInProgress();
     const throwAll = opts && opts.throwAllErrors
     const watch = this._tn.watch(this._keyEncoding.pack(key), !throwAll)
     // Suppress the global unhandledRejection handler when a watch errors
@@ -730,29 +762,37 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
   }
 
   addReadConflictRange(start: KeyIn, end: KeyIn) {
+    this.throwIfCommitInProgress();
     this._tn.addReadConflictRange(this._keyEncoding.pack(start), this._keyEncoding.pack(end))
   }
   addReadConflictKey(key: KeyIn) {
+    this.throwIfCommitInProgress();
     const keyBuf = this._keyEncoding.pack(key)
     this._tn.addReadConflictRange(keyBuf, strNext(keyBuf))
   }
 
   addWriteConflictRange(start: KeyIn, end: KeyIn) {
+    this.throwIfCommitInProgress();
     this._tn.addWriteConflictRange(this._keyEncoding.pack(start), this._keyEncoding.pack(end))
   }
   addWriteConflictKey(key: KeyIn) {
+    this.throwIfCommitInProgress();
     const keyBuf = this._keyEncoding.pack(key)
     this._tn.addWriteConflictRange(keyBuf, strNext(keyBuf))
   }
 
   // version must be 8 bytes
-  setReadVersion(v: Version) { this._tn.setReadVersion(v) }
+  setReadVersion(v: Version) {
+    this.throwIfCommitInProgress();
+    this._tn.setReadVersion(v)
+  }
 
   /** Get the database version used to perform reads in this transaction. */
   getReadVersion(): Promise<Version>
   /** @deprecated - Use promises API instead. */
   getReadVersion(cb: Callback<Version>): void
   getReadVersion(cb?: Callback<Version>) {
+    this.throwIfCommitInProgress();
     return cb ? this._tn.getReadVersion(cb) : this._tn.getReadVersion()
   }
 
@@ -782,18 +822,22 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
   }
 
   getAddressesForKey(key: KeyIn): string[] {
+    this.throwIfCommitInProgress();
     return this._tn.getAddressesForKey(this._keyEncoding.pack(key))
   }
 
   // **** Atomic operations
 
   atomicOpNative(opType: MutationType, key: NativeValue, oper: NativeValue) {
+    this.throwIfCommitInProgress();
     this._tn.atomicOp(opType, key, oper)
   }
   atomicOpKB(opType: MutationType, key: KeyIn, oper: Buffer) {
+    this.throwIfCommitInProgress();
     this._tn.atomicOp(opType, this._keyEncoding.pack(key), oper)
   }
   atomicOp(opType: MutationType, key: KeyIn, oper: ValIn) {
+    this.throwIfCommitInProgress();
     this._tn.atomicOp(opType, this._keyEncoding.pack(key), this._valueEncoding.pack(oper))
   }
 
@@ -872,6 +916,8 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
   // key to be baked out with a versionstamp after it, use
   // setVersionstampSuffixedKey.
   setVersionstampedKey(key: KeyIn, value: ValIn, bakeAfterCommit: boolean = true) {
+    this.throwIfCommitInProgress();
+
     if (!this._keyEncoding.packUnboundVersionstamp) {
       throw TypeError('Key encoding does not support unbound versionstamps. Use setVersionstampPrefixedValue instead')
     }
@@ -884,6 +930,8 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
   }
 
   setVersionstampSuffixedKey(key: KeyIn, value: ValIn, suffix?: Buffer) {
+    this.throwIfCommitInProgress();
+
     const prefix = asBuf(this._keyEncoding.pack(key))
     this.setVersionstampedKeyBuf(prefix, suffix, value)
   }
@@ -891,10 +939,13 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
   // Ok now versionstamped values
 
   setVersionstampedValueRaw(key: KeyIn, value: Buffer) {
+    this.throwIfCommitInProgress();
     this.atomicOpKB(MutationType.SetVersionstampedValue, key, value)
   }
 
   setVersionstampedValue(key: KeyIn, value: ValIn, bakeAfterCommit: boolean = true) {
+    this.throwIfCommitInProgress();
+
     // This is super similar to setVersionstampedKey. I wish I could reuse the code.
     if (!this._valueEncoding.packUnboundVersionstamp) {
       throw TypeError('Value encoding does not support unbound versionstamps. Use setVersionstampPrefixedValue instead')
@@ -913,6 +964,7 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
    * prefix is only supported on API version 520+.
    */
   setVersionstampPrefixedValue(key: KeyIn, value?: ValIn, prefix?: Buffer) {
+    this.throwIfCommitInProgress();
     const valBuf = value !== undefined ? asBuf(this._valueEncoding.pack(value)) : undefined
     const val = packVersionstampPrefixSuffix(prefix, valBuf, false)
     this.atomicOpKB(MutationType.SetVersionstampedValue, key, val)
@@ -925,6 +977,7 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
    * using setVersionstampedValue with tuples, just call get().
    */
   async getVersionstampPrefixedValue(key: KeyIn): Promise<{ stamp: Buffer, value?: ValOut } | null> {
+    this.throwIfCommitInProgress();
     const val = await this._tn.get(this._keyEncoding.pack(key), this.isSnapshot)
 
     if (val == null) {
