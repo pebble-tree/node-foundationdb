@@ -1,8 +1,8 @@
 import { encoders, Transaction } from ".";
 import { GeneralPurposeCache, UnresolvedValueError } from "./generalPurposeCache";
 import { NativeTransaction } from "./native";
-import { GetSubspace } from "./subspace";
-import { ClearKey, RangeOptions, TransactionKind } from "./transaction";
+import Subspace, { GetSubspace } from "./subspace";
+import { RangeOptions, TransactionKind } from "./transaction";
 import { asBuf } from "./util";
 
 export class ValueNeededError {
@@ -54,8 +54,9 @@ export class SyncTransaction<KeyIn, KeyOut extends KeyIn, ValIn, ValOut> {
     }) {
         this._tn = txn._tn;
         this._txn = txn;
+        const rootSubspace = new Subspace(Buffer.from([]), encoders.buf, encoders.buf);
         this.bufTxn = txn.at(
-            txn.subspace.withKeyEncoding(encoders.buf).withValueEncoding(encoders.buf)
+            rootSubspace
         );
         this.cache = init?.cache ?? new GeneralPurposeCache(txn);
         this.operations = init?.operations ?? [];
@@ -219,9 +220,9 @@ export class SyncTransaction<KeyIn, KeyOut extends KeyIn, ValIn, ValOut> {
                     await e.promise;
                     //our operations are invalid now
                     stxn.operations.splice(0, stxn.operations.length);
-                    continue;
                 }
-                throw e;
+                else
+                    throw e;
             }
         }
         throw new Error("Max attempts reached in SyncTransaction.doTn");
