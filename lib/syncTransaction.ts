@@ -71,7 +71,9 @@ export class SyncTransaction<KeyIn, KeyOut extends KeyIn, ValIn, ValOut> {
     private _txn: Transaction<KeyIn, KeyOut, ValIn, ValOut>;
     private bufTxn;
     private readonly operations;
-
+    private static wrapper: (<T>(callback: () => Promise<T>) => Promise<T>) = (callback) => {
+        return callback()
+    };
     private cache;
     readonly kind = TransactionKind.Sync;
     constructor(txn: Transaction<KeyIn, KeyOut, ValIn, ValOut>, init?: {
@@ -239,6 +241,18 @@ export class SyncTransaction<KeyIn, KeyOut extends KeyIn, ValIn, ValOut> {
             throw new UnresolvedValueError(Promise.all(unresolved));
         return allKeys.filter(e => !e.missing).map(e => e.mapped) as U[];
     }
+    static setTransactionBodyWrapper(fn: <T>(callback: () => Promise<T>) => Promise<T>) {
+        if (this.wrapper) {
+            const existing = this.wrapper;
+            this.wrapper = (callback) => {
+                return existing(() => {
+                    return fn(callback);
+                });
+            }
+        } else {
+            this.wrapper = fn;
+        }
+    }
     static async doTn<KeyIn, KeyOut extends KeyIn, ValIn, ValOut, T extends NonPromiseType>(
         txn: Transaction<KeyIn, KeyOut, ValIn, ValOut>,
         fn: (stxn: SyncTransaction<KeyIn, KeyOut, ValIn, ValOut>) => T,
@@ -248,21 +262,24 @@ export class SyncTransaction<KeyIn, KeyOut extends KeyIn, ValIn, ValOut> {
         let maxAttempts = opts?.maxAttempts ?? 250;
         while (maxAttempts-- > 0) {
             try {
-                stxn.operations.reset();
-                const res = fn(stxn);
-                //are the values we based out decision on still valid
-                await stxn.cache.validateCache(() => {
-                    for (const op of stxn.operations.all()) {
+                const res = await this.wrapper(async () => {
+                    stxn.operations.reset();
+                    const res = fn(stxn);
+                    //are the values we based out decision on still valid
+                    await stxn.cache.validateCache(() => {
+                        for (const op of stxn.operations.all()) {
 
-                        switch (op.type) {
-                            case OpType.clear:
-                                op.txn.clear(op.key);
-                                break;
-                            case OpType.set:
-                                op.txn.set(op.key, op.value);
-                                break;
+                            switch (op.type) {
+                                case OpType.clear:
+                                    op.txn.clear(op.key);
+                                    break;
+                                case OpType.set:
+                                    op.txn.set(op.key, op.value);
+                                    break;
+                            }
                         }
-                    }
+                    })
+                    return res;
                 })
                 return res;
             } catch (e) {
