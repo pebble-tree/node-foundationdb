@@ -1,7 +1,7 @@
 // a general purpose cache that allows us to save the results 
 
 import * as assert from "assert";
-import { Transaction } from ".";
+import { FDBError, Transaction } from ".";
 
 enum CachEntryType {
     value,
@@ -10,12 +10,17 @@ enum CachEntryType {
 type CacheEntryPromise<T> = {
     type: CachEntryType.promise,
     value: Promise<T>,
-    fulfill: () => Promise<T>
+    fulfill: () => Promise<T>,
+    flags?: EnumCacheEntryFlags
+}
+enum EnumCacheEntryFlags {
+    isCreate = 1
 }
 type CacheEntryValue<T> = {
     type: CachEntryType.value,
     value: T,
-    fulfill: () => Promise<T>
+    fulfill: () => Promise<T>,
+    flags?: EnumCacheEntryFlags
 }
 
 type CacheEntry<T> = CacheEntryPromise<T> | CacheEntryValue<T>;
@@ -40,15 +45,17 @@ export class GeneralPurposeCache {
             return false;
         }
     }
-    setIfNotEqualTo(key: string, value: any, fulfill: () => Promise<any>) {
+    addCreate(key: string, fulfill: () => Promise<any>) {
         const existing = this.cache.get(key);
+        const value = undefined;
         if (existing && !this.areEqual(existing.value, value)) {
-            throw new Error("Cache entry already present with different value");
+            throw new Error("Cache entry already present with a value");
         }
         this.cache.set(key, {
             type: CachEntryType.value,
             value,
-            fulfill
+            fulfill,
+            flags: EnumCacheEntryFlags.isCreate
         });
     }
     get<T>(
@@ -90,6 +97,11 @@ export class GeneralPurposeCache {
                             value: currentValue,
                             fulfill: entry.fulfill
                         });
+                        if (entry.flags !== undefined && (entry.flags & EnumCacheEntryFlags.isCreate) !== 0) {
+                            //we want this to be caught by the main transaction control loop,
+                            //as the key may have been constructed outside of the control loop that uses this cache
+                            throw new FDBError("Fake conflict (create)", 1020)
+                        }
                         throw new UnresolvedValueError(Promise.resolve());
                     }
                 })

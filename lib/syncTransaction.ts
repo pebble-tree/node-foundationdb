@@ -207,7 +207,7 @@ export class SyncTransaction<KeyIn, KeyOut extends KeyIn, ValIn, ValOut> {
         if (existing?.value !== undefined) {
             throw new Error("Key already present in transaction operations");
         }
-        this.cache.setIfNotEqualTo(this.cacheKeyGenGet(hexKey), undefined, async () => {
+        this.cache.addCreate(this.cacheKeyGenGet(hexKey), async () => {
             return this.bufTxn.get(asBuf(this._txn.subspace.packKey(key)));
         });
         this.set(key, value);
