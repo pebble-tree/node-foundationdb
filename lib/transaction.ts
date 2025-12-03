@@ -184,6 +184,16 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
     }
   }
 
+  async create(key: KeyIn, value: ValIn) {
+    const existing = await this.get(key);
+    if (existing !== undefined) {
+      //assume calling party will regen key
+      throw new FDBError("Fake conflict", 1020)
+    }
+    this.set(key, value);
+    return value;
+  }
+
   static wrapTransactionBody?: <T>(
     txn: Transaction<unknown, unknown, unknown, unknown>,
     callback: () => Promise<T>

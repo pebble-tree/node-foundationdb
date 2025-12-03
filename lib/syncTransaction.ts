@@ -17,17 +17,17 @@ enum OpType {
 interface ClearOp<KeyIn> {
     type: OpType.clear,
     bufKey: Buffer,
-    key: KeyIn,
-    txn: Transaction<KeyIn, unknown, unknown, unknown>
+    txn: Transaction<KeyIn, unknown, unknown, unknown>,
+    key: KeyIn
 }
 
 interface SetOp<KeyIn, ValIn> {
     type: OpType.set,
     bufKey: Buffer,
     bufValue: Buffer,
+    txn: Transaction<KeyIn, unknown, ValIn, unknown>,
     key: KeyIn,
-    value: ValIn,
-    txn: Transaction<KeyIn, unknown, ValIn, unknown>
+    value: ValIn
 }
 
 type SyncOperation<KeyIn, ValIn> = ClearOp<KeyIn> | SetOp<KeyIn, ValIn>;
@@ -45,16 +45,37 @@ export type NonPromiseType = NotAFunction & (Primitive |
 export type NotAFunction = Primitive | object & { call?: never } | object & { apply?: never } | object & { bind?: never };
 
 
+class OperationsStore {
+    private readonly operations: Array<SyncOperation<unknown, unknown>> = [];
+    private readonly opMap: Map<string, SyncOperation<unknown, unknown>> = new Map();
+    constructor() {
 
+    }
+    addOperation(hexKey: string, op: SyncOperation<unknown, unknown>) {
+        this.operations.push(op);
+        this.opMap.set(hexKey, op);
+    }
+    getOperation(hexKey: string): SyncOperation<unknown, unknown> | undefined {
+        return this.opMap.get(hexKey);
+    }
+    reset() {
+        this.operations.splice(0, this.operations.length);
+        this.opMap.clear();
+    }
+    all() {
+        return this.operations;
+    }
+}
 export class SyncTransaction<KeyIn, KeyOut extends KeyIn, ValIn, ValOut> {
     readonly _tn: NativeTransaction;
     private _txn: Transaction<KeyIn, KeyOut, ValIn, ValOut>;
     private bufTxn;
-    private readonly operations: Array<SyncOperation<unknown, unknown>>;
+    private readonly operations;
+
     private cache;
     readonly kind = TransactionKind.Sync;
     constructor(txn: Transaction<KeyIn, KeyOut, ValIn, ValOut>, init?: {
-        operations: Array<SyncOperation<unknown, unknown>>,
+        operations: OperationsStore,
         cache: GeneralPurposeCache
     }) {
         this._tn = txn._tn;
@@ -64,32 +85,40 @@ export class SyncTransaction<KeyIn, KeyOut extends KeyIn, ValIn, ValOut> {
             rootSubspace
         );
         this.cache = init?.cache ?? new GeneralPurposeCache(txn);
-        this.operations = init?.operations ?? [];
+        this.operations = init?.operations ?? new OperationsStore();
     }
+
     get createdAt() {
         return this._txn.createdAt;
     }
-    get asyncTxn() {
-        return this._txn;
-    }
     get subspace() {
         return this._txn.subspace;
+    }
+    private cacheKeyGenGet(hexKey: string) {
+        return `get-${hexKey}`;
+    }
+    private getFromOperations(hexKey: string): { value: ValOut | undefined } | undefined {
+        const op = this.operations.getOperation(hexKey);
+        if (op) {
+            switch (op.type) {
+                case OpType.clear:
+                    return { value: undefined };
+                case OpType.set:
+                    return { value: this._txn.subspace.unpackValue(op.bufValue) as ValOut };
+            }
+        }
+        return undefined;
     }
     get(key: KeyIn): ValOut | undefined {
         const packedKey = asBuf(this._txn.subspace.packKey(key));
         const hexKey = packedKey.toString('hex');
         //now we may have a relevant set/clear in this.operations
         //this is ryow
-        const lastSetOrClear = this.operations.findLast(op => op.bufKey.toString('hex') === hexKey);
-        if (lastSetOrClear) {
-            switch (lastSetOrClear.type) {
-                case OpType.clear:
-                    return undefined;
-                case OpType.set:
-                    return this._txn.subspace.unpackValue(lastSetOrClear.bufValue);
-            }
+        const fromOperations = this.getFromOperations(hexKey);
+        if (fromOperations) {
+            return fromOperations.value;
         }
-        const packedValue = this.cache.get(`get-${hexKey}`, async () => {
+        const packedValue = this.cache.get(this.cacheKeyGenGet(hexKey), async () => {
             return this.bufTxn.get(packedKey);
         })
 
@@ -130,25 +159,27 @@ export class SyncTransaction<KeyIn, KeyOut extends KeyIn, ValIn, ValOut> {
             KO extends KI ? VO | undefined : never
             : Promise<VO | undefined>;
     }
-    private set(key: KeyIn, value: ValIn): void {
+    set(key: KeyIn, value: ValIn): void {
         const bufKey = asBuf(this._txn.subspace.packKey(key));
-        this.operations.push({
+        const hexKey = bufKey.toString('hex');
+        this.operations.addOperation(hexKey, {
             type: OpType.set,
             bufKey: bufKey,
             bufValue: asBuf(this._txn.subspace.packValue(value)),
+            txn: this._txn,
             key,
-            value,
-            txn: this._txn
+            value
         })
     }
-    private clear(key: KeyIn): void {
+    clear(key: KeyIn): void {
         const bufKey = asBuf(this._txn.subspace.packKey(key));
+        const hexKey = bufKey.toString('hex');
         //this is a clear
-        this.operations.push({
+        this.operations.addOperation(hexKey, {
             type: OpType.clear,
             bufKey: bufKey,
+            txn: this._txn,
             key,
-            txn: this._txn
         })
     }
     setDispatch<T extends NonPromiseType, const V extends ValIn = ValIn>(key: KeyIn, dispatch:
@@ -169,7 +200,19 @@ export class SyncTransaction<KeyIn, KeyOut extends KeyIn, ValIn, ValOut> {
             }
         });
     }
-
+    create(key: KeyIn, value: ValIn) {
+        const hexKey = asBuf(this._txn.subspace.packKey(key)).toString('hex');
+        //for create we assume that the prior value is undefined
+        const existing = this.getFromOperations(hexKey);
+        if (existing?.value !== undefined) {
+            throw new Error("Key already present in transaction operations");
+        }
+        this.cache.setIfNotEqualTo(this.cacheKeyGenGet(hexKey), undefined, async () => {
+            return this.bufTxn.get(asBuf(this._txn.subspace.packKey(key)));
+        });
+        this.set(key, value);
+        return value;
+    }
     at<KI, KO, VI, VO>(subspace: GetSubspace<KI, KO, VI, VO>): KO extends KI ? SyncTransaction<KI, KO, VI, VO> : never {
         const newTxn = this._txn.at(subspace as GetSubspace<KI, KO & KI, VI, VO>);
         const ret = new SyncTransaction(newTxn, {
@@ -196,24 +239,21 @@ export class SyncTransaction<KeyIn, KeyOut extends KeyIn, ValIn, ValOut> {
             throw new UnresolvedValueError(Promise.all(unresolved));
         return allKeys.filter(e => !e.missing).map(e => e.mapped) as U[];
     }
-    static test<F extends () => any>(fn: F extends () => Promise<any> ? never : F): void {
-
-    }
     static async doTn<KeyIn, KeyOut extends KeyIn, ValIn, ValOut, T extends NonPromiseType>(
         txn: Transaction<KeyIn, KeyOut, ValIn, ValOut>,
         fn: (stxn: SyncTransaction<KeyIn, KeyOut, ValIn, ValOut>) => T,
         opts?: { maxAttempts?: number }
     ): Promise<T> {
         const stxn = new SyncTransaction(txn);
-        this.test(() => { })
         let maxAttempts = opts?.maxAttempts ?? 250;
         while (maxAttempts-- > 0) {
             try {
-                stxn.operations.splice(0, stxn.operations.length);
+                stxn.operations.reset();
                 const res = fn(stxn);
                 //are the values we based out decision on still valid
                 await stxn.cache.validateCache(() => {
-                    for (const op of stxn.operations) {
+                    for (const op of stxn.operations.all()) {
+
                         switch (op.type) {
                             case OpType.clear:
                                 op.txn.clear(op.key);
@@ -228,8 +268,6 @@ export class SyncTransaction<KeyIn, KeyOut extends KeyIn, ValIn, ValOut> {
             } catch (e) {
                 if (e instanceof UnresolvedValueError) {
                     await e.promise;
-                    //our operations are invalid now
-                    stxn.operations.splice(0, stxn.operations.length);
                 }
                 else
                     throw e;

@@ -40,6 +40,17 @@ export class GeneralPurposeCache {
             return false;
         }
     }
+    setIfNotEqualTo(key: string, value: any, fulfill: () => Promise<any>) {
+        const existing = this.cache.get(key);
+        if (existing && !this.areEqual(existing.value, value)) {
+            throw new Error("Cache entry already present with different value");
+        }
+        this.cache.set(key, {
+            type: CachEntryType.value,
+            value,
+            fulfill
+        });
+    }
     get<T>(
         //how do we identify this cache entry
         cacheKey: string,
