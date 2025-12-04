@@ -14,23 +14,23 @@ enum OpType {
     clear
 }
 
-interface ClearOp<KeyIn> {
+interface ClearOp<KeyIn, ValIn, KeyOut, ValOut> {
     type: OpType.clear,
     bufKey: Buffer,
-    txn: Transaction<KeyIn, unknown, unknown, unknown>,
+    txn: Transaction<KeyIn, KeyOut, ValIn, ValOut>,
     key: KeyIn
 }
 
-interface SetOp<KeyIn, ValIn> {
+interface SetOp<KeyIn, ValIn, KeyOut, ValOut> {
     type: OpType.set,
     bufKey: Buffer,
     bufValue: Buffer,
-    txn: Transaction<KeyIn, unknown, ValIn, unknown>,
+    txn: Transaction<KeyIn, KeyOut, ValIn, ValOut>,
     key: KeyIn,
     value: ValIn
 }
 
-type SyncOperation<KeyIn, ValIn> = ClearOp<KeyIn> | SetOp<KeyIn, ValIn>;
+type SyncOperation<KeyIn = unknown, ValIn = unknown, KeyOut = unknown, ValOut = unknown> = ClearOp<KeyIn, ValIn, KeyOut, ValOut> | SetOp<KeyIn, ValIn, KeyOut, ValOut>;
 
 
 
@@ -46,8 +46,8 @@ export type NotAFunction = Primitive | object & { call?: never } | object & { ap
 
 
 class OperationsStore {
-    private readonly operations: Array<SyncOperation<unknown, unknown>> = [];
-    private readonly opMap: Map<string, SyncOperation<unknown, unknown>> = new Map();
+    private readonly operations: Array<SyncOperation> = [];
+    private readonly opMap: Map<string, SyncOperation> = new Map();
     constructor() {
 
     }
@@ -66,19 +66,33 @@ class OperationsStore {
         return this.operations;
     }
 }
-export class SyncTransaction<KeyIn, KeyOut extends KeyIn, ValIn, ValOut> {
+
+export type SyncTransactionPreCommitOperation<KeyIn, ValIn, ValOut> = {
+    key: KeyIn,
+    oldValue: ValOut | undefined,
+    newValue: ValIn | undefined,
+}
+export type SyncTransactionPreCommitFunction<KeyIn, ValIn, ValOut> = (
+    operations: SyncTransactionPreCommitOperation<KeyIn, ValIn, ValOut>[],
+    txn: SyncTransaction<KeyIn, KeyIn, ValIn, ValOut>
+) => void;
+export class SyncTransaction<KeyIn = unknown, KeyOut extends KeyIn = KeyIn, ValIn = unknown, ValOut = unknown> {
     readonly _tn: NativeTransaction;
     private _txn: Transaction<KeyIn, KeyOut, ValIn, ValOut>;
     private bufTxn;
     private readonly operations;
+    private allTransactions: SyncTransaction[] = [];
     private static wrapper: (<T>(callback: () => Promise<T>) => Promise<T>) = (callback) => {
         return callback()
     };
     private cache;
     readonly kind = TransactionKind.Sync;
-    constructor(txn: Transaction<KeyIn, KeyOut, ValIn, ValOut>, init?: {
+    private onPreCommit: SyncTransactionPreCommitFunction<KeyIn, ValIn, ValOut> | undefined;
+    constructor(txn: Transaction<KeyIn, KeyOut, ValIn, ValOut>, init: {
+        allTransactions: SyncTransaction[]
         operations: OperationsStore,
-        cache: GeneralPurposeCache
+        cache: GeneralPurposeCache,
+        onPreCommit: SyncTransactionPreCommitFunction<KeyIn, ValIn, ValOut> | undefined
     }) {
         this._tn = txn._tn;
         this._txn = txn;
@@ -86,8 +100,38 @@ export class SyncTransaction<KeyIn, KeyOut extends KeyIn, ValIn, ValOut> {
         this.bufTxn = txn.at(
             rootSubspace
         );
-        this.cache = init?.cache ?? new GeneralPurposeCache(txn);
-        this.operations = init?.operations ?? new OperationsStore();
+        this.cache = init.cache;
+        this.operations = init.operations;
+        this.onPreCommit = init.onPreCommit;
+        init.allTransactions.push(this as SyncTransaction);
+        this.allTransactions = init.allTransactions;
+    }
+    private async preparePreCommit() {
+        const hooks = await Promise.all(
+            this.allTransactions.map(async txn => {
+                if (txn.onPreCommit) {
+                    const onPreCommit = txn.onPreCommit;
+                    const operations = txn.operations.all().filter(op => {
+                        return op.txn === txn._txn
+                    }) as SyncOperation[];
+                    if (operations.length) {
+                        const ops = await Promise.all(operations.map(async (op): Promise<SyncTransactionPreCommitOperation<unknown, unknown, unknown>> => {
+                            const oldValue = await op.txn.get(op.key);
+                            return {
+                                key: op.key,
+                                oldValue: oldValue,
+                                newValue: op.type === OpType.set ? op.value : undefined
+                            };
+                        }))
+                        return (txn: SyncTransaction) => {
+                            onPreCommit(ops, txn.at(txn.subspace))
+                        }
+                    }
+                }
+                return undefined;
+            })
+        );
+        return hooks.filter(h => !!h);
     }
 
     get createdAt() {
@@ -215,11 +259,16 @@ export class SyncTransaction<KeyIn, KeyOut extends KeyIn, ValIn, ValOut> {
         this.set(key, value);
         return value;
     }
-    at<KI, KO, VI, VO>(subspace: GetSubspace<KI, KO, VI, VO>): KO extends KI ? SyncTransaction<KI, KO, VI, VO> : never {
+    at<KI, KO, VI, VO>(
+        subspace: GetSubspace<KI, KO, VI, VO>,
+        onPreCommit?: SyncTransactionPreCommitFunction<KI, VI, VO>
+    ): KO extends KI ? SyncTransaction<KI, KO, VI, VO> : never {
         const newTxn = this._txn.at(subspace as GetSubspace<KI, KO & KI, VI, VO>);
         const ret = new SyncTransaction(newTxn, {
             operations: this.operations,
-            cache: this.cache
+            cache: this.cache,
+            onPreCommit: onPreCommit || undefined,
+            allTransactions: this.allTransactions
         });
         return ret as KO extends KI ? SyncTransaction<KI, KO, VI, VO> : never;
     }
@@ -256,30 +305,54 @@ export class SyncTransaction<KeyIn, KeyOut extends KeyIn, ValIn, ValOut> {
     static async doTn<KeyIn, KeyOut extends KeyIn, ValIn, ValOut, T extends NonPromiseType>(
         txn: Transaction<KeyIn, KeyOut, ValIn, ValOut>,
         fn: (stxn: SyncTransaction<KeyIn, KeyOut, ValIn, ValOut>) => T,
-        opts?: { maxAttempts?: number }
+        opts?: { maxAttempts?: number, onPreCommit?: SyncTransactionPreCommitFunction<KeyIn, ValIn, ValOut> }
     ): Promise<T> {
-        const stxn = new SyncTransaction(txn);
+        const stxn = new SyncTransaction(txn, {
+            onPreCommit: opts?.onPreCommit || undefined,
+            cache: new GeneralPurposeCache(txn),
+            operations: new OperationsStore(),
+            allTransactions: []
+        });
         let maxAttempts = opts?.maxAttempts ?? 250;
         while (maxAttempts-- > 0) {
             try {
                 const res = await this.wrapper(async () => {
                     stxn.operations.reset();
+                    stxn.allTransactions.splice(0, stxn.allTransactions.length);
+                    stxn.allTransactions.push(stxn as SyncTransaction);
                     const res = fn(stxn);
-                    //are the values we based out decision on still valid
-                    await stxn.cache.validateCache(() => {
-                        for (const op of stxn.operations.all()) {
+                    const lastMutationIndex = txn._tn.allOperations?.length || 0;
+                    let maxIter = 1000;
+                    while (maxIter-- > 0) {
+                        //are the values we based out decision on still valid
+                        //it is assumed that any values used in the preCommit hooks are also cached values
+                        //this may not be the case when set or clear are used directly
 
-                            switch (op.type) {
-                                case OpType.clear:
-                                    op.txn.clear(op.key);
-                                    break;
-                                case OpType.set:
-                                    op.txn.set(op.key, op.value);
-                                    break;
+                        const [cacheValid, hooks] = await Promise.all([stxn.cache.validateCache(), await stxn.preparePreCommit()]);
+                        if (cacheValid && (txn._tn.allOperations?.length || 0) === lastMutationIndex) {
+                            for (const op of stxn.operations.all()) {
+                                switch (op.type) {
+                                    case OpType.clear:
+                                        op.txn.clear(op.key);
+                                        break;
+                                    case OpType.set:
+                                        op.txn.set(op.key, op.value);
+                                        break;
+                                }
                             }
+                            stxn.operations.reset();
+                            //we have now commited to the main transaction, we process hooks in a new sync transaction loop
+                            //this gives us isolation for any sets etc.
+                            if (hooks.length)
+                                await SyncTransaction.doTn(txn, (stxnInner) => {
+                                    for (const hook of hooks) {
+                                        hook(stxnInner as SyncTransaction)
+                                    }
+                                })
+                            return res;
                         }
-                    })
-                    return res;
+                    }
+                    throw new Error("Max iterations reached in SyncTransaction.doTn");
                 })
                 return res;
             } catch (e) {

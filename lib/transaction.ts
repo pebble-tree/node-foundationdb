@@ -167,6 +167,7 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
       id = ++Transaction.lastTxnId;
       Transaction.idMap.set(this._tn, id);
     }
+    this._tn.createdAt = this._tn.createdAt || Date.now();
     this.id = id;
     this.isSnapshot = snapshot
     this.subspace = subspace
@@ -250,7 +251,10 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
     } while (true)
   }
 
-  readonly createdAt = Date.now();
+  get createdAt() {
+    this._tn.createdAt = this._tn.createdAt || Date.now();
+    return this._tn.createdAt;
+  }
 
 
   private throwIfCommitInProgress() {

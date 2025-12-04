@@ -83,34 +83,28 @@ export class GeneralPurposeCache {
             return value;
         }));
     }
-    async validateCache(onValid: () => void) {
-        const lastMutationIndex = this.txn._tn.allOperations?.length || 0;
-        let maxIter = 1000;
-        while (maxIter-- > 0) {
-            await Promise.all(
-                Array.from(this.cache.entries()).map(async ([key, entry]) => {
-                    const cacheEntryValue = await entry.value;
-                    const currentValue = await entry.fulfill();
-                    if (!this.areEqual(cacheEntryValue, currentValue)) {
-                        this.cache.set(key, {
-                            type: CachEntryType.value,
-                            value: currentValue,
-                            fulfill: entry.fulfill
-                        });
-                        if (entry.flags !== undefined && (entry.flags & EnumCacheEntryFlags.isCreate) !== 0) {
-                            //we want this to be caught by the main transaction control loop,
-                            //as the key may have been constructed outside of the control loop that uses this cache
-                            throw new FDBError("Fake conflict (create)", 1020)
-                        }
-                        throw new UnresolvedValueError(Promise.resolve());
+    async validateCache(): Promise<boolean> {
+        const results = await Promise.all(
+            Array.from(this.cache.entries()).map(async ([key, entry]) => {
+                const cacheEntryValue = await entry.value;
+                const currentValue = await entry.fulfill();
+                if (!this.areEqual(cacheEntryValue, currentValue)) {
+                    this.cache.set(key, {
+                        type: CachEntryType.value,
+                        value: currentValue,
+                        fulfill: entry.fulfill
+                    });
+                    if (entry.flags !== undefined && (entry.flags & EnumCacheEntryFlags.isCreate) !== 0) {
+                        //we want this to be caught by the main transaction control loop,
+                        //as the key may have been constructed outside of the control loop that uses this cache
+                        throw new FDBError("Fake conflict (create)", 1020)
                     }
-                })
-            )
-            if ((this.txn._tn.allOperations?.length || 0) === lastMutationIndex) {
-                onValid();
-                return;
-            }
-        }
-        throw new Error("Could not validate cache within 1000 iterations");
+                    return false
+
+                }
+                return true;
+            })
+        )
+        return results.every(r => r);
     }
 }
