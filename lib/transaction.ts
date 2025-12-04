@@ -34,7 +34,6 @@ import {
 import Subspace, { GetSubspace } from './subspace'
 import { EmptyEventHandler, Operations, TransactionEventHandler } from './customised/operations'
 import { MappedRange } from './mappedRange'
-import { NonPromiseType } from './syncTransaction'
 import { encoders } from '.'
 
 export type ClearKey<KeyIn, ValIn> = ValIn extends never ? never : KeyIn
@@ -419,7 +418,7 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
           : this._keyEncoding.unpack(key)
       ))
   }
-  async setDispatch<T extends NonPromiseType, const V extends ValIn = ValIn>(
+  async setDispatch<T, const V extends ValIn = ValIn>(
     key: ClearKey<KeyIn, ValIn>,
     dispatch: (val: ValOut | undefined, set: (val: V | undefined) => void) => T
   ): Promise<T> {
