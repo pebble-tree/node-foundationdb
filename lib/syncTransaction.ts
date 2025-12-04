@@ -81,6 +81,7 @@ export class SyncTransaction<KeyIn = unknown, KeyOut extends KeyIn = KeyIn, ValI
     private _txn: Transaction<KeyIn, KeyOut, ValIn, ValOut>;
     private bufTxn;
     private readonly operations;
+    private depth;
     private allTransactions: SyncTransaction[] = [];
     private static wrapper: (<T>(callback: () => Promise<T>) => Promise<T>) = (callback) => {
         return callback()
@@ -92,10 +93,12 @@ export class SyncTransaction<KeyIn = unknown, KeyOut extends KeyIn = KeyIn, ValI
         allTransactions: SyncTransaction[]
         operations: OperationsStore,
         cache: GeneralPurposeCache,
-        onPreCommit: SyncTransactionPreCommitFunction<KeyIn, ValIn, ValOut> | undefined
+        onPreCommit: SyncTransactionPreCommitFunction<KeyIn, ValIn, ValOut> | undefined,
+        depth: number
     }) {
         this._tn = txn._tn;
         this._txn = txn;
+        this.depth = init.depth;
         const rootSubspace = new Subspace(Buffer.from([]), encoders.buf, encoders.buf);
         this.bufTxn = txn.at(
             rootSubspace
@@ -268,7 +271,8 @@ export class SyncTransaction<KeyIn = unknown, KeyOut extends KeyIn = KeyIn, ValI
             operations: this.operations,
             cache: this.cache,
             onPreCommit: onPreCommit || undefined,
-            allTransactions: this.allTransactions
+            allTransactions: this.allTransactions,
+            depth: this.depth
         });
         return ret as KO extends KI ? SyncTransaction<KI, KO, VI, VO> : never;
     }
@@ -305,13 +309,14 @@ export class SyncTransaction<KeyIn = unknown, KeyOut extends KeyIn = KeyIn, ValI
     static async doTn<KeyIn, KeyOut extends KeyIn, ValIn, ValOut, T extends NonPromiseType>(
         txn: Transaction<KeyIn, KeyOut, ValIn, ValOut>,
         fn: (stxn: SyncTransaction<KeyIn, KeyOut, ValIn, ValOut>) => T,
-        opts?: { maxAttempts?: number, onPreCommit?: SyncTransactionPreCommitFunction<KeyIn, ValIn, ValOut> }
+        opts?: { maxAttempts?: number, onPreCommit?: SyncTransactionPreCommitFunction<KeyIn, ValIn, ValOut>, depth?: number }
     ): Promise<T> {
         const stxn = new SyncTransaction(txn, {
             onPreCommit: opts?.onPreCommit || undefined,
             cache: new GeneralPurposeCache(txn),
             operations: new OperationsStore(),
-            allTransactions: []
+            allTransactions: [],
+            depth: opts?.depth || 1
         });
         let maxAttempts = opts?.maxAttempts ?? 250;
         while (maxAttempts-- > 0) {
@@ -343,12 +348,16 @@ export class SyncTransaction<KeyIn = unknown, KeyOut extends KeyIn = KeyIn, ValI
                             stxn.operations.reset();
                             //we have now commited to the main transaction, we process hooks in a new sync transaction loop
                             //this gives us isolation for any sets etc.
-                            if (hooks.length)
+                            if (hooks.length) {
                                 await SyncTransaction.doTn(txn, (stxnInner) => {
                                     for (const hook of hooks) {
                                         hook(stxnInner as SyncTransaction)
                                     }
+                                }, {
+                                    ...opts,
+                                    depth: stxn.depth + 1
                                 })
+                            }
                             return res;
                         }
                     }
