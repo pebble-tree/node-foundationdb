@@ -22,7 +22,13 @@ export namespace Operations {
         range: [K, K | undefined],
         txn: Transaction<K, unknown, unknown, unknown>
     }
-    export type WriteOperation<K, V> = Set<K, V> | Clear<K> | ClearRange<K>
+    export interface AtomicOp<K> {
+        op: "atomicOp"
+        key: K,
+        bufKey: string | Buffer,
+        txn: Transaction<unknown, unknown, unknown, unknown>
+    }
+    export type WriteOperation<K, V> = Set<K, V> | Clear<K> | ClearRange<K> | AtomicOp<K>
     export interface Get<K> {
         op: "get"
         key: K,

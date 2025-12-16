@@ -843,15 +843,21 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
 
   atomicOpNative(opType: MutationType, key: NativeValue, oper: NativeValue) {
     this.throwIfCommitInProgress();
+    this._tn.allOperations = this._tn.allOperations || [];
+    const operation: Operations.AtomicOp<KeyOut> = {
+      key: this._keyEncoding.unpack(asBuf(key)),
+      op: "atomicOp",
+      txn: this,
+      bufKey: key,
+    }
+    this._tn.allOperations.push(operation);
     this._tn.atomicOp(opType, key, oper)
   }
   atomicOpKB(opType: MutationType, key: KeyIn, oper: Buffer) {
-    this.throwIfCommitInProgress();
-    this._tn.atomicOp(opType, this._keyEncoding.pack(key), oper)
+    this.atomicOpNative(opType, this._keyEncoding.pack(key), oper)
   }
   atomicOp(opType: MutationType, key: KeyIn, oper: ValIn) {
-    this.throwIfCommitInProgress();
-    this._tn.atomicOp(opType, this._keyEncoding.pack(key), this._valueEncoding.pack(oper))
+    this.atomicOpNative(opType, this._keyEncoding.pack(key), this._valueEncoding.pack(oper))
   }
 
   /**

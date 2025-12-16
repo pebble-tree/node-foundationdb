@@ -1,6 +1,6 @@
 {
   "name": "@pebbletree/foundationdb",
-  "version": "2.4.34",
+  "version": "2.4.35",
   "description": "Node.js bindings for the FoundationDB database",
   "keywords": [
     "foundationdb",
