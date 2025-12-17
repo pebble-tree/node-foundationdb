@@ -852,6 +852,9 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
     }
     this._tn.allOperations.push(operation);
     this._tn.atomicOp(opType, key, oper)
+    if (this.eventHandlers.onAfterWriteOperation && opType !== MutationType.SetVersionstampedKey && opType !== MutationType.SetVersionstampedValue) {
+      this.eventHandlers.onAfterWriteOperation(operation)
+    }
   }
   atomicOpKB(opType: MutationType, key: KeyIn, oper: Buffer) {
     this.atomicOpNative(opType, this._keyEncoding.pack(key), oper)
