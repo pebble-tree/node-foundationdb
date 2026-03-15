@@ -844,17 +844,26 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
   atomicOpNative(opType: MutationType, key: NativeValue, oper: NativeValue) {
     this.throwIfCommitInProgress();
     this._tn.allOperations = this._tn.allOperations || [];
-    const operation: Operations.AtomicOp<KeyOut> = {
-      key: this._keyEncoding.unpack(asBuf(key)),
-      op: "atomicOp",
-      txn: this,
-      bufKey: key,
-    }
-    this._tn.allOperations.push(operation);
+    const isVersionstamp = opType === MutationType.SetVersionstampedKey || opType === MutationType.SetVersionstampedValue;
+    // For versionstamp ops the key contains unresolved placeholder bytes that
+    // cannot be decoded by the key encoding (e.g. tuple). The unpacked key is
+    // only used by onAfterWriteOperation which is already skipped for
+    // versionstamp ops, so we can safely leave it as undefined.
+    const operation: Operations.AtomicOp<KeyOut> | undefined = isVersionstamp
+      ? {
+        key: isVersionstamp ? undefined as any : this._keyEncoding.unpack(asBuf(key)),
+        op: "atomicOp",
+        txn: this,
+        bufKey: key,
+      }
+      : undefined;
+    if (operation)
+      this._tn.allOperations.push(operation);
     this._tn.atomicOp(opType, key, oper)
-    if (this.eventHandlers.onAfterWriteOperation && opType !== MutationType.SetVersionstampedKey && opType !== MutationType.SetVersionstampedValue) {
-      this.eventHandlers.onAfterWriteOperation(operation)
-    }
+    if (operation)
+      if (this.eventHandlers.onAfterWriteOperation && !isVersionstamp) {
+        this.eventHandlers.onAfterWriteOperation(operation)
+      }
   }
   atomicOpKB(opType: MutationType, key: KeyIn, oper: Buffer) {
     this.atomicOpNative(opType, this._keyEncoding.pack(key), oper)
