@@ -20,6 +20,7 @@ export type WatchWithValue<Value> = Watch & { value: Value | undefined }
 export default class Database<KeyIn = NativeValue, KeyOut = Buffer, ValIn = NativeValue, ValOut = Buffer> {
   _db: fdb.NativeDatabase
   subspace: Subspace<KeyIn, KeyOut, ValIn, ValOut>
+  static doTnWrapper: null | (<T>(inner: () => Promise<T>) => Promise<T>) = null
   constructor(db: fdb.NativeDatabase, subspace: Subspace<KeyIn, KeyOut, ValIn, ValOut>) {
     this._db = db
     this.subspace = subspace//new Subspace<KeyIn, KeyOut, ValIn, ValOut>(prefix, keyXf, valueXf)
@@ -71,6 +72,9 @@ export default class Database<KeyIn = NativeValue, KeyOut = Buffer, ValIn = Nati
 
   // This is the API you want to use for non-trivial transactions.
   async doTn<T>(body: (tn: Transaction<KeyIn, KeyOut, ValIn, ValOut>) => Promise<T>, opts?: TransactionOptions): Promise<T> {
+    if (Database.doTnWrapper) {
+      return Database.doTnWrapper(() => this.rawCreateTransaction(opts)._exec(body))
+    }
     return this.rawCreateTransaction(opts)._exec(body)
   }
   // Alias for db.doTn.
