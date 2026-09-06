@@ -20,8 +20,11 @@
           # 'xcode_settings': { 'OTHER_CFLAGS': ['-std=c++0x', '-fsanitize=address'] },
           'xcode_settings': { 'OTHER_CFLAGS': ['-std=c++0x'] },
           'include_dirs': ['/usr/local/include'],
+          # -Wl,-rpath,... bakes an LC_RPATH into fdblib.node so dyld can resolve
+          # `@rpath/libfdb_c.dylib` without needing DYLD_LIBRARY_PATH at runtime.
+          # /opt/homebrew/lib covers Apple Silicon homebrew installs.
           # 'link_settings': { 'libraries': ['-lfdb_c', '-L/usr/local/lib', '-fsanitize=address'] },
-          'link_settings': { 'libraries': ['-lfdb_c', '-L/usr/local/lib'] },
+          'link_settings': { 'libraries': ['-lfdb_c', '-L/usr/local/lib', '-Wl,-rpath,/usr/local/lib', '-Wl,-rpath,/opt/homebrew/lib'] },
         }],
         ['OS=="win"', {
           'link_settings': { 'libraries': ['<!(echo %FOUNDATIONDB_INSTALL_PATH%)\\lib\\foundationdb\\fdb_c.lib'] },
