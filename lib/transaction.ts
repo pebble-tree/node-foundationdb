@@ -41,6 +41,11 @@ export type ClearKey<KeyIn, ValIn> = ValIn extends never ? never : KeyIn
 const byteZero = Buffer.alloc(1)
 byteZero.writeUInt8(0, 0)
 
+export interface GetSubspaceInTxn<KI, KO, VI, VO> {
+  getSubspace(txn: Transaction<unknown, unknown, unknown, unknown>): Subspace<KI, KO, VI, VO>
+}
+
+export type MaybeGetSubspaceInTxn<KI, KO, VI, VO> = GetSubspaceInTxn<KI, KO, VI, VO> | GetSubspace<KI, KO, VI, VO>
 
 export interface RangeOptionsBatch {
   // defaults to Iterator for batch mode, WantAll for getRangeAll.
@@ -287,8 +292,8 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
   /**
    * Create a shallow copy of the transaction in the specified subspace (or database, transaction, or directory).
   */
-  at<CKI, CKO, CVI, CVO>(hasSubspace: GetSubspace<CKI, CKO, CVI, CVO>): Transaction<CKI, CKO, CVI, CVO> {
-    const ret = new Transaction(this._tn, this.isSnapshot, hasSubspace.getSubspace(), undefined, this._ctx)
+  at<CKI, CKO, CVI, CVO>(hasSubspace: MaybeGetSubspaceInTxn<CKI, CKO, CVI, CVO>): Transaction<CKI, CKO, CVI, CVO> {
+    const ret = new Transaction(this._tn, this.isSnapshot, hasSubspace.getSubspace(this), undefined, this._ctx)
     ret.eventHandlers = this.eventHandlers;
     return ret;
   }

@@ -12,7 +12,7 @@ const EMPTY_BUF = Buffer.alloc(0)
 const concatPrefix = (p1: Buffer, p2: string | Buffer | null) => (
   p2 == null ? p1
     : p1.length === 0 ? asBuf(p2)
-    : concat2(p1, asBuf(p2))
+      : concat2(p1, asBuf(p2))
 )
 
 
@@ -60,7 +60,7 @@ export default class Subspace<KeyIn = NativeValue, KeyOut = Buffer, ValIn = Nati
   withKeyEncoding<CKI, CKO>(keyXf: Transformer<CKI, CKO>): Subspace<CKI, CKO, ValIn, ValOut> {
     return new Subspace(this.prefix, keyXf, this.valueXf)
   }
-  
+
   withValueEncoding<CVI, CVO>(valXf: Transformer<CVI, CVO>): Subspace<KeyIn, KeyOut, CVI, CVO> {
     return new Subspace(this.prefix, this.keyXf, valXf)
   }
@@ -82,7 +82,7 @@ export default class Subspace<KeyIn = NativeValue, KeyOut = Buffer, ValIn = Nati
     return this.valueXf.unpack(val)
   }
 
-  packRange(prefix: KeyIn): {begin: NativeValue, end: NativeValue} {
+  packRange(prefix: KeyIn): { begin: NativeValue, end: NativeValue } {
     // if (this._bakedKeyXf.range) return this._bakedKeyXf.range(prefix)
     // else return defaultGetRange(prefix, this._bakedKeyXf)
     return (this._bakedKeyXf.range || defaultGetRange)(prefix, this._bakedKeyXf)
@@ -99,6 +99,8 @@ export const root: Subspace = new Subspace(null, defaultTransformer, defaultTran
 export interface GetSubspace<KI, KO, VI, VO> {
   getSubspace(): Subspace<KI, KO, VI, VO>
 }
+
+
 
 export const isGetSubspace = <KI, KO, VI, VO>(obj: any): obj is GetSubspace<KI, KO, VI, VO> => {
   return obj != null && typeof obj === 'object' && 'getSubspace' in obj
