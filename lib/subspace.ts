@@ -20,13 +20,15 @@ const concatPrefix = (p1: Buffer, p2: string | Buffer | null) => (
 // in to the database (eg in a set(keyin, valin) call) and the types of keys and
 // values returned. KeyIn == KeyOut and ValIn == ValOut in almost all cases.
 export default class Subspace<KeyIn = NativeValue, KeyOut = Buffer, ValIn = NativeValue, ValOut = Buffer> {
+  private _name: string
   prefix: Buffer // This is baked into bakedKeyXf but we hold it so we can call .at / .atPrefix.
   keyXf: Transformer<KeyIn, KeyOut>
   valueXf: Transformer<ValIn, ValOut>
 
   _bakedKeyXf: Transformer<KeyIn, KeyOut> // This is cached from _prefix + keyXf.
-
-  constructor(rawPrefix: string | Buffer | null, keyXf?: Transformer<KeyIn, KeyOut>, valueXf?: Transformer<ValIn, ValOut>) {
+  get name() { return this._name }
+  setName(name: string) { this._name = name }
+  constructor(rawPrefix: string | Buffer | null, keyXf?: Transformer<KeyIn, KeyOut>, valueXf?: Transformer<ValIn, ValOut>, name?: string) {
     this.prefix = rawPrefix != null ? Buffer.from(rawPrefix) : EMPTY_BUF
 
     // Ugh typing this is a mess. Usually this will be fine since if you say new
@@ -35,6 +37,7 @@ export default class Subspace<KeyIn = NativeValue, KeyOut = Buffer, ValIn = Nati
     this.valueXf = valueXf || (defaultTransformer as Transformer<any, any>)
 
     this._bakedKeyXf = rawPrefix ? prefixTransformer(rawPrefix, this.keyXf) : this.keyXf
+    this._name = name || this.prefix.toString('hex')
   }
 
   // All these template parameters make me question my life choices, but this is

@@ -348,6 +348,12 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
       : this._tn.onError(code)
   }
 
+  async getOrThrow(key: KeyIn) {
+    const val = await this.get(key)
+    if (val === undefined) throw new Error(`Key not found: ${key} in subspace ${this.subspace.name}`)
+    return val
+  }
+
   /**
    * Get the value for the specified key in the database.
    *

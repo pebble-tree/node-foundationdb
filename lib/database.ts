@@ -97,6 +97,9 @@ export default class Database<KeyIn = NativeValue, KeyOut = Buffer, ValIn = Nati
     return new Transaction<KeyIn, KeyOut, ValIn, ValOut>(this._db.createTransaction(), false, this.subspace, opts)
   }
 
+  async getOrThrow(key: KeyIn) {
+    return this.doTransaction(tn => tn.snapshot().getOrThrow(key))
+  }
   get(key: KeyIn): Promise<ValOut | undefined> {
     return this.doTransaction(tn => tn.snapshot().get(key))
   }
