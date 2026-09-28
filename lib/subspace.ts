@@ -49,23 +49,23 @@ export default class Subspace<KeyIn = NativeValue, KeyOut = Buffer, ValIn = Nati
   at<CVI, CVO>(prefix: KeyIn | null, keyXf: undefined, valueXf: Transformer<CVI, CVO>): Subspace<KeyIn, KeyOut, CVI, CVO>;
   at<CKI, CKO, CVI, CVO>(prefix: KeyIn | null, keyXf?: Transformer<CKI, CKO>, valueXf?: Transformer<CVI, CVO>): Subspace<CKI, CKO, CVI, CVO>;
   // ***
-  at(prefix: KeyIn | null, keyXf: Transformer<any, any> = this.keyXf, valueXf: Transformer<any, any> = this.valueXf) {
+  at(prefix: KeyIn | null, keyXf: Transformer<any, any> = this.keyXf, valueXf: Transformer<any, any> = this.valueXf, name?: string) {
     const _prefix = prefix == null ? null : this.keyXf.pack(prefix)
-    return new Subspace(concatPrefix(this.prefix, _prefix), keyXf, valueXf)
+    return new Subspace(concatPrefix(this.prefix, _prefix), keyXf, valueXf, name)
   }
 
   /** At a child prefix thats specified without reference to the key transformer */
-  atRaw(prefix: Buffer) {
-    return new Subspace(concatPrefix(this.prefix, prefix), this.keyXf, this.valueXf)
+  atRaw(prefix: Buffer, name?: string) {
+    return new Subspace(concatPrefix(this.prefix, prefix), this.keyXf, this.valueXf, name)
   }
 
 
   withKeyEncoding<CKI, CKO>(keyXf: Transformer<CKI, CKO>): Subspace<CKI, CKO, ValIn, ValOut> {
-    return new Subspace(this.prefix, keyXf, this.valueXf)
+    return new Subspace(this.prefix, keyXf, this.valueXf, this._name)
   }
 
   withValueEncoding<CVI, CVO>(valXf: Transformer<CVI, CVO>): Subspace<KeyIn, KeyOut, CVI, CVO> {
-    return new Subspace(this.prefix, this.keyXf, valXf)
+    return new Subspace(this.prefix, this.keyXf, valXf, this._name)
   }
 
   // GetSubspace implementation
