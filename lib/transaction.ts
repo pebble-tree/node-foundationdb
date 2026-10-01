@@ -35,7 +35,7 @@ import Subspace, { GetSubspace } from './subspace'
 import { EmptyEventHandler, Operations, TransactionEventHandler } from './customised/operations'
 import { MappedRange } from './mappedRange'
 import { encoders } from '.'
-
+import { inspect } from "util"
 export type ClearKey<KeyIn, ValIn> = ValIn extends never ? never : KeyIn
 
 const byteZero = Buffer.alloc(1)
@@ -350,7 +350,7 @@ export default class Transaction<KeyIn = NativeValue, KeyOut = Buffer, ValIn = N
 
   async getOrThrow(key: KeyIn): Promise<ValOut> {
     const val = await this.get(key)
-    if (val === undefined) throw new Error(`Key not found: ${key} in subspace ${this.subspace.name}`)
+    if (val === undefined) throw new Error(`Key not found: ${inspect(key)} in subspace ${this.subspace.name}`)
     return val
   }
 
